@@ -147,7 +147,13 @@ _ASSUMPTIONS: list[str] = [
     "Integer workday durations only; fractional durations are rejected.",
     "EF = ES + (OD - 1) workdays for OD >= 1; EF = ES for OD = 0 (milestone).",
     "FS lag=0: successor ES = predecessor EF (same workday; P6 convention).",
-    "Retained Logic scheduling throughout; no Progress Override (ADR-002).",
+    "Statusing mode defaults to Retained Logic (ADR-002). Progress Override is "
+    "available (StatusingMode.PROGRESS_OVERRIDE): it drops the retained-logic tie "
+    "from in-progress (started-but-incomplete) predecessors; P6-compatible "
+    "analytical convention at day granularity, not exact P6 emulation.",
+    "Date constraints (LIM-028) are applied when provided (SNET/SNLT/FNET/FNLT/"
+    "SO/FO/MS/MF/ALAP/XF); each is disclosed in a ConstraintApplication record. "
+    "Hard constraints (MANDATORY_*) can create negative float, which is disclosed.",
     "Multiple finish nodes each receive LF = project_finish.",
     "Longest-path tracing uses forward-pass ES/EF; controlling predecessor is "
     "the predecessor whose constraint equals the activity's scheduled ES (FS/SS) "
@@ -155,16 +161,87 @@ _ASSUMPTIONS: list[str] = [
 ]
 
 _EXCLUDED: list[str] = [
-    "Date constraints (START_ON, FINISH_ON, etc.) — scheduling behavior "
-    "deferred (LIM-028).",
     "Resource constraints.",
     "Hour-level lag precision (integer workday lags only).",
-    "Progress Override calculation mode (ADR-002).",
+    "Exact P6 constraint / statusing emulation (date constraints and Progress "
+    "Override are day-granularity analytical approximations — ADR-006).",
     "Exact P6 calendar emulation (exception dates, fiscal periods).",
     "Per-relationship lag calendar assignment (deferred post-V1-D).",
     "XER/Primavera import is handled by mip39.xer, not engine.py "
     "(INFRA-011 through INFRA-014; ADR-007, ADR-008).",
 ]
+
+
+# ---------------------------------------------------------------------------
+# LIM-028 / statusing-mode helpers
+# ---------------------------------------------------------------------------
+
+def _is_in_progress(activity: Activity) -> bool:
+    """True when an activity is STARTED but INCOMPLETE (in-progress): it has a
+    pinned early start (actual start) but no pinned early finish (actual finish).
+    Used by Progress Override to identify relationships whose retained-logic tie
+    to the successor's remaining work should be dropped."""
+    return (
+        activity.pinned_early_start is not None
+        and activity.pinned_early_finish is None
+    )
+
+
+def _record_forward_app(
+    constraint_apps: dict[int, ConstraintApplication],
+    snap_from: dict[int, date],
+    con: SchedulingConstraint,
+    effect: str,
+    violated: bool,
+    vdays: Optional[int],
+) -> None:
+    """Create the disclosure record for a constraint's forward-pass effect."""
+    orig = snap_from.get(id(con))
+    if orig is not None and con.cdate is not None:
+        effect += (
+            f" [cdate snapped from non-workday {orig.isoformat()} "
+            f"to {con.cdate.isoformat()}]"
+        )
+    constraint_apps[id(con)] = ConstraintApplication(
+        act_id=con.act_id, ctype=con.ctype, cdate=con.cdate,
+        effect=effect, violated=violated, violation_days=vdays,
+    )
+
+
+def _record_backward_app(
+    constraint_apps: dict[int, ConstraintApplication],
+    snap_from: dict[int, date],
+    con: SchedulingConstraint,
+    effect: str,
+) -> None:
+    """Append/create the disclosure record for a constraint's backward effect."""
+    existing = constraint_apps.get(id(con))
+    if existing is not None:
+        existing.effect = existing.effect + "; " + effect
+        return
+    orig = snap_from.get(id(con))
+    if orig is not None and con.cdate is not None:
+        effect += (
+            f" [cdate snapped from non-workday {orig.isoformat()} "
+            f"to {con.cdate.isoformat()}]"
+        )
+    constraint_apps[id(con)] = ConstraintApplication(
+        act_id=con.act_id, ctype=con.ctype, cdate=con.cdate, effect=effect,
+    )
+
+
+def _record_ignored_app(
+    constraint_apps: dict[int, ConstraintApplication],
+    con: SchedulingConstraint,
+) -> None:
+    """Record that a pinned (actualized) activity ignores its constraint."""
+    if id(con) in constraint_apps:
+        return
+    constraint_apps[id(con)] = ConstraintApplication(
+        act_id=con.act_id, ctype=con.ctype, cdate=con.cdate,
+        effect="ignored (actualized): actual dates outrank constraints (P6 behavior)",
+        violated=False, violation_days=None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -247,9 +324,20 @@ def _run_forward_pass(
     lag_workday_table: Optional[dict[date, int]] = None,
     lag_calendar: Optional[Calendar] = None,
     lag_resources: Optional[dict] = None,
+    constraints_by_act: Optional[dict[str, list[SchedulingConstraint]]] = None,
+    constraint_apps: Optional[dict[int, ConstraintApplication]] = None,
+    snap_from: Optional[dict[int, date]] = None,
+    statusing_mode: StatusingMode = StatusingMode.RETAINED_LOGIC,
 ) -> tuple[dict[str, Activity], list[str]]:
     """
     Extended forward pass supporting all four PDM relationship types.
+
+    LIM-028 / statusing (both default-off):
+      * ``constraints_by_act`` — date constraints applied per activity; each is
+        recorded into ``constraint_apps`` (keyed by id(constraint)). Pinned
+        (actualized) activities IGNORE their constraints (recorded as ignored).
+      * ``statusing_mode`` — under PROGRESS_OVERRIDE, relationships from
+        in-progress predecessors impose NO constraint on the successor.
 
     Returns: (scheduled, topological_order)
     scheduled maps activity_id → Activity copy with early_start and early_finish set.
@@ -291,6 +379,16 @@ def _run_forward_pass(
             and activity.pinned_early_finish is not None
         )
         pred_rels = [] if _fully_pinned else network.predecessors.get(act_id, [])
+
+        # Progress Override: a relationship whose PREDECESSOR is in-progress
+        # (started but incomplete) imposes no constraint on the successor's
+        # remaining work (P6-compatible convention). Default RETAINED_LOGIC keeps
+        # every relationship (bit-identical to prior behavior).
+        if statusing_mode == StatusingMode.PROGRESS_OVERRIDE and pred_rels:
+            pred_rels = [
+                rel for rel in pred_rels
+                if not _is_in_progress(network.activities[rel.pred_id])
+            ]
 
         for rel in pred_rels:
             pred = scheduled[rel.pred_id]
@@ -336,12 +434,16 @@ def _run_forward_pass(
         # later date, the logic is wrong (out-of-sequence progress), not the
         # actual date. The pinned es/ef still flow into successors through the
         # unchanged predecessor loop above, which is what propagates the anchor.
+        cons = constraints_by_act.get(act_id, []) if constraints_by_act else []
+
         pinned_es = activity.pinned_early_start
         pinned_ef = activity.pinned_early_finish
         if pinned_es is not None and pinned_ef is not None:
             # Completed activity: both dates fixed at actuals.
             es = pinned_es
             ef = pinned_ef
+            for con in cons:  # actual dates outrank constraints (P6 behavior)
+                _record_ignored_app(constraint_apps, con)
         elif pinned_es is not None:
             # In-progress activity: ES is pinned at the actual start (a historical
             # fact), but the REMAINING work resumes at the data date, NOT at the
@@ -355,10 +457,24 @@ def _run_forward_pass(
             remaining_span = max(0, int(rd) - 1) if rd is not None else span
             rem_start = max(candidate_es, pinned_es)
             ef = apply_lag(rem_start, remaining_span, _act_wt, _act_cal)
+            for con in cons:  # in-progress actual start outranks constraints
+                _record_ignored_app(constraint_apps, con)
         else:
-            # No pins (future activity): unchanged logic-driven behavior.
+            # No pins (future activity): unchanged logic-driven behavior, then
+            # apply any date constraints (LIM-028) on top of the logic dates.
             es = candidate_es
             ef = apply_lag(es, span, _act_wt, _act_cal)
+            if cons:
+                logic_es, logic_ef = es, ef
+                for con in cons:
+                    res = apply_forward_constraint(
+                        con, es, ef, logic_es, logic_ef, span, _act_wt, _act_cal
+                    )
+                    if res is not None:
+                        es, ef, _eff, _violated, _vdays = res
+                        _record_forward_app(
+                            constraint_apps, snap_from, con, _eff, _violated, _vdays
+                        )
 
         sched_act = copy.copy(activity)
         sched_act.early_start = es
@@ -381,9 +497,20 @@ def _run_backward_pass(
     lag_workday_table: Optional[dict[date, int]] = None,
     lag_calendar: Optional[Calendar] = None,
     lag_resources: Optional[dict] = None,
+    constraints_by_act: Optional[dict[str, list[SchedulingConstraint]]] = None,
+    constraint_apps: Optional[dict[int, ConstraintApplication]] = None,
+    snap_from: Optional[dict[int, date]] = None,
+    statusing_mode: StatusingMode = StatusingMode.RETAINED_LOGIC,
 ) -> tuple[dict[str, date], dict[str, date]]:
     """
     Backward pass supporting all four PDM relationship types.
+
+    LIM-028 / statusing (both default-off):
+      * Late-date constraint clamps (SNLT/FNLT/SO/FO/MS/MF) applied per activity;
+        recorded into ``constraint_apps``. Pinned activities ignore constraints.
+      * Under PROGRESS_OVERRIDE an in-progress predecessor's outgoing
+        relationships impose no late-date constraint on it (symmetric with the
+        forward pass).
 
     Returns: (late_start, late_finish) — both dicts mapping activity_id → date.
 
@@ -417,7 +544,15 @@ def _run_backward_pass(
         # Use the scheduled-date span so LS = apply_lag(LF, -span) stays
         # consistent with the anchored ES/EF (brief §4.2). Unpinned activities
         # keep the original OD-derived span exactly.
-        if activity.pinned_early_start is not None:
+        #
+        # LIM-028: a date constraint can likewise change the effective span
+        # (notably EXPECTED_FINISH, which recalculates remaining duration so
+        # EF != ES + (OD-1)). For any constrained activity, derive span from the
+        # scheduled ES/EF so the backward pass and constraint clamps stay
+        # consistent and never retreat below the table (span-preserving
+        # constraints yield the same OD-1 span, so this is a no-op for them).
+        _act_constrained = bool(constraints_by_act) and act_id in (constraints_by_act or {})
+        if activity.pinned_early_start is not None or _act_constrained:
             es_wd = _act_wt.get(activity.early_start)
             ef_wd = _act_wt.get(activity.early_finish)
             if es_wd is not None and ef_wd is not None:
@@ -435,6 +570,12 @@ def _run_backward_pass(
                 and scheduled[rel.succ_id].pinned_early_finish is not None
             )
         ]
+        # Progress Override (symmetric with the forward pass): an in-progress
+        # predecessor's overridden successor relationships impose no late-date
+        # constraint on it. Dropping all outgoing edges makes it behave like a
+        # finish node (LF = project_finish) for the backward pass.
+        if statusing_mode == StatusingMode.PROGRESS_OVERRIDE and _is_in_progress(activity):
+            outgoing = []
         if not outgoing:
             lf = project_finish
         else:
@@ -477,6 +618,20 @@ def _run_backward_pass(
             lf = min(lf_constraints)
 
         ls = apply_lag(lf, -span, _act_wt, _act_cal, anchor_is_start=False)
+
+        # -- date-constraint backward clamps (LIM-028) ---------------------
+        # Pinned (actualized) activities ignore constraints entirely. Late-side
+        # clamps can pull LS/LF earlier than logic (SNLT/FNLT/SO/FO) or pin them
+        # hard (MS/MF), which may produce negative float — that is P6-faithful
+        # and disclosed via the ConstraintApplication record.
+        cons = constraints_by_act.get(act_id, []) if constraints_by_act else []
+        if cons and activity.pinned_early_start is None:
+            for con in cons:
+                res = apply_backward_constraint(con, ls, lf, span, _act_wt, _act_cal)
+                if res is not None:
+                    ls, lf, _eff = res
+                    _record_backward_app(constraint_apps, snap_from, con, _eff)
+
         late_finish[act_id] = lf
         late_start[act_id] = ls
 
@@ -491,9 +646,15 @@ def _compute_floats(
     workday_table: dict[date, int],
     convention: EFConvention = EFConvention.INCLUSIVE_DAY,
     act_workday_tables: Optional[dict[str, dict[date, int]]] = None,
+    statusing_mode: StatusingMode = StatusingMode.RETAINED_LOGIC,
 ) -> tuple[dict[str, int], dict[str, int]]:
     """
     Compute Total Float and Free Float for all activities.
+
+    Under PROGRESS_OVERRIDE, an in-progress activity's overridden outgoing
+    relationships are skipped for free-float (its FF collapses to TF, matching
+    the backward pass which drops those same edges). Negative total float is
+    possible when hard date constraints (MANDATORY_*) pin dates against logic.
 
     TF: workday_table[LF] - workday_table[EF]
 
@@ -521,6 +682,8 @@ def _compute_floats(
         total_float[act_id] = tf
 
         outgoing = network.successors.get(act_id, [])
+        if statusing_mode == StatusingMode.PROGRESS_OVERRIDE and _is_in_progress(activity):
+            outgoing = []
         if not outgoing:
             free_float[act_id] = tf
         else:
@@ -574,6 +737,9 @@ def run_analysis(
     calendar_registry: Optional[CalendarRegistry] = None,
     lag_strategy: Optional[LagCalendarStrategy] = None,
     destatusing_input: Optional[Any] = None,
+    constraints: Optional[list[SchedulingConstraint]] = None,
+    statusing_mode: StatusingMode = StatusingMode.RETAINED_LOGIC,
+    constraint_log_out: Optional[list[ConstraintApplication]] = None,
 ) -> AnalysisResult:
     """
     INFRA-007 — Phase 3 Core CPM Analytical Engine.
@@ -625,6 +791,18 @@ def run_analysis(
                           When provided, run_destatusing() runs after CPM
                           analysis and attaches a DestatusingResult to the
                           returned AnalysisResult. Default None (no destatusing).
+        constraints:      Optional list of SchedulingConstraint (LIM-028). Applied
+                          in the forward and backward passes at day granularity
+                          (P6-compatible analytical convention; not exact P6
+                          emulation). Each is disclosed in a ConstraintApplication
+                          record. Default None (no date constraints).
+        statusing_mode:   StatusingMode.RETAINED_LOGIC (default; bit-identical to
+                          prior behavior) or StatusingMode.PROGRESS_OVERRIDE (drops
+                          the retained-logic tie from in-progress predecessors).
+        constraint_log_out: Optional caller-provided accumulator list. When
+                          supplied, the full list of ConstraintApplication records
+                          (input order) is appended in place. This keeps results.py
+                          untouched — the constraint log is a second return channel.
 
     Returns:
         AnalysisResult with context, validation, warnings, scheduled activities,
@@ -745,6 +923,42 @@ def run_analysis(
         lag_wt = _lag_tbl
         lag_cal = _lag_cal_obj
 
+    # -- Date-constraint preparation (LIM-028) ------------------------------
+    # Snap each non-workday constraint date onto the activity's calendar (start-
+    # type → next workday, finish-type → previous workday) and index constraints
+    # by activity. constraint_apps accumulates disclosure records across both
+    # passes, keyed by id(work-constraint); work_cons preserves input order for
+    # the final log. Unknown activity IDs are recorded but never applied.
+    constraint_apps: dict[int, ConstraintApplication] = {}
+    snap_from: dict[int, date] = {}
+    work_cons: list[SchedulingConstraint] = []
+    constraints_by_act: Optional[dict[str, list[SchedulingConstraint]]] = None
+    _known_act_ids = set(network.activities)
+    if constraints:
+        constraints_by_act = {}
+        for con in constraints:
+            _c_cal = (act_calendars or {}).get(con.act_id, calendar)
+            snapped = con.cdate
+            orig: Optional[date] = None
+            if con.cdate is not None and not _c_cal.is_workday(con.cdate):
+                snapped = _adjust_nonworkday(
+                    con.cdate, _c_cal,
+                    is_start=constraint_is_start_anchored(con.ctype),
+                )
+                orig = con.cdate
+            work = SchedulingConstraint(con.act_id, con.ctype, snapped)
+            work_cons.append(work)
+            if orig is not None:
+                snap_from[id(work)] = orig
+            if con.act_id in _known_act_ids:
+                constraints_by_act.setdefault(con.act_id, []).append(work)
+            else:
+                constraint_apps[id(work)] = ConstraintApplication(
+                    act_id=con.act_id, ctype=con.ctype, cdate=snapped,
+                    effect="NOT APPLIED: activity not found in network.",
+                    violated=False, violation_days=None,
+                )
+
     # -- Extended forward pass (all four PDM types) -------------------------
     scheduled, topo_order = _run_forward_pass(
         network, project_start, workday_table, calendar, convention,
@@ -753,6 +967,10 @@ def run_analysis(
         lag_workday_table=lag_wt,
         lag_calendar=lag_cal,
         lag_resources=lag_resources,
+        constraints_by_act=constraints_by_act,
+        constraint_apps=constraint_apps,
+        snap_from=snap_from,
+        statusing_mode=statusing_mode,
     )
 
     project_finish: date = max(
@@ -769,12 +987,50 @@ def run_analysis(
         lag_workday_table=lag_wt,
         lag_calendar=lag_cal,
         lag_resources=lag_resources,
+        constraints_by_act=constraints_by_act,
+        constraint_apps=constraint_apps,
+        snap_from=snap_from,
+        statusing_mode=statusing_mode,
     )
+
+    # -- AS_LATE_AS_POSSIBLE post-processing (LIM-028) ---------------------
+    # SIMPLIFICATION (disclosed): ALAP schedules the activity as late as its own
+    # late dates allow WITHOUT delaying successors — implemented as ES := LS and
+    # EF := LF for that activity (it consumes its free float). Successors keep
+    # their already-computed logic early dates (the ALAP shift is NOT propagated
+    # forward). TF then becomes 0 for the activity (LS - ES). Pinned (actualized)
+    # activities ignore ALAP. This runs before float so TF reflects it.
+    if constraints_by_act:
+        for con in work_cons:
+            if con.ctype is not ConstraintType.AS_LATE_AS_POSSIBLE:
+                continue
+            if con.act_id not in scheduled:
+                continue
+            act_obj = scheduled[con.act_id]
+            if act_obj.pinned_early_start is not None:
+                _record_ignored_app(constraint_apps, con)
+                continue
+            new_es = late_start[con.act_id]
+            new_ef = late_finish[con.act_id]
+            old_es, old_ef = act_obj.early_start, act_obj.early_finish
+            act_obj.early_start = new_es
+            act_obj.early_finish = new_ef
+            _record_forward_app(
+                constraint_apps, snap_from, con,
+                (
+                    f"ALAP: ES {old_es.isoformat()} -> {new_es.isoformat()}, "
+                    f"EF {old_ef.isoformat()} -> {new_ef.isoformat()} "
+                    "(scheduled as late as possible; consumes free float; "
+                    "successor early dates NOT shifted — documented simplification)"
+                ),
+                False, None,
+            )
 
     # -- Float computation -------------------------------------------------
     total_float, free_float = _compute_floats(
         network, scheduled, late_start, late_finish, workday_table, convention,
         act_workday_tables=act_workday_tables,
+        statusing_mode=statusing_mode,
     )
 
     # -- Build ScheduledActivity objects -----------------------------------
@@ -827,6 +1083,21 @@ def run_analysis(
         project_duration = workday_table[project_finish] - workday_table[project_start] + 1
     else:
         project_duration = lp_result.project_duration
+
+    # LIM-028: when date constraints were applied, disclose that a constraint —
+    # not a predecessor — may control an activity's dates, so longest-path
+    # tightness can break (a constraint-controlled activity becomes a path
+    # source). The tracer already handles path sources; this is a disclosure.
+    cp_assumptions = list(lp_result.cp_assumptions)
+    if constraints_by_act:
+        cp_assumptions.append(
+            "Date constraints were applied (LIM-028). A constraint (not a "
+            "predecessor) may control an activity's early dates; such activities "
+            "have no controlling predecessor and become longest-path sources. "
+            "Hard constraints (MANDATORY_*) can produce negative total float. "
+            "P6-compatible analytical convention; not exact P6 emulation."
+        )
+
     critical_path = CriticalPathInfo(
         # activity_ids: union of all longest-path activities in topo order
         activity_ids=lp_result.longest_path_activities,
@@ -840,7 +1111,7 @@ def run_analysis(
         divergence_flags=lp_result.divergence_flags,
         divergence_details=lp_result.divergence_details,
         cp_warnings=lp_result.cp_warnings,
-        cp_assumptions=lp_result.cp_assumptions,
+        cp_assumptions=cp_assumptions,
         ef_convention=convention.value,
     )
 
@@ -857,6 +1128,60 @@ def run_analysis(
             total_float=sa.total_float,
             free_float=sa.free_float,
             is_critical=(act_id in lp_set),
+        )
+
+    # -- Progress Override disclosure (net-new statusing mode) --------------
+    if statusing_mode == StatusingMode.PROGRESS_OVERRIDE:
+        overridden = [
+            rel for rel in relationships
+            if _is_in_progress(network.activities[rel.pred_id])
+            and not (
+                network.activities[rel.succ_id].pinned_early_start is not None
+                and network.activities[rel.succ_id].pinned_early_finish is not None
+            )
+        ]
+        ctx.add_interpretation_flag(
+            f"Progress Override statusing mode: {len(overridden)} relationship(s) "
+            "from in-progress (started-but-incomplete) predecessors were dropped — "
+            "their successors may proceed at the data date as if the incomplete "
+            "predecessor logic did not restrain them (P6-compatible analytical "
+            "convention; not exact P6 emulation, ADR-006). Default RETAINED_LOGIC "
+            "retains these ties."
+        )
+
+    # -- Date-constraint disclosure log (LIM-028) --------------------------
+    # Assemble the ConstraintApplication records in caller-input order and, when
+    # a caller-provided accumulator was supplied, append them in place (results.py
+    # is untouched — this is the constraint log's second return channel). Also
+    # emit a single summary WarningLog entry (ANALYST_REVIEW / CON-SCHED).
+    if work_cons:
+        constraint_log: list[ConstraintApplication] = []
+        for wc in work_cons:
+            app = constraint_apps.get(id(wc))
+            if app is None:  # defensive: constraint had no reachable effect
+                app = ConstraintApplication(
+                    act_id=wc.act_id, ctype=wc.ctype, cdate=wc.cdate,
+                    effect="no effect (activity not scheduled or constraint inactive)",
+                    violated=False, violation_days=None,
+                )
+            constraint_log.append(app)
+        if constraint_log_out is not None:
+            constraint_log_out.extend(constraint_log)
+        _violations = sum(1 for a in constraint_log if a.violated)
+        warning_log.add_plain(
+            code="CON-SCHED",
+            category=WarningCategory.ANALYST_REVIEW,
+            message=(
+                f"{len(constraint_log)} date constraint(s) applied (LIM-028); "
+                f"{_violations} violated predecessor logic. Constraints are a "
+                "P6-compatible analytical convention (not exact P6 emulation); "
+                "hard constraints (MANDATORY_*) can create negative total float."
+            ),
+            source_reference="P6 scheduling reference behavior (documented approximation); AACE 49R-06 §2; ADR-006",
+            analyst_action=(
+                "Review each ConstraintApplication record (effect, violation) "
+                "before relying on constrained dates or float in forensic analysis."
+            ),
         )
 
     ctx.warning_count = len(warning_log)

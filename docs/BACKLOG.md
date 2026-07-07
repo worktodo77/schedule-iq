@@ -77,10 +77,10 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status |
 |---|---|---|
-| M1 | Distributions, correlation, risk-event register, Latin Hypercube on `scheduleiq.cpm` | APPROVED (needs E1) |
-| M2 | Empirical calibration from the project's own update history (actual÷planned ratio distributions) | APPROVED |
+| M1 | Distributions, correlation, risk-event register, Latin Hypercube on `scheduleiq.cpm` | DONE (v0.3) |
+| M2 | Empirical calibration from the project's own update history (actual÷planned ratio distributions) | DONE (v0.3) |
 | M3 | Outputs: S-curves, tornado, criticality/cruciality, merge-bias exhibit (LI style) | APPROVED |
-| M4 | SRA-readiness gate (refuse/brand DIAGNOSTIC on failing schedules) | APPROVED |
+| M4 | SRA-readiness gate (refuse/brand DIAGNOSTIC on failing schedules) | DONE (v0.3) |
 
 ## 7. Second-brainstorm items (§6) — per review of 2026-07-07
 

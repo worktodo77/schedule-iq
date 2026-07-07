@@ -209,16 +209,16 @@ def test_tier_precedence_and_provenance(hs2):
     # HA60 matches only the template; empirical is the default for the rest.
     emp = EmpiricalCalibration(n=3, ratios=[0.9, 1.0, 1.1], mean=1.0, p10=0.9,
                                p50=1.0, p90=1.1, method="bootstrap")
+    # template scoped to HA60 only, so the empirical default reaches the rest.
     spec = UncertaintySpec(
-        templates=[TemplateRule(match="", low_pct=-10, high_pct=10)],
+        templates=[TemplateRule(match="HA60", low_pct=-10, high_pct=10)],
         three_point=[ThreePointRow("HA50", 10, 12, 20)],
         empirical=emp)
     r = run_simulation(hs2, spec=spec, iterations=50, seed=1)
     tiers = {p["code"]: p["tier"] for p in r.input_provenance}
-    assert tiers["HA50"] == "three_point"
-    assert tiers["HA60"] == "template"
-    # the empirical default reaches an incomplete activity with no explicit tier
-    assert "empirical" in tiers.values()
+    assert tiers["HA50"] == "three_point"    # explicit row beats template + empirical
+    assert tiers["HA60"] == "template"       # template beats empirical
+    assert tiers["HA70"] == "empirical"      # empirical is the default for the rest
     # provenance records the parameters, not just the tier
     ha50 = next(p for p in r.input_provenance if p["code"] == "HA50")
     assert ha50["params"]["pessimistic_days"] == 20

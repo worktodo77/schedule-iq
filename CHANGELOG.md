@@ -106,3 +106,12 @@ matrix expanded to 74 checks (SET-02 added).
   exclusion; observational per-party allocation with disclosed heuristics;
   stability stats + STABLE/MODERATE/UNSTABLE banding and the §8.4
   stability sentence per party; memoized engine reuse across variants.
+- M1/M2/M4 Monte Carlo (SRA) core: triangular/PERT/uniform via inverse-CDF
+  (stdlib-pure beta-PERT), Latin Hypercube sampling, systemic correlation
+  (rank-blend, disclosed approximation), Bernoulli risk events; three input
+  tiers with per-activity provenance — templates, 3-point CSV, and
+  empirical calibration from the project's own actual÷planned ratio history
+  (bootstrap or fitted lognormal); percentiles vs deterministic and record
+  dates, TF≤0 criticality index, Spearman cruciality/tornado, merge-bias
+  gap; SRA-readiness gate (leads/hard-constraints/open-ends screens →
+  READY / DIAGNOSTIC ONLY branding / REFUSED via the SET-02 handshake).

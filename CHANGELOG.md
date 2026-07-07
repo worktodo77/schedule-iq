@@ -94,3 +94,9 @@ matrix expanded to 74 checks (SET-02 added).
   (per-class re-application with an honestly reported interaction residual,
   top movers per class), progress contributors, MIP 3.3 as-is row;
   handshake-gated; new engine-consistent fixture pair demo_hs1/demo_hs2.
+- N3 daily-resolution delay ledger: day-by-day rescheduling between update
+  pairs on linearly interpolated remaining durations, per-day critical-path
+  delta with controlling activity, exact telescoping identity (sum of daily
+  deltas equals the endpoint movement, asserted), reconciliation against
+  as-imported runs and record dates, event annotation (D6) and observational
+  responsibility subtotals (D7); handshake-gated.

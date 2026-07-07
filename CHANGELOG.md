@@ -47,3 +47,36 @@ Initial release.
 - Fixture correction: seeded logic deletion now fires (was silently
   mistyped); DUR-04 evergreen and driving-path defects found in audit and
   fixed.  162-test suite.
+
+## 0.3.0 — 2026-07-07
+
+The engine release (ADR-0007; amends ADR-0004).  Check-affecting change:
+matrix expanded to 74 checks (SET-02 added).
+
+- `scheduleiq.cpm`: the LI MIP 3.9 tool's production CPM core ported
+  (port-and-validate, ~1,500 ported tests carried): PDM forward/backward
+  pass (FS/SS/FF/SF, leads/lags), per-activity multi-calendar with
+  exceptions, per-relationship lag-calendar resolution, actual-date-anchored
+  statusing (pinning), AACE 49R-06 longest-path tracing, network validation
+  gate, ABCS destatusing (six CPW rules + auto-drive + actual-lag analysis),
+  comparison-validation framework, and benchmark harness (PHASE7 12/12;
+  MULTI_CALENDAR 3/7 in both source and port — pre-existing source baseline,
+  flagged for review).
+- Date-constraint scheduling added (closes source LIM-028):
+  SNET/SNLT/FNET/FNLT/SO/FO/MS/MF/ALAP/XF, P6-compatible analytical
+  convention at day granularity; every application disclosed; hard
+  constraints yield disclosed negative float.
+- Progress Override statusing mode added alongside Retained Logic (net-new;
+  the source engine is retained-logic only).
+- Ingest→engine bridge honoring the file's own scheduling options,
+  including SCHEDOPTIONS `sched_calendar_on_relationship_lag` →
+  lag-calendar strategy (source LIM-045 companion).
+- **SET-02 (new check)**: the ADR-0007 validation handshake — the engine
+  re-schedules the file as imported and the match rate against the
+  tool-of-record dates/floats is reported (threshold 99%, severity info;
+  refusal gate for engine-dependent features).  LIM-044 carried: tolerance
+  is calendar-day based (TOLERANCE_CALENDAR_AWARE default).
+- New fixtures demo_cpm.xer (handshake 100.0%) and demo_cpm_divergent.xer
+  (exactly 75.0%, three seeded +5wd shifts).  Suite: 1683 tests + 1 skip.
+- Tool-of-record dates remain the only dates reported as the schedule;
+  engine output is always a labelled diagnostic delta (GOVERNANCE §7).

@@ -9,8 +9,8 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L1 | Migrate repo: push full history to worktodo77/schedule-iq | BLOCKED | Repo created; pushes return 403 until the pending repo-access approval is granted.  Tree mirrored on expert-assist branch `claude/acumen-fuse-replacement-ler9kq/schedule-iq/` meanwhile |
-| L2 | Add `mip39-schedule-analysis-tool` to session scope | BLOCKED | Needed for the engine port (E1); same pending approval mechanism |
+| L1 | Migrate repo: push full history to worktodo77/schedule-iq | DONE (v0.3) | Imported at commit c0a64bf on main (2026-07-07); development history preserved on expert-assist branch `claude/acumen-fuse-replacement-ler9kq`; mirror synced until RJL confirms |
+| L2 | Add `mip39-schedule-analysis-tool` to session scope | DONE (v0.3) | In session scope 2026-07-07; engine port complete |
 | L3 | Validate against a real matter .xer series; review sample outputs | APPROVED | RJL, on return from vacation |
 | L4 | First tagged release → CI Windows bundle; circulate installer to firm experts | APPROVED | After L3 sign-off |
 
@@ -18,11 +18,11 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| E1 | Port MIP 3.9 CPM engine as `scheduleiq.cpm` (PORT-AND-VALIDATE per expert-assist parking-lot B1) | APPROVED | §0/ADR-0007; re-run its P6-equivalence validation |
-| E2 | Close LIM-028: constraint scheduling in the ported engine | APPROVED | Prerequisite for validation handshake on constrained schedules |
-| E3 | Close LIM-045: per-relationship lag calendars | APPROVED | SCHEDOPTIONS lag-calendar setting already parsed |
-| E4 | Validation handshake + SET-02 check (tool-of-record vs engine match rate; features refuse below threshold) | APPROVED | §0 item 2; LIM-044 tolerance carried into config |
-| E5 | Retained-logic / progress-override statusing modes in engine | APPROVED | Feeds OOS settings delta (A4) |
+| E1 | Port MIP 3.9 CPM engine as `scheduleiq.cpm` (PORT-AND-VALIDATE per expert-assist parking-lot B1) | DONE (v0.3) | Core + destatusing + compare + benchmark ported with ~1,500 tests; PHASE7 suite 12/12 (MULTI_CALENDAR 3/7 matches source baseline — flagged); real-file validation = L3 |
+| E2 | Close LIM-028: constraint scheduling in the ported engine | DONE (v0.3) | SNET/SNLT/FNET/FNLT/SO/FO/MS/MF/ALAP/XF with disclosure log; hard constraints yield disclosed negative float |
+| E3 | Close LIM-045: per-relationship lag calendars | DONE (v0.3) | Source scheduling pass already resolved per-relationship lag resources; bridge maps parsed SCHEDOPTIONS setting → LagCalendarStrategy |
+| E4 | Validation handshake + SET-02 check (tool-of-record vs engine match rate; features refuse below threshold) | DONE (v0.3) | run_handshake/require_valid_handshake; SET-02 (74-check matrix); LIM-044 carried (calendar-day tolerance, CALENDAR_AWARE default) |
+| E5 | Retained-logic / progress-override statusing modes in engine | DONE (v0.3) | StatusingMode enum; PROGRESS_OVERRIDE net-new (source is retained-logic only); default bit-identical regression-guarded |
 
 ## 2. Milestone impact tracing (§1)
 
@@ -63,7 +63,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | # | Item | Status |
 |---|---|---|
 | C1 | SET-01 scheduling-settings drift between updates | DONE (v0.2 wave 1) |
-| C2 | SET-02 engine match rate (see E4) | APPROVED |
+| C2 | SET-02 engine match rate (see E4) | DONE (v0.3) |
 | C3 | CAL-04 calendar-definition changes between updates | DONE (v0.2 wave 1) |
 | C4 | CAL-05 quantified multi-calendar distortion at selected milestone | DONE (v0.2 wave 2) |
 | C5 | LOG-10 hollow-logic screen (path-rerouting stub activities) | DONE (v0.2 wave 1) |

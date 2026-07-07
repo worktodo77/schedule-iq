@@ -15,11 +15,12 @@ tool-of-record dates remain the schedule (ADR-0007 §4, presentation rule).
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from ..analytics.damages import DamagesConfig, STANDING_LABEL, exposure_for_date, exposure_for_delta
 from .excel import STATUS_FILL, TEAL, _header, _row
 
 PRELIM = ("PRELIMINARY — ADR-0007 engine diagnostic.  Tool-of-record dates "
@@ -55,6 +56,17 @@ def _meta(ws, r, pairs):
     return r
 
 
+def _delta_for_basis(d: dict[str, Any], damages: Optional[DamagesConfig]):
+    """Pick the delta field matching ``damages.daily_basis`` (workday vs.
+    calendar-day) plus a basis note for :func:`exposure_for_delta`; used
+    everywhere a sheet already carries both a ``delta_workdays`` and a
+    ``delta_calendar_days`` column so the exposure column prices the same
+    basis the analyst configured rather than defaulting silently."""
+    if damages is not None and damages.daily_basis == "workday":
+        return d.get("delta_workdays"), "workdays (target calendar)"
+    return d.get("delta_calendar_days"), "calendar days"
+
+
 def _notes(d: dict[str, Any]) -> str:
     """A compact, human-readable rendering of a scenario's scalar detail
     fields (list/dict-valued details get their own dedicated table/columns
@@ -72,7 +84,7 @@ def _notes(d: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Waterfall
 # ---------------------------------------------------------------------------
-def _write_waterfall(wb, impact: dict[str, Any]):
+def _write_waterfall(wb, impact: dict[str, Any], damages: Optional[DamagesConfig] = None):
     ws = wb.active
     ws.title = "Waterfall"
     tgt = impact.get("target") or {}
@@ -112,35 +124,51 @@ def _write_waterfall(wb, impact: dict[str, Any]):
     ])
 
     hrow = r + 2
-    _header(ws, hrow, ["Scenario", "Delta (wd)", "Delta (cal-days)", "Computable",
-                       "Target Finish (engine)", "Notes / Details"],
-            [32, 12, 14, 12, 20, 80])
+    cols = ["Scenario", "Delta (wd)", "Delta (cal-days)", "Computable",
+            "Target Finish (engine)", "Notes / Details"]
+    widths = [32, 12, 14, 12, 20, 80]
+    if damages is not None:
+        cols.append("Exposure (time-cost)")
+        widths.append(28)
+    _header(ws, hrow, cols, widths)
     rr = hrow + 1
     for d in impact.get("waterfall") or []:
-        _row(ws, rr, [d.get("scenario"), d.get("delta_workdays"),
-                     d.get("delta_calendar_days"), _fmt(d.get("computable")),
-                     d.get("target_finish_engine"), _notes(d)],
-             fill=None if d.get("computable") else STATUS_FILL.get("N/A"))
+        vals = [d.get("scenario"), d.get("delta_workdays"),
+                d.get("delta_calendar_days"), _fmt(d.get("computable")),
+                d.get("target_finish_engine"), _notes(d)]
+        if damages is not None:
+            delta, note = _delta_for_basis(d, damages)
+            exp = exposure_for_delta(delta, damages, note)
+            vals.append(exp.formula_text)
+        _row(ws, rr, vals, fill=None if d.get("computable") else STATUS_FILL.get("N/A"))
         rr += 1
-    ws.auto_filter.ref = f"A{hrow}:F{max(rr - 1, hrow)}"
+    ws.auto_filter.ref = f"A{hrow}:{chr(ord('A') + len(cols) - 1)}{max(rr - 1, hrow)}"
 
 
 # ---------------------------------------------------------------------------
 # Constraint Attribution
 # ---------------------------------------------------------------------------
-def _write_constraint_attribution(wb, impact: dict[str, Any]):
+def _write_constraint_attribution(wb, impact: dict[str, Any], damages: Optional[DamagesConfig] = None):
     ws = wb.create_sheet("Constraint Attribution")
     r = _title(ws, "Per-Constraint Attribution (waterfall detail)")
-    _header(ws, r, ["Constraint (scenario)", "On Controlling Path", "Delta (wd)",
-                    "Delta (cal-days)", "Computable", "Target Finish (engine)", "Notes"],
-            [40, 16, 12, 14, 12, 20, 60])
+    cols = ["Constraint (scenario)", "On Controlling Path", "Delta (wd)",
+            "Delta (cal-days)", "Computable", "Target Finish (engine)", "Notes"]
+    widths = [40, 16, 12, 14, 12, 20, 60]
+    if damages is not None:
+        cols.append("Exposure (time-cost)")
+        widths.append(28)
+    _header(ws, r, cols, widths)
     rr = r + 1
     for d in impact.get("constraint_attribution") or []:
         on_path = (d.get("details") or {}).get("on_controlling_path")
-        _row(ws, rr, [d.get("scenario"), _fmt(on_path), d.get("delta_workdays"),
-                     d.get("delta_calendar_days"), _fmt(d.get("computable")),
-                     d.get("target_finish_engine"), _notes(d)],
-             fill="C6E0B4" if on_path else None)
+        vals = [d.get("scenario"), _fmt(on_path), d.get("delta_workdays"),
+                d.get("delta_calendar_days"), _fmt(d.get("computable")),
+                d.get("target_finish_engine"), _notes(d)]
+        if damages is not None:
+            delta, note = _delta_for_basis(d, damages)
+            exp = exposure_for_delta(delta, damages, note)
+            vals.append(exp.formula_text)
+        _row(ws, rr, vals, fill="C6E0B4" if on_path else None)
         rr += 1
 
     rr += 2
@@ -305,6 +333,50 @@ def _write_asbuilt(wb, asbuilt: dict[str, Any]):
 
 
 # ---------------------------------------------------------------------------
+# Exposure (damages overlay, backlog S7 — only written when damages given)
+# ---------------------------------------------------------------------------
+def _write_exposure(wb, impact: dict[str, Any], damages: DamagesConfig):
+    ws = wb.create_sheet("Exposure")
+    r = _title(ws, "Exposure — Damages/LD Overlay on the Milestone Impact Diagnostic")
+    ws.cell(row=r, column=1, value=STANDING_LABEL).font = Font(italic=True, size=9,
+                                                               color="C00000")
+    r += 2
+    r = _meta(ws, r, [
+        ("Currency", damages.currency),
+        ("Daily basis (analyst rates)", damages.daily_basis),
+        ("Time-related cost rate (per day)", damages.time_cost_per_day),
+        ("LD rate (per calendar day)", damages.ld_rate_per_day),
+        ("Contractual completion", damages.contractual_completion),
+        ("LD math enabled", _fmt(damages.ld_enabled)),
+    ])
+    r += 1
+
+    baseline = impact.get("baseline") or {}
+    ws.cell(row=r, column=1, value="LD exposure — P-dates vs. contractual completion"
+            ).font = Font(bold=True, size=11, color=TEAL)
+    r += 1
+    _header(ws, r, ["P-date source", "Date", "Formula", "Basis"], [30, 16, 60, 60])
+    rr = r + 1
+    for label, dt in (("Tool-of-record finish", baseline.get("record_early_finish")),
+                      ("Engine baseline finish", baseline.get("engine_early_finish"))):
+        exp = exposure_for_date(dt, damages)
+        _row(ws, rr, [label, dt, exp.formula_text, exp.basis])
+        rr += 1
+    rr += 2
+
+    ws.cell(row=rr, column=1, value="Time-cost exposure — per waterfall scenario"
+            ).font = Font(bold=True, size=11, color=TEAL)
+    rr += 1
+    _header(ws, rr, ["Scenario", "Delta priced", "Formula", "Basis"], [32, 16, 60, 60])
+    rr2 = rr + 1
+    for d in impact.get("waterfall") or []:
+        delta, note = _delta_for_basis(d, damages)
+        exp = exposure_for_delta(delta, damages, note)
+        _row(ws, rr2, [d.get("scenario"), delta, exp.formula_text, exp.basis])
+        rr2 += 1
+
+
+# ---------------------------------------------------------------------------
 # Disclosures
 # ---------------------------------------------------------------------------
 def _write_disclosures(wb, impact: dict[str, Any], asbuilt: dict[str, Any]):
@@ -330,20 +402,30 @@ def _write_disclosures(wb, impact: dict[str, Any], asbuilt: dict[str, Any]):
 
 
 def write_impact_workbook(impact_dict: dict[str, Any], asbuilt_dict: dict[str, Any],
-                          out_path: str) -> str:
+                          out_path: str, damages: Optional[DamagesConfig] = None) -> str:
     """Write the milestone-impact-diagnostic workbook: Waterfall, Constraint
     Attribution, Criticality (P5), Calendar Restatement, Open Ends, As-Built
     Paths (P6), and Disclosures.  ``impact_dict``/``asbuilt_dict`` are the
     plain-dict serializations from ``ImpactAnalysis.to_dict()`` /
     ``AsBuiltReconstruction.to_dict()`` (optionally enriched, e.g. with a
-    ``data_date`` key on ``impact_dict``)."""
+    ``data_date`` key on ``impact_dict``).
+
+    ``damages`` (backlog S7, ANALYTICS_PROPOSAL.md §6.6) is OPTIONAL and
+    strictly additive: ``None`` (the default) reproduces byte-identical
+    output to before this parameter existed.  When given, the Waterfall and
+    Constraint Attribution sheets each gain an "Exposure (time-cost)" column
+    and the workbook gains an "Exposure" sheet (LD exposure of the
+    tool-of-record/engine finishes vs. ``damages.contractual_completion``,
+    plus a time-cost line per waterfall scenario)."""
     wb = Workbook()
-    _write_waterfall(wb, impact_dict)
-    _write_constraint_attribution(wb, impact_dict)
+    _write_waterfall(wb, impact_dict, damages)
+    _write_constraint_attribution(wb, impact_dict, damages)
     _write_criticality(wb, impact_dict)
     _write_calendar_restatement(wb, impact_dict)
     _write_open_ends(wb, impact_dict)
     _write_asbuilt(wb, asbuilt_dict)
+    if damages is not None:
+        _write_exposure(wb, impact_dict, damages)
     _write_disclosures(wb, impact_dict, asbuilt_dict)
     wb.save(out_path)
     return out_path

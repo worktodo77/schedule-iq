@@ -1,11 +1,6 @@
 # The LI Schedule Report Card — LI-RC v1.0
 
-> **NOT YET PUBLISHED — publication decision pending.**  See `README.md` in
-> this directory.  This document explains the methodology in prose; the
-> normative, machine-readable spec is `scorecard.yaml`
-> (`src/scheduleiq/scorecard.yaml` in the ScheduleIQ source tree — copied
-> into this directory verbatim at publication time).  Where this document
-> and `scorecard.yaml` disagree, `scorecard.yaml` governs.
+> **READY TO PUBLISH (approved by RJL 2026-07-07).**  See `README.md` in this directory.  This document explains the methodology in prose; the normative, machine-readable spec is `scorecard.yaml` in this directory (copied verbatim from `src/scheduleiq/scorecard.yaml` at build time, EXCLUDING the internal `internal_variant` research block — see README.md).  Where this document and `scorecard.yaml` disagree, `scorecard.yaml` governs.  Spec version `LI-RC v1.0`, SHA-256 `e98defeba3692028a4f2d09d8abdd340cbffff1a9f28b710ecce33d6e499be2a` (built 2026-07-07 by `scripts/build_public_spec.py`).  **A human must still stand up the public repository/mirror and push these files.**
 
 ## 1. What this is
 

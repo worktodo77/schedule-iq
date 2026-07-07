@@ -14,11 +14,13 @@ DIAGNOSTIC_ONLY), the Summary sheet shows it as a prominent red banner row.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
+from ..analytics.damages import (DamagesConfig, STANDING_LABEL, exposure_for_date,
+                                 exposure_for_delta)
 from .excel import STATUS_FILL, TEAL, _header, _row
 
 PRELIM = ("PRELIMINARY — diagnostic output of a schedule risk model.  "
@@ -63,7 +65,7 @@ def _subhead(ws, r, text: str) -> int:
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-def _write_summary(wb, sim: dict[str, Any]):
+def _write_summary(wb, sim: dict[str, Any], damages: Optional[DamagesConfig] = None):
     ws = wb.active
     ws.title = "Summary"
     tgt = sim.get("target") or {}
@@ -108,13 +110,23 @@ def _write_summary(wb, sim: dict[str, Any]):
         ("Record finish", pct.get("record_finish")),
     ])
     r += 1
-    _header(ws, r, ["Percentile", "Offset (wd)", "Date", "vs. Deterministic (wd)"],
-            [14, 14, 16, 22])
+    cols = ["Percentile", "Offset (wd)", "Date", "vs. Deterministic (wd)"]
+    widths = [14, 14, 16, 22]
+    if damages is not None:
+        cols += ["Time-Cost Exposure (vs. deterministic)", "LD Exposure (vs. contractual)"]
+        widths += [30, 30]
+    _header(ws, r, cols, widths)
     rr = r + 1
     for key in ("P10", "P50", "P80", "P90"):
         blk = pct.get(key) or {}
-        _row(ws, rr, [key, blk.get("offset"), blk.get("date"),
-                     blk.get("workdays_vs_deterministic")])
+        vals = [key, blk.get("offset"), blk.get("date"),
+                blk.get("workdays_vs_deterministic")]
+        if damages is not None:
+            tc = exposure_for_delta(blk.get("workdays_vs_deterministic"), damages,
+                                    "workdays (target calendar, vs. deterministic)")
+            ld = exposure_for_date(blk.get("date"), damages)
+            vals += [tc.formula_text, ld.formula_text]
+        _row(ws, rr, vals)
         rr += 1
     rr += 2
     rr = _subhead(ws, rr, "Merge bias (target)")
@@ -226,6 +238,51 @@ def _write_sample(wb, sim: dict[str, Any]):
 
 
 # ---------------------------------------------------------------------------
+# Exposure (damages overlay, backlog S7 — only written when damages given)
+# ---------------------------------------------------------------------------
+def _write_exposure(wb, sim: dict[str, Any], damages: DamagesConfig):
+    ws = wb.create_sheet("Exposure")
+    r = _title(ws, "Exposure — Damages/LD Overlay on the Schedule Risk Analysis")
+    ws.cell(row=r, column=1, value=STANDING_LABEL).font = Font(italic=True, size=9,
+                                                               color="C00000")
+    r += 2
+    r = _meta(ws, r, [
+        ("Currency", damages.currency),
+        ("Daily basis (analyst rates)", damages.daily_basis),
+        ("Time-related cost rate (per day)", damages.time_cost_per_day),
+        ("LD rate (per calendar day)", damages.ld_rate_per_day),
+        ("Contractual completion", damages.contractual_completion),
+        ("LD math enabled", _fmt(damages.ld_enabled)),
+    ])
+    r += 1
+
+    pct = sim.get("percentiles") or {}
+    r = _subhead(ws, r, "Per-percentile exposure (P-date vs. contractual completion; "
+                       "offset vs. deterministic)")
+    r += 1
+    _header(ws, r, ["Percentile", "Date", "LD formula", "Offset (wd)", "Time-cost formula"],
+            [14, 16, 55, 14, 55])
+    rr = r + 1
+    for key in ("P10", "P50", "P80", "P90"):
+        blk = pct.get(key) or {}
+        ld = exposure_for_date(blk.get("date"), damages)
+        tc = exposure_for_delta(blk.get("workdays_vs_deterministic"), damages,
+                                "workdays (target calendar, vs. deterministic)")
+        _row(ws, rr, [key, blk.get("date"), ld.formula_text,
+                     blk.get("workdays_vs_deterministic"), tc.formula_text])
+        rr += 1
+    rr += 1
+    det_ld = exposure_for_date(pct.get("deterministic_engine_finish"), damages)
+    rec_ld = exposure_for_date(pct.get("record_finish"), damages)
+    ws.cell(row=rr, column=1, value="Deterministic engine finish LD exposure:"
+            ).font = Font(bold=True, size=10)
+    ws.cell(row=rr, column=2, value=det_ld.formula_text).font = Font(size=10)
+    rr += 1
+    ws.cell(row=rr, column=1, value="Record finish LD exposure:").font = Font(bold=True, size=10)
+    ws.cell(row=rr, column=2, value=rec_ld.formula_text).font = Font(size=10)
+
+
+# ---------------------------------------------------------------------------
 # Disclosures
 # ---------------------------------------------------------------------------
 def _write_disclosures(wb, sim: dict[str, Any]):
@@ -249,17 +306,27 @@ def _write_disclosures(wb, sim: dict[str, Any]):
     ws.column_dimensions["A"].width = 110
 
 
-def write_sra_workbook(sim_dict: dict[str, Any], out_path: str) -> str:
+def write_sra_workbook(sim_dict: dict[str, Any], out_path: str,
+                       damages: Optional[DamagesConfig] = None) -> str:
     """Write the SRA workbook: Summary, Criticality & Cruciality, Input
     Provenance, Risk Events, Sample (offsets + dates, capped at 2000 rows),
     and Disclosures.  ``sim_dict`` is the plain-dict serialization from
-    ``SimulationResult.to_dict()``."""
+    ``SimulationResult.to_dict()``.
+
+    ``damages`` (backlog S7, ANALYTICS_PROPOSAL.md §6.6) is OPTIONAL and
+    strictly additive: ``None`` (the default) reproduces byte-identical
+    output to before this parameter existed.  When given, the Summary
+    sheet's percentile table gains time-cost and LD exposure columns (the
+    classic P-date-vs-contractual-completion LD read) and the workbook
+    gains an "Exposure" sheet."""
     wb = Workbook()
-    _write_summary(wb, sim_dict)
+    _write_summary(wb, sim_dict, damages)
     _write_criticality(wb, sim_dict)
     _write_provenance(wb, sim_dict)
     _write_risk_events(wb, sim_dict)
     _write_sample(wb, sim_dict)
+    if damages is not None:
+        _write_exposure(wb, sim_dict, damages)
     _write_disclosures(wb, sim_dict)
     wb.save(out_path)
     return out_path

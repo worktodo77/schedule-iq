@@ -1,0 +1,5 @@
+id,value,status,threshold,direction,unit,severity
+DCMA-08,3,PASS,5,max,percent,warning
+DUR-01,2,WARNING,0,max,count,info
+DUR-02,12,INFO,,info,percent,info
+DUR-03,0,PASS,0,max,count,warning

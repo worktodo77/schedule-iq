@@ -29,6 +29,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from ..analytics.damages import (DamagesConfig, STANDING_LABEL, exposure_for_delta)  # noqa: E402
 from .impact_figures import (AMBER, GRAY, LIGHT_GRAY, ORANGE, PRESENTATION_NOTE,
                              TEAL, _fmt_date, _style)  # noqa: E402
 
@@ -64,10 +65,16 @@ def _iso_date(v: Any) -> Optional[date]:
 # ---------------------------------------------------------------------------
 # halfstep_figure — MIP 3.4 progress/revision bridge + revision attribution
 # ---------------------------------------------------------------------------
-def halfstep_figure(hs_dict: dict[str, Any], out_path: str) -> str:
+def halfstep_figure(hs_dict: dict[str, Any], out_path: str,
+                    damages: Optional[DamagesConfig] = None) -> str:
     """Two-segment horizontal bridge (E_n -> half-step H -> E_n1) labelled with
     the progress and revision effects in workdays, plus a per-class revision
-    attribution inset (top classes + the interaction/residual, hatched)."""
+    attribution inset (top classes + the interaction/residual, hatched).
+
+    ``damages`` (backlog S7) is OPTIONAL and strictly additive: ``None`` (the
+    default) reproduces a byte-identical PNG to before this parameter
+    existed.  When given, the footer gains the total movement's time-cost
+    exposure."""
     pair = hs_dict.get("pair") or {}
     decomp = hs_dict.get("decomposition") or {}
     attrib = hs_dict.get("revision_attribution") or {}
@@ -163,11 +170,20 @@ def halfstep_figure(hs_dict: dict[str, Any], out_path: str) -> str:
     _style(ax2)
     ax2.grid(False, axis="x")
 
-    fig.text(0.01, 0.005,
-             ("PRELIMINARY — progress/revision bifurcation; causation, "
-              "entitlement, concurrency, and quantum are reserved to the "
-              "expert (AACE 29R-03).  " + PRESENTATION_NOTE),
-             fontsize=6.5, color="#666666")
+    foot = ("PRELIMINARY — progress/revision bifurcation; causation, "
+           "entitlement, concurrency, and quantum are reserved to the "
+           "expert (AACE 29R-03).  " + PRESENTATION_NOTE)
+    if damages is not None:
+        cd = decomp.get("total_movement_calendar_days")
+        if damages.daily_basis == "workday":
+            delta, note = total, "workdays (target calendar)"
+        else:
+            delta, note = cd, "calendar days"
+        exp = exposure_for_delta(delta, damages, note)
+        if exp.amount is not None:
+            foot += ("  |  Total movement time-cost exposure: " + exp.formula_text
+                     + ".  " + STANDING_LABEL)
+    fig.text(0.01, 0.005, foot, fontsize=6.5, color="#666666")
     fig.tight_layout(rect=(0, 0.035, 1, 1))
     fig.savefig(out_path)
     plt.close(fig)
@@ -177,11 +193,20 @@ def halfstep_figure(hs_dict: dict[str, Any], out_path: str) -> str:
 # ---------------------------------------------------------------------------
 # dailyledger_figure — N3 cumulative delay curve
 # ---------------------------------------------------------------------------
-def dailyledger_figure(dl_dict: dict[str, Any], out_path: str) -> str:
+def dailyledger_figure(dl_dict: dict[str, Any], out_path: str,
+                       damages: Optional[DamagesConfig] = None) -> str:
     """Cumulative delay step plot over the window: nonzero days marked,
     controlling-activity changes annotated (capped at ~6, deterministically
     thinned), event markers shown when present, arithmetic-check note in the
-    footer."""
+    footer.
+
+    ``damages`` (backlog S7) is OPTIONAL and strictly additive: ``None`` (the
+    default) reproduces a byte-identical PNG to before this parameter
+    existed.  When given (and ``damages.time_cost_per_day`` is set), a
+    secondary right-hand axis renders the same cumulative curve's shape in
+    money — the workday figure times the configured rate, literally, no unit
+    conversion — so the delay curve and its exposure read off the same
+    step."""
     pair = dl_dict.get("pair") or {}
     pair_label = f"{pair.get('earlier', '—')} → {pair.get('later', '—')}"
     rows = dl_dict.get("rows") or []
@@ -245,8 +270,26 @@ def dailyledger_figure(dl_dict: dict[str, Any], out_path: str) -> str:
     check_txt = ("arithmetic check: Σ daily deltas "
                 f"{ac.get('sum_of_daily_deltas_wd')} wd == endpoint movement "
                 f"{ac.get('endpoint_delta_wd')} wd (exact: {ac.get('exact')}).")
+
+    exposure_txt = ""
+    if damages is not None and damages.time_cost_per_day is not None:
+        rate = damages.time_cost_per_day
+        lo, hi = ax.get_ylim()
+        ax2 = ax.twinx()
+        ax2.set_ylim(lo * rate, hi * rate)
+        exp_end = exposure_for_delta(cum[-1] if cum else None, damages,
+                                     "workdays (target calendar, cumulative)")
+        ax2.set_ylabel(f"Cumulative time-cost exposure ({damages.currency}, "
+                       f"{rate:g}/wd, literal — no unit conversion)", fontsize=8)
+        ax2.tick_params(labelsize=8)
+        for s in ("top", "left"):
+            ax2.spines[s].set_visible(False)
+        if exp_end.amount is not None:
+            exposure_txt = "  Window-end exposure: " + exp_end.formula_text + "."
+
     fig.text(0.01, 0.02,
-             "PRELIMINARY — observational daily delay ledger.  " + check_txt,
+             "PRELIMINARY — observational daily delay ledger.  " + check_txt
+             + exposure_txt,
              fontsize=6.8, color="#444444")
     fig.tight_layout(rect=(0, 0.06, 1, 1))
     fig.savefig(out_path)
@@ -257,11 +300,17 @@ def dailyledger_figure(dl_dict: dict[str, Any], out_path: str) -> str:
 # ---------------------------------------------------------------------------
 # robustness_figure — N4 stability range plot
 # ---------------------------------------------------------------------------
-def robustness_figure(cert_dict: dict[str, Any], out_path: str) -> str:
+def robustness_figure(cert_dict: dict[str, Any], out_path: str,
+                      damages: Optional[DamagesConfig] = None) -> str:
     """Per-party (or TOTAL) range plot: one horizontal min-max bar per measured
     series across the computable method variants, each variant plotted as a
     tick on that bar, with the verdict band labelled at right.  The §8.4
-    stability sentences form the caption block."""
+    stability sentences form the caption block.
+
+    ``damages`` (backlog S7) is OPTIONAL and strictly additive: ``None`` (the
+    default) reproduces a byte-identical PNG to before this parameter
+    existed.  When given, each series' verdict label gains its range's
+    time-cost exposure amount."""
     stability = cert_dict.get("stability") or []
     if not stability:
         reason = "no computable method variant to build a stability screen from"
@@ -281,9 +330,14 @@ def robustness_figure(cert_dict: dict[str, Any], out_path: str) -> str:
         vals = s.get("values") or []
         ax.plot(vals, [yi] * len(vals), marker="|", linestyle="none",
                color="#222222", markersize=13, markeredgewidth=1.4, zorder=3)
-        ax.text(mx + max(abs(mx - mn), 1.0) * 0.08, yi,
-               f"{verdict}  (n={s.get('n_variants')})", va="center", ha="left",
-               fontsize=8.5, color=color, fontweight="bold")
+        label = f"{verdict}  (n={s.get('n_variants')})"
+        if damages is not None:
+            exp = exposure_for_delta(s.get("range"), damages,
+                                     "workdays (swept method variants)")
+            if exp.amount is not None:
+                label += "  " + exp.formula_text.rsplit(" = ", 1)[-1]
+        ax.text(mx + max(abs(mx - mn), 1.0) * 0.08, yi, label, va="center",
+               ha="left", fontsize=8.5, color=color, fontweight="bold")
     ax.set_yticks(y)
     ax.set_yticklabels([s["series"] for s in stability], fontsize=9)
     allmin = min(s["min"] for s in stability)

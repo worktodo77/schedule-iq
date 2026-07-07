@@ -26,6 +26,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.dates as mdates  # noqa: E402
 
+from ..analytics.damages import (DamagesConfig, STANDING_LABEL, exposure_for_date,  # noqa: E402
+                                 exposure_for_delta)
+
 TEAL = "#1F6F7B"
 AMBER = "#FFC000"
 ORANGE = "#C55A11"
@@ -74,7 +77,8 @@ def _style(ax) -> None:
 # ---------------------------------------------------------------------------
 # waterfall_figure — the A3 one-pager
 # ---------------------------------------------------------------------------
-def waterfall_figure(impact_dict: dict[str, Any], out_path: str) -> str:
+def waterfall_figure(impact_dict: dict[str, Any], out_path: str,
+                     damages: Optional[DamagesConfig] = None) -> str:
     """Horizontal waterfall/bridge of the ADR-0007 diagnostic deltas.
 
     Row order: tool-of-record baseline (labelled with its date), one row per
@@ -83,6 +87,12 @@ def waterfall_figure(impact_dict: dict[str, Any], out_path: str) -> str:
     drawn from the engine baseline (x = 0) out to its delta in workdays, so
     the two anchor rows read as the bridge's start and end and every
     scenario bar reads as its movement relative to that reference.
+
+    ``damages`` (backlog S7) is OPTIONAL and strictly additive: ``None`` (the
+    default) reproduces a byte-identical PNG to before this parameter
+    existed.  When given, each computable scenario's bar annotation gains its
+    time-cost exposure amount, and the footer gains the engine baseline
+    finish's LD exposure vs. ``damages.contractual_completion``.
     """
     target = impact_dict.get("target") or {}
     baseline = impact_dict.get("baseline") or {}
@@ -103,6 +113,14 @@ def waterfall_figure(impact_dict: dict[str, Any], out_path: str) -> str:
         wd = d["delta_workdays"]
         cd = d.get("delta_calendar_days")
         ann = f"{wd:+d} wd" + (f" / {cd:+d} cd" if cd is not None else "")
+        if damages is not None:
+            if damages.daily_basis == "workday":
+                delta, note = wd, "workdays (target calendar)"
+            else:
+                delta, note = cd, "calendar days"
+            exp = exposure_for_delta(delta, damages, note)
+            if exp.amount is not None:
+                ann += "  |  " + exp.formula_text.rsplit(" = ", 1)[-1]
         rows.append({"label": _scenario_label(scenario), "value": float(wd),
                     "computable": True, "annotation": ann})
 
@@ -161,8 +179,13 @@ def waterfall_figure(impact_dict: dict[str, Any], out_path: str) -> str:
     match_rate = handshake.get("match_rate_pct")
     hs_line = (f"Validation handshake: {match_rate:.1f}% match"
               if match_rate is not None else "Validation handshake: —")
-    fig.text(0.01, 0.02, PRESENTATION_NOTE + "  " + hs_line,
-             fontsize=7.5, color="#444444")
+    note_line = PRESENTATION_NOTE + "  " + hs_line
+    if damages is not None:
+        ld = exposure_for_date(engine_ef, damages)
+        if ld.amount is not None:
+            note_line += ("  |  Engine baseline finish LD exposure: "
+                          + ld.formula_text + ".  " + STANDING_LABEL)
+    fig.text(0.01, 0.02, note_line, fontsize=7.5, color="#444444")
 
     skipped = [_scenario_label(s) for s in
               {d.get("scenario") for d in waterfall} & _NON_DELTA_SCENARIOS]
@@ -186,13 +209,19 @@ def waterfall_figure(impact_dict: dict[str, Any], out_path: str) -> str:
 # ---------------------------------------------------------------------------
 # asbuilt_figure — the as-built top chain
 # ---------------------------------------------------------------------------
-def asbuilt_figure(asbuilt_dict: dict[str, Any], out_path: str) -> str:
+def asbuilt_figure(asbuilt_dict: dict[str, Any], out_path: str,
+                   damages: Optional[DamagesConfig] = None) -> str:
     """Horizontal timeline of the top as-built chain's links.
 
     One row per link (predecessor code -> successor code), spanning the two
     anchoring actual dates; gap-flagged links (unexplained actual lag beyond
     the configured threshold) are drawn in amber.  The contradicted-link
     count is footnoted.
+
+    ``damages`` (backlog S7) is OPTIONAL and strictly additive: ``None`` (the
+    default) reproduces a byte-identical PNG to before this parameter
+    existed.  When given, the footer gains the chain span's time-cost
+    exposure.
     """
     chains = asbuilt_dict.get("chains") or []
     label = asbuilt_dict.get("label", "")
@@ -253,11 +282,14 @@ def asbuilt_figure(asbuilt_dict: dict[str, Any], out_path: str) -> str:
 
     contradicted = summary.get("contradicted_relationships", 0)
     gap_flags = len(chain.get("gap_flags") or [])
-    fig.text(0.01, 0.02,
-             f"{label}  Gaps flagged on this chain: {gap_flags}.  "
-             f"Contradicted (out-of-sequence) relationships in the file: "
-             f"{contradicted}.",
-             fontsize=7, color="#444444")
+    foot = (f"{label}  Gaps flagged on this chain: {gap_flags}.  "
+           f"Contradicted (out-of-sequence) relationships in the file: "
+           f"{contradicted}.")
+    if damages is not None:
+        exp = exposure_for_delta(span, damages, "workdays (as-built chain span)")
+        if exp.amount is not None:
+            foot += "  Chain-span time-cost exposure: " + exp.formula_text + "."
+    fig.text(0.01, 0.02, foot, fontsize=7, color="#444444")
 
     fig.tight_layout(rect=(0, 0.06, 1, 1))
     fig.savefig(out_path)

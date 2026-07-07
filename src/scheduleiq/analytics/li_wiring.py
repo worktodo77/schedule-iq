@@ -1,10 +1,19 @@
-"""Wire the LI proprietary indices (N6-N15) into the series pipeline.
+"""Wire the LI proprietary indices (N6-N15) into the series pipeline, plus the
+provocative indices (N16-N20) into the PRIVILEGED / INTERNAL surface only.
 
-Converts the li_indices / li_record results into MetricResult objects keyed
-to the LI-01..LI-10 matrix rows, so the indices flow through the existing
-trend workbook, report series table, and (later) the Report Card with zero
-special-casing.  All informational (the Report Card spec, not the matrix,
-defines their scoring normalization).
+N6-N15 (LI-01..LI-10): converts the li_indices / li_record results into
+MetricResult objects keyed to the LI-01..LI-10 matrix rows, so the indices flow
+through the existing trend workbook, report series table, and the Report Card
+with zero special-casing.  All informational (the Report Card spec, not the
+matrix, defines their scoring normalization).
+
+N16-N20 (LI-11..LI-15): the provocative indices (SMI/DDI/ARR/PPS/RSA) are
+DELIBERATELY NOT added to ``sa.series_results`` — that list feeds the standard
+report/card/workbook, and ANALYTICS_PROPOSAL §11 requires these five to default
+to a privileged/internal surface.  ``li_provocative_results`` builds their
+MetricResults on demand (each carrying ``privileged=True`` / ``surface=
+"internal"``) for the RC5 internal-variant card and the internal forensic
+workbook to consume; the standard surfaces never see them.
 """
 from __future__ import annotations
 
@@ -183,6 +192,104 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
                   "(impacted / clean productivity; lower = stronger contrast).  "
                   if v is not None else "") + m.caption)
     r = _res(by_id, "LI-10", v, narrative, finds)
+    if r:
+        out.append(r)
+
+    return out
+
+
+# ==========================================================================
+# N16-N20 — provocative indices (PRIVILEGED / INTERNAL surface only)
+# ==========================================================================
+# Map each internal-variant member ID (N16..N20) to its matrix row (LI-11..15).
+PROVOCATIVE_MEMBER_MAP = {
+    "N16": "LI-11", "N17": "LI-12", "N18": "LI-13", "N19": "LI-14", "N20": "LI-15",
+}
+
+
+def _priv_res(matrix_by_id, cid, value, narrative, findings, decomposition):
+    """Build an INTERNAL-surface MetricResult for a provocative index.  Carries
+    ``privileged``/``surface``/``decomposition`` attributes so the internal card
+    and internal workbook can render the full decomposition; never appended to
+    ``sa.series_results`` (the standard surfaces)."""
+    cd = matrix_by_id.get(cid)
+    if cd is None:                                    # matrix row missing: skip
+        return None
+    r = MetricResult(check=cd, value=value, status="INFO",
+                     narrative=narrative, findings=findings[:25])
+    r.threshold_applied = None
+    r.privileged = True
+    r.surface = "internal"
+    r.decomposition = decomposition
+    return r
+
+
+def li_provocative_results(sa, matrix, certificate=None, events=None,
+                           indices=None):
+    """MetricResults for the five provocative indices (LI-11..LI-15), for the
+    PRIVILEGED / INTERNAL surface only.  ``certificate`` is an optional
+    precomputed N4 RobustnessCertificate (or its dict) feeding ARR and RSA;
+    absent it, those two report NOT COMPUTABLE.  Never raises."""
+    from .li_provocative import run_li_provocative
+
+    by_id = {c.id: c for c in matrix}
+    out: list[MetricResult] = []
+    try:
+        rp = run_li_provocative(sa, certificate=certificate, events=events,
+                                indices=indices)
+    except Exception:                                 # pragma: no cover - defensive
+        return out
+
+    # LI-11 SMI ----------------------------------------------------------
+    s = rp.smi
+    finds = [Finding(sig.key, sig.label,
+                     f"score {sig.score:.0f}/100 (count {sig.count}); "
+                     + (sig.findings[0] if sig.findings else "no findings"))
+             for sig in s.signals]
+    r = _priv_res(by_id, "LI-11", s.smi, s.interpretation or s.reason, finds,
+                  s.to_dict())
+    if r:
+        out.append(r)
+
+    # LI-12 DDI ----------------------------------------------------------
+    d = rp.ddi
+    finds = [Finding(name, "", "; ".join(f"{x:.2f}" for x in vals if x is not None))
+             for name, vals in d.fundamentals.items()]
+    r = _priv_res(by_id, "LI-12", d.ddi, d.interpretation or d.reason, finds,
+                  d.to_dict())
+    if r:
+        out.append(r)
+
+    # LI-13 ARR ----------------------------------------------------------
+    a = rp.arr
+    finds = [Finding(p.party, "", f"ARR {p.arr:.2f} (share {p.min_share:.0%}-"
+                     f"{p.max_share:.0%}) over {p.n_variants} variant(s)")
+             for p in a.parties]
+    r = _priv_res(by_id, "LI-13", None, a.interpretation or a.reason, finds,
+                  a.to_dict())
+    if r:
+        out.append(r)
+
+    # LI-14 PPS ----------------------------------------------------------
+    p = rp.pps
+    finds = [Finding(inst.window_label, ", ".join(inst.chain_codes[:6]),
+                     f"PPS {inst.pps:.0f}/100"
+                     + (f"; neutral: {', '.join(inst.neutral_criteria)}"
+                        if inst.neutral_criteria else ""))
+             for inst in p.instances]
+    top = p.instances[0].pps if p.instances else None
+    r = _priv_res(by_id, "LI-14", top, p.interpretation or p.reason, finds,
+                  p.to_dict())
+    if r:
+        out.append(r)
+
+    # LI-15 RSA ----------------------------------------------------------
+    rs = rp.rsa
+    finds = [Finding(c.window_label, c.classification,
+                     f"{c.delay_workdays:.1f} wd — {c.evidence}")
+             for c in rs.components]
+    r = _priv_res(by_id, "LI-15", rs.rsa_pct, rs.interpretation or rs.reason, finds,
+                  rs.to_dict())
     if r:
         out.append(r)
 

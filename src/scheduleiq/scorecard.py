@@ -536,7 +536,7 @@ def _trajectory(file_cards: list, spec: dict) -> TrajectoryScore:
 
 
 def score_series(sa: SeriesAnalysis, spec: Optional[dict] = None,
-                 variant: str = "standard") -> SeriesCard:
+                 variant: str = "standard", certificate=None) -> SeriesCard:
     spec = spec or load_spec()
     matrix_by_id = {c.id: c for c in load_matrix()}
     file_cards = [score(a, spec, variant) for a in sa.assessments]
@@ -605,9 +605,40 @@ def score_series(sa: SeriesAnalysis, spec: Optional[dict] = None,
         top_factors=top, variant=variant, is_series=True,
     )
     if variant == "internal":
-        card.internal_indices = [
-            {"id": nid, **ndef} for nid, ndef in spec["internal_variant"]["members"].items()]
+        card.internal_indices = _internal_indices(spec, sa, matrix_by_id,
+                                                  certificate=certificate)
     return card
+
+
+def _internal_indices(spec: dict, sa: SeriesAnalysis, matrix_by_id: dict,
+                      certificate=None) -> list:
+    """Build the RC5 internal-variant index list (N16-N20) and enrich each with
+    its BUILT provocative-index value + full decomposition (privileged/internal
+    surface, ANALYTICS_PROPOSAL §11).  Weight stays 0 — these never move a grade
+    today; they are surfaced, not scored.  Additive and never sinks the run: a
+    failure leaves the placeholder metadata untouched (matches the
+    scorecard's established convention for non-owned analytics)."""
+    members = spec["internal_variant"]["members"]
+    out = [{"id": nid, **ndef} for nid, ndef in members.items()]
+    try:
+        from .analytics.li_wiring import li_provocative_results
+        matrix = list(matrix_by_id.values())
+        results = {r.check.id: r for r in
+                   li_provocative_results(sa, matrix, certificate=certificate)}
+    except Exception:                        # pragma: no cover - defensive
+        return out
+    for entry in out:
+        cid = entry.get("check_id")
+        r = results.get(cid) if cid else None
+        if r is None:
+            continue
+        entry["value"] = r.value
+        entry["status"] = r.status
+        entry["narrative"] = r.narrative
+        entry["privileged"] = getattr(r, "privileged", True)
+        entry["surface"] = getattr(r, "surface", "internal")
+        entry["decomposition"] = getattr(r, "decomposition", None)
+    return out
 
 
 # ============================================================================

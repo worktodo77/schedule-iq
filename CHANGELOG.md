@@ -123,3 +123,27 @@ matrix expanded to 74 checks (SET-02 added).
   responsibility subtotals, certificate, disclosures); all wired into the
   run and the Word report with per-block refusal messages.  Suite: 1839
   tests + 1 skip.
+
+## 0.4.0 — 2026-07-07 (in progress)
+
+RJL approval of 2026-07-07 ("build all items awaiting my call") green-lit
+N16-N20, RC6 publication, and all PARKED items.  Check-affecting change:
+matrix expanded to 79 checks (LI-11..LI-15, privileged/internal surfaces).
+
+- N16-N20 (LI-11..15): SMI Schedule Manipulation Indicator (published
+  12-point weighting over the seeded curation signals, innocent-explanation
+  text per signal, language capped at "warrants explanation"), DDI Directed
+  Date Index, ARR Attribution Robustness Ratio (per-party min/max share
+  across the N4 sweep), PPS Pacing Plausibility Score (neutral-on-missing
+  evidence), RSA Rebuttal Surface Area.  All privileged/internal by default:
+  RC5 internal card + internal workbook only; never on standard surfaces.
+- S6 TIA workbench: event→fragnet auto-build (MIP 3.6/3.7) with stepped
+  cumulative insertion (marginals telescope exactly), collapsed as-built
+  (MIP 3.8/3.9) via the ported MIP 3.9 collapse engine (GLOBAL/STEPPED,
+  calibration gate and OOS block carried faithfully — no auto-acknowledge).
+- S7 damages overlay: LD-rate and time-cost exposure lines with the
+  arithmetic always shown, optional exposure axis/sheets on every impact,
+  forensic, and SRA surface; None-config outputs byte-identical.
+- RC6: publication package built and verified (Apache-2.0, stamped spec
+  SHA-256, reference scorer validated against a sample, internal variant
+  stripped from the public copy).  Public push remains a human step.

@@ -1,0 +1,7 @@
+Duration & Estimating (duration_estimating)
+  DCMA-08     value=3        weight=2   score=  82.0
+  DUR-01      value=2        weight=1   score=  60.0
+  DUR-02      not gradeable by default (no threshold/override)
+  DUR-03      value=0        weight=2   score= 100.0
+
+Duration & Estimating score = 84.80 / 100  (weighted mean of 5 weighted points across graded members)

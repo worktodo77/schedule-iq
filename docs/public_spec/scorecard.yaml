@@ -578,27 +578,3 @@ trajectory:
     near the middle of the category — which is the intended signal: the
     card's grade table plus its trend arrows tell the fuller story, the
     trajectory category score is deliberately just the headline blend."
-
-# --------------------------------------------------------------------------
-# RC5 — internal-variant scaffolding.  Weight-0 placeholders; proven
-# identical to the standard card today by tests/test_scorecard.py.
-# --------------------------------------------------------------------------
-internal_variant:
-  members:
-    N16: {name: "SMI — Schedule Manipulation Indicator", check_id: "LI-11", weight: 0, surface: "internal", status: "built (v0.3, analytics/li_provocative.py); privileged/internal surface; weight 0 (surfaced, not scored)"}
-    N17: {name: "DDI — Directed Date Index", check_id: "LI-12", weight: 0, surface: "internal", status: "built (v0.3, analytics/li_provocative.py); privileged/internal surface; weight 0 (surfaced, not scored)"}
-    N18: {name: "ARR — Attribution Robustness Ratio", check_id: "LI-13", weight: 0, surface: "internal", status: "built (v0.3, analytics/li_provocative.py); privileged/internal surface; weight 0 (surfaced, not scored; needs the N4 certificate)"}
-    N19: {name: "PPS — Pacing Plausibility Score", check_id: "LI-14", weight: 0, surface: "internal", status: "built (v0.3, analytics/li_provocative.py); privileged/internal surface; weight 0 (surfaced, not scored)"}
-    N20: {name: "RSA — Rebuttal Surface Area", check_id: "LI-15", weight: 0, surface: "internal", status: "built (v0.3, analytics/li_provocative.py); privileged/internal surface; weight 0 (surfaced, not scored; needs the N4 certificate)"}
-  rationale: "docs/BACKLOG.md N16-N20 / ANALYTICS_PROPOSAL §11: the provocative
-    indices (SMI/DDI/ARR/PPS/RSA), BUILT in v0.3 as privileged/internal triage
-    instruments (matrix rows LI-11..LI-15).  They are surfaced only on this
-    internal-variant card and the internal forensic workbook — never on the
-    standard report/card — and carry weight 0 so they NEVER move a grade today:
-    RJL has approved the build, not their promotion into the scored spec (that
-    would be a spec revision, bumping spec_version, per GOVERNANCE.md §1).
-    scorecard.py attaches each member's computed value + full decomposition to
-    the internal card at run time (variant='internal'); the standard card omits
-    them entirely, which is exactly what tests/test_scorecard.py's
-    variant-identity test and tests/test_li_provocative.py's surface test
-    verify."

@@ -19,6 +19,7 @@ from typing import Any, Optional
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from ..analytics.damages import DamagesConfig, STANDING_LABEL, exposure_for_delta
 from .excel import STATUS_FILL, TEAL, _header, _row
 
 PRELIM = ("PRELIMINARY — engine diagnostic delta.  Tool-of-record dates "
@@ -66,18 +67,23 @@ def _pair_label(d: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Half-Step (MIP 3.4)
 # ---------------------------------------------------------------------------
-def _write_halfstep(wb, halfstep_dicts: list[dict[str, Any]]):
+def _write_halfstep(wb, halfstep_dicts: list[dict[str, Any]],
+                    damages: Optional[DamagesConfig] = None):
     ws = wb.active
     ws.title = "Half-Step (MIP 3.4)"
     r = _title(ws, "MIP 3.4 Half-Step Decomposition — Per Update Pair")
     r += 1
-    _header(ws, r, ["Pair", "Refused", "E_n Target EF", "H Target EF",
-                    "E_n1 Target EF", "Progress (wd)", "Revision (wd)",
-                    "Total (wd)", "Identity Holds", "Progress (cd)",
-                    "Revision (cd)", "Total (cd)", "Record Move (wd)",
-                    "Record Move (cd)", "Record − Engine Δ (wd)",
-                    "Computable", "Blocking / Refusal"],
-            [26, 10, 16, 16, 16, 14, 14, 12, 14, 14, 14, 12, 16, 16, 18, 12, 60])
+    cols = ["Pair", "Refused", "E_n Target EF", "H Target EF",
+            "E_n1 Target EF", "Progress (wd)", "Revision (wd)",
+            "Total (wd)", "Identity Holds", "Progress (cd)",
+            "Revision (cd)", "Total (cd)", "Record Move (wd)",
+            "Record Move (cd)", "Record − Engine Δ (wd)",
+            "Computable", "Blocking / Refusal"]
+    widths = [26, 10, 16, 16, 16, 14, 14, 12, 14, 14, 14, 12, 16, 16, 18, 12, 60]
+    if damages is not None:
+        cols.append("Exposure (time-cost, total movement)")
+        widths.append(30)
+    _header(ws, r, cols, widths)
     rr = r + 1
     for d in halfstep_dicts:
         decomp = d.get("decomposition") or {}
@@ -87,7 +93,7 @@ def _write_halfstep(wb, halfstep_dicts: list[dict[str, Any]]):
         rec_move = decomp.get("record_movement_workdays")
         eng_delta = (None if (rec_move is None or (prog is None or rev is None))
                     else rec_move - (prog + rev))
-        _row(ws, rr, [
+        vals = [
             _pair_label(d), _fmt(d.get("refused")),
             eng.get("E_n_target_early_finish"), eng.get("half_step_target_early_finish"),
             eng.get("E_n1_target_early_finish"), prog, rev,
@@ -97,12 +103,20 @@ def _write_halfstep(wb, halfstep_dicts: list[dict[str, Any]]):
             decomp.get("total_movement_calendar_days"), rec_move,
             decomp.get("record_movement_calendar_days"), eng_delta,
             _fmt(decomp.get("computable")),
-            d.get("refusal") or decomp.get("blocking") or ""],
+            d.get("refusal") or decomp.get("blocking") or ""]
+        if damages is not None:
+            if damages.daily_basis == "workday":
+                delta, note = decomp.get("total_movement_workdays"), "workdays (target calendar)"
+            else:
+                delta, note = decomp.get("total_movement_calendar_days"), "calendar days"
+            exp = exposure_for_delta(delta, damages, note)
+            vals.append(exp.formula_text)
+        _row(ws, rr, vals,
             fill=STATUS_FILL.get("N/A") if (d.get("refused")
                                             or not decomp.get("computable", True))
             else None)
         rr += 1
-    ws.auto_filter.ref = f"A{r}:Q{max(rr - 1, r)}"
+    ws.auto_filter.ref = f"A{r}:{chr(ord('A') + len(cols) - 1)}{max(rr - 1, r)}"
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +202,8 @@ def _write_mip33(wb, halfstep_dicts: list[dict[str, Any]]):
 # ---------------------------------------------------------------------------
 # Daily Ledger
 # ---------------------------------------------------------------------------
-def _write_daily_ledger(wb, ledger_dicts: list[dict[str, Any]]):
+def _write_daily_ledger(wb, ledger_dicts: list[dict[str, Any]],
+                        damages: Optional[DamagesConfig] = None):
     ws = wb.create_sheet("Daily Ledger")
     r = _title(ws, "N3 Daily-Resolution Delay Ledger — Per Update Pair")
     r += 1
@@ -223,19 +238,28 @@ def _write_daily_ledger(wb, ledger_dicts: list[dict[str, Any]]):
         if not d.get("computable", True) or not d.get("rows"):
             r += 1
             continue
-        _header(ws, r, ["Day", "EF Target", "Delta (wd)", "Cumulative (wd)",
-                        "Controlling Activity", "Controlling Party",
-                        "Newly Started", "Newly Completed", "Events"],
-                [14, 14, 12, 14, 20, 16, 30, 30, 20])
+        cols = ["Day", "EF Target", "Delta (wd)", "Cumulative (wd)",
+                "Controlling Activity", "Controlling Party",
+                "Newly Started", "Newly Completed", "Events"]
+        widths = [14, 14, 12, 14, 20, 16, 30, 30, 20]
+        if damages is not None:
+            cols.append("Exposure (cumulative, time-cost)")
+            widths.append(30)
+        _header(ws, r, cols, widths)
         rr = r + 1
         for row in d.get("rows") or []:
-            _row(ws, rr, [
+            vals = [
                 row.get("day"), row.get("ef_target"), row.get("delta_workdays"),
                 row.get("cumulative_workdays"), row.get("controlling_code"),
                 row.get("controlling_party"),
                 ", ".join(row.get("newly_started") or []),
                 ", ".join(row.get("newly_completed") or []),
-                ", ".join(row.get("event_ids") or [])],
+                ", ".join(row.get("event_ids") or [])]
+            if damages is not None:
+                exp = exposure_for_delta(row.get("cumulative_workdays"), damages,
+                                         "workdays (target calendar, cumulative)")
+                vals.append(exp.formula_text)
+            _row(ws, rr, vals,
                 fill=STATUS_FILL.get("WARNING") if row.get("delta_workdays") else None)
             rr += 1
         r = rr + 2
@@ -270,7 +294,8 @@ def _write_responsibility(wb, ledger_dicts: list[dict[str, Any]]):
 # ---------------------------------------------------------------------------
 # Robustness Certificate
 # ---------------------------------------------------------------------------
-def _write_robustness(wb, cert: Optional[dict[str, Any]]):
+def _write_robustness(wb, cert: Optional[dict[str, Any]],
+                      damages: Optional[DamagesConfig] = None):
     ws = wb.create_sheet("Robustness Certificate")
     r = _title(ws, "N4 Methodology-Robustness Certificate")
     r += 1
@@ -296,14 +321,23 @@ def _write_robustness(wb, cert: Optional[dict[str, Any]]):
     r += 1
     r = _subhead(ws, r, "Stability by series")
     r += 1
-    _header(ws, r, ["Series", "N Variants", "Min", "Max", "Range", "Median",
-                    "Spread %", "Verdict", "Sentence"],
-            [18, 10, 10, 10, 10, 10, 10, 12, 70])
+    cols = ["Series", "N Variants", "Min", "Max", "Range", "Median",
+            "Spread %", "Verdict", "Sentence"]
+    widths = [18, 10, 10, 10, 10, 10, 10, 12, 70]
+    if damages is not None:
+        cols.append("Exposure (time-cost, on Range)")
+        widths.append(30)
+    _header(ws, r, cols, widths)
     rr = r + 1
     for s in cert.get("stability") or []:
-        _row(ws, rr, [s.get("series"), s.get("n_variants"), s.get("min"),
-                     s.get("max"), s.get("range"), s.get("median"),
-                     s.get("spread_pct"), s.get("verdict"), s.get("sentence")],
+        vals = [s.get("series"), s.get("n_variants"), s.get("min"),
+                s.get("max"), s.get("range"), s.get("median"),
+                s.get("spread_pct"), s.get("verdict"), s.get("sentence")]
+        if damages is not None:
+            exp = exposure_for_delta(s.get("range"), damages,
+                                     "workdays (swept method variants)")
+            vals.append(exp.formula_text)
+        _row(ws, rr, vals,
              fill={"STABLE": STATUS_FILL.get("PASS"),
                   "MODERATE": STATUS_FILL.get("WARNING"),
                   "UNSTABLE": STATUS_FILL.get("FAIL")}.get(s.get("verdict")))
@@ -329,6 +363,65 @@ def _write_robustness(wb, cert: Optional[dict[str, Any]]):
             fill=None if v.get("computable") else STATUS_FILL.get("N/A"))
         rr2 += 1
     ws.auto_filter.ref = f"A{rr}:J{max(rr2 - 1, rr)}"
+
+
+# ---------------------------------------------------------------------------
+# Exposure (damages overlay, backlog S7 — only written when damages given)
+# ---------------------------------------------------------------------------
+def _write_exposure(wb, halfstep_dicts: list[dict[str, Any]],
+                    ledger_dicts: list[dict[str, Any]],
+                    cert: Optional[dict[str, Any]], damages: DamagesConfig):
+    ws = wb.create_sheet("Exposure")
+    r = _title(ws, "Exposure — Damages/Time-Cost Overlay on the Forensic Diagnostics")
+    ws.cell(row=r, column=1, value=STANDING_LABEL).font = Font(italic=True, size=9,
+                                                               color="C00000")
+    r += 2
+    r = _meta(ws, r, [
+        ("Currency", damages.currency),
+        ("Daily basis (analyst rates)", damages.daily_basis),
+        ("Time-related cost rate (per day)", damages.time_cost_per_day),
+        ("LD rate (per calendar day)", damages.ld_rate_per_day),
+        ("Contractual completion", damages.contractual_completion),
+        ("LD math enabled", _fmt(damages.ld_enabled)),
+    ])
+    r += 1
+
+    r = _subhead(ws, r, "Half-step total movement — time-cost exposure")
+    r += 1
+    _header(ws, r, ["Pair", "Delta priced", "Formula", "Basis"], [26, 16, 60, 60])
+    rr = r + 1
+    for d in halfstep_dicts:
+        decomp = d.get("decomposition") or {}
+        if damages.daily_basis == "workday":
+            delta, note = decomp.get("total_movement_workdays"), "workdays (target calendar)"
+        else:
+            delta, note = decomp.get("total_movement_calendar_days"), "calendar days"
+        exp = exposure_for_delta(delta, damages, note)
+        _row(ws, rr, [_pair_label(d), delta, exp.formula_text, exp.basis])
+        rr += 1
+    rr += 2
+
+    rr = _subhead(ws, rr, "Daily ledger — window-end cumulative time-cost exposure")
+    rr += 1
+    _header(ws, rr, ["Pair", "Cumulative (wd)", "Formula", "Basis"], [26, 16, 60, 60])
+    rr2 = rr + 1
+    for d in ledger_dicts:
+        rows = d.get("rows") or []
+        cum = rows[-1].get("cumulative_workdays") if rows else None
+        exp = exposure_for_delta(cum, damages, "workdays (target calendar, window-end)")
+        _row(ws, rr2, [_pair_label(d), cum, exp.formula_text, exp.basis])
+        rr2 += 1
+    rr2 += 2
+
+    if cert is not None:
+        rr2 = _subhead(ws, rr2, "Robustness certificate — per-series range, time-cost exposure")
+        rr2 += 1
+        _header(ws, rr2, ["Series", "Range (wd)", "Formula", "Basis"], [18, 16, 60, 60])
+        rr3 = rr2 + 1
+        for s in cert.get("stability") or []:
+            exp = exposure_for_delta(s.get("range"), damages, "workdays (swept method variants)")
+            _row(ws, rr3, [s.get("series"), s.get("range"), exp.formula_text, exp.basis])
+            rr3 += 1
 
 
 # ---------------------------------------------------------------------------
@@ -366,21 +459,30 @@ def _write_disclosures(wb, halfstep_dicts: list[dict[str, Any]],
 def write_forensic_workbook(halfstep_dicts: list[dict[str, Any]],
                             ledger_dicts: list[dict[str, Any]],
                             cert_dict: Optional[dict[str, Any]],
-                            out_path: str) -> str:
+                            out_path: str,
+                            damages: Optional[DamagesConfig] = None) -> str:
     """Write the forensic-diagnostics workbook: Half-Step (MIP 3.4), Revision
     Attribution, MIP 3.3 As-Is, Daily Ledger, Responsibility Subtotals (when
     any pair carries a responsibility overlay), Robustness Certificate, and
     Disclosures.  Every argument is a plain-dict serialization from the
     corresponding analytics module's ``to_dict()``; ``cert_dict`` may be
-    ``None`` when no robustness certificate was computed this run."""
+    ``None`` when no robustness certificate was computed this run.
+
+    ``damages`` (backlog S7, ANALYTICS_PROPOSAL.md §6.6) is OPTIONAL and
+    strictly additive: ``None`` (the default) reproduces byte-identical
+    output to before this parameter existed.  When given, the Half-Step,
+    Daily Ledger, and Robustness Certificate sheets each gain a time-cost
+    exposure column and the workbook gains an "Exposure" sheet."""
     wb = Workbook()
-    _write_halfstep(wb, halfstep_dicts)
+    _write_halfstep(wb, halfstep_dicts, damages)
     _write_revision_attribution(wb, halfstep_dicts)
     _write_mip33(wb, halfstep_dicts)
-    _write_daily_ledger(wb, ledger_dicts)
+    _write_daily_ledger(wb, ledger_dicts, damages)
     if _has_responsibility(ledger_dicts):
         _write_responsibility(wb, ledger_dicts)
-    _write_robustness(wb, cert_dict)
+    _write_robustness(wb, cert_dict, damages)
+    if damages is not None:
+        _write_exposure(wb, halfstep_dicts, ledger_dicts, cert_dict, damages)
     _write_disclosures(wb, halfstep_dicts, ledger_dicts, cert_dict)
     wb.save(out_path)
     return out_path

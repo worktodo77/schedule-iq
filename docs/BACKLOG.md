@@ -91,8 +91,8 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | S3 | §6.4 Earned-schedule forecast credibility (ES(t), SPI(t), TSPI(t), IEAC(t)) | DONE (v0.2 wave 2) |
 | S4 | §6.8 Narrative reconciliation vs XER record | DONE (v0.2d) |
 | S5 | §6.1 Editing-session forensics (create/update user+date mining) | PARKED |
-| S6 | §6.5 Push-button TIA workbench (MIP 3.6/3.7; collapsed as-built 3.8/3.9) | PARKED |
-| S7 | §6.6 Damages/LD exposure overlay | PARKED |
+| S6 | §6.5 Push-button TIA workbench (MIP 3.6/3.7; collapsed as-built 3.8/3.9) | DONE (v0.4; approved RJL 2026-07-07) |
+| S7 | §6.6 Damages/LD exposure overlay | DONE (v0.4; approved RJL 2026-07-07) |
 | S8 | §6.7 Interactive HTML cockpit + graphics-generator demonstratives | PARKED |
 | S9 | §6.9 Internal benchmark corpus | PARKED |
 | S10 | §6.10 Research track (ML duration priors; gated LLM narratives) | PARKED |
@@ -141,11 +141,11 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status |
 |---|---|---|
-| N16 | §11.1 SMI — Schedule Manipulation Indicator (composite curation signals; guarded framing) | PARKED (proposed 2026-07-07) |
-| N17 | §11.2 DDI — Directed Date Index (dictated-completion signature) | PARKED (proposed) |
-| N18 | §11.3 ARR — Attribution Robustness Ratio (case-strength across method variants) | PARKED (proposed; needs N4 sweep) |
-| N19 | §11.4 PPS — Pacing Plausibility Score (scored pacing-defense credibility) | PARKED (proposed) |
-| N20 | §11.5 RSA — Rebuttal Surface Area (share of conclusion on contested ground) | PARKED (proposed; needs N4) |
+| N16 | §11.1 SMI — Schedule Manipulation Indicator (composite curation signals; guarded framing) | DONE (v0.4; approved RJL 2026-07-07) |
+| N17 | §11.2 DDI — Directed Date Index (dictated-completion signature) | DONE (v0.4) |
+| N18 | §11.3 ARR — Attribution Robustness Ratio (case-strength across method variants) | DONE (v0.4) |
+| N19 | §11.4 PPS — Pacing Plausibility Score (scored pacing-defense credibility) | DONE (v0.4) |
+| N20 | §11.5 RSA — Rebuttal Surface Area (share of conclusion on contested ground) | DONE (v0.4) |
 
 ## 13. Report Card (docs/REPORT_CARD_DESIGN.md) — awaiting review
 
@@ -156,7 +156,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | RC3 | Per-schedule card outputs (report first page, exhibit, Excel, GUI) | DONE (v0.2d) |
 | RC4 | Series report card (series categories, trajectory, gates) | DONE (v0.2d) |
 | RC5 | Internal-variant card (provocative indices; privileged flag) | DONE (v0.2d) |
-| RC6 | Open-source publication of spec + reference scorer (decision) | DONE (v0.2d) |
+| RC6 | Open-source publication of spec + reference scorer (decision) | DONE (v0.4: approved RJL 2026-07-07; package built/licensed/verified, internal variant stripped — public push is a human step) |
 
 ## Build order (approved scope)
 

@@ -27,6 +27,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from ..analytics.damages import (DamagesConfig, STANDING_LABEL, exposure_for_date)  # noqa: E402
 from .impact_figures import AMBER, ORANGE, PRESENTATION_NOTE, TEAL, _fmt_date, _style  # noqa: E402
 
 _BANNER_RED = "#C00000"
@@ -69,11 +70,18 @@ def _branding_banner(fig, branding: Optional[str]) -> None:
 # ---------------------------------------------------------------------------
 # scurve_figure — cumulative distribution of target finish dates
 # ---------------------------------------------------------------------------
-def scurve_figure(sim_dict: dict[str, Any], out_path: str) -> str:
+def scurve_figure(sim_dict: dict[str, Any], out_path: str,
+                  damages: Optional[DamagesConfig] = None) -> str:
     """ECDF of the sampled target completion dates.  Vertical lines mark the
     deterministic engine date and the tool-of-record record date; P10/P50/P80/
     P90 are marked and labelled with their dates.  A DIAGNOSTIC-ONLY branding
-    banner is drawn when ``sim_dict["branding"]`` is present."""
+    banner is drawn when ``sim_dict["branding"]`` is present.
+
+    ``damages`` (backlog S7) is OPTIONAL and strictly additive: ``None`` (the
+    default) reproduces a byte-identical PNG to before this parameter
+    existed.  When given and LD-enabled, a contractual-completion reference
+    line is drawn and the classic P50/P80 markers gain their LD-exposure
+    amount alongside their date."""
     sample = sim_dict.get("target_sample") or {}
     dates = [d for d in (sample.get("dates") or []) if d]
     tgt = sim_dict.get("target") or {}
@@ -102,6 +110,14 @@ def scurve_figure(sim_dict: dict[str, Any], out_path: str) -> str:
         ax.text(rec, -0.06, f"Record\n{_fmt_date(rec)}", fontsize=7.5,
                color="#555555", ha="center", va="top")
 
+    ld_enabled = damages is not None and damages.ld_enabled
+    if ld_enabled:
+        ax.axvline(damages.contractual_completion, color="#C00000", linewidth=1.2,
+                  linestyle="-.", zorder=2)
+        ax.text(damages.contractual_completion, 1.01,
+               f"Contractual\n{_fmt_date(damages.contractual_completion)}",
+               fontsize=7.5, color="#C00000", ha="center", va="bottom")
+
     percentiles = sim_dict.get("percentiles") or {}
     for key, py in (("P10", 0.10), ("P50", 0.50), ("P80", 0.80), ("P90", 0.90)):
         blk = percentiles.get(key) or {}
@@ -110,7 +126,12 @@ def scurve_figure(sim_dict: dict[str, Any], out_path: str) -> str:
             continue
         ax.axvline(pd_, color=AMBER, linewidth=0.9, linestyle="--", zorder=2)
         ax.plot([pd_], [py], marker="o", color=AMBER, markersize=5, zorder=4)
-        ax.annotate(f"{key}\n{_fmt_date(pd_)}", (pd_, py),
+        ann = f"{key}\n{_fmt_date(pd_)}"
+        if ld_enabled and key in ("P50", "P80"):
+            exp = exposure_for_date(pd_, damages)
+            if exp.amount is not None:
+                ann += "\n" + exp.formula_text.rsplit(" = ", 1)[-1] + " LD"
+        ax.annotate(ann, (pd_, py),
                    textcoords="offset points", xytext=(6, 0), fontsize=7.5,
                    color="#8A6D00", va="center")
 
@@ -123,11 +144,14 @@ def scurve_figure(sim_dict: dict[str, Any], out_path: str) -> str:
     fig.autofmt_xdate()
 
     mb = sim_dict.get("merge_bias") or {}
-    fig.text(0.01, 0.01,
-             "PRELIMINARY — probabilistic dates are diagnostic (ADR-0007 §4); "
-             f"target merge bias (P50 − deterministic): "
-             f"{mb.get('merge_bias_workdays')} wd.  " + PRESENTATION_NOTE,
-             fontsize=6.5, color="#444444")
+    foot = ("PRELIMINARY — probabilistic dates are diagnostic (ADR-0007 §4); "
+           f"target merge bias (P50 − deterministic): "
+           f"{mb.get('merge_bias_workdays')} wd.  " + PRESENTATION_NOTE)
+    if ld_enabled:
+        foot += ("  LD exposure vs. contractual completion "
+                f"{_fmt_date(damages.contractual_completion)} at "
+                f"{damages.currency} {damages.ld_rate_per_day:g}/cd.  " + STANDING_LABEL)
+    fig.text(0.01, 0.01, foot, fontsize=6.5, color="#444444")
     _branding_banner(fig, sim_dict.get("branding"))
     fig.tight_layout(rect=(0, 0.05, 1, 0.94 if sim_dict.get("branding") else 1))
     fig.savefig(out_path)
@@ -138,10 +162,18 @@ def scurve_figure(sim_dict: dict[str, Any], out_path: str) -> str:
 # ---------------------------------------------------------------------------
 # tornado_figure — top-N cruciality bars
 # ---------------------------------------------------------------------------
-def tornado_figure(sim_dict: dict[str, Any], out_path: str) -> str:
+def tornado_figure(sim_dict: dict[str, Any], out_path: str,
+                   damages: Optional[DamagesConfig] = None) -> str:
     """Top-N cruciality (duration-sensitivity) bars, each annotated with its
     criticality index.  ``tornado`` in the dict is already the top-N slice,
-    sorted descending by cruciality."""
+    sorted descending by cruciality.
+
+    ``damages`` (backlog S7) accepted for API consistency with the other SRA
+    figure; ``None`` (the default) reproduces a byte-identical PNG to before
+    this parameter existed.  Cruciality/criticality-index are dimensionless
+    sensitivity measures, not day deltas or dates, so no exposure axis
+    applies here — when ``damages`` is given, the footer says so explicitly
+    rather than silently ignoring the parameter."""
     rows = sim_dict.get("tornado") or []
     if not rows:
         reason = "no varying activities produced a cruciality ranking"
@@ -167,11 +199,13 @@ def tornado_figure(sim_dict: dict[str, Any], out_path: str) -> str:
                 fontsize=11, color="#222222", pad=12)
     _style(ax)
 
-    fig.text(0.01, 0.01,
-             "PRELIMINARY — cruciality is a diagnostic sensitivity measure, "
-             "not a criticality ranking on its own; criticality index (CI) is "
-             "shown per bar for context.  " + PRESENTATION_NOTE,
-             fontsize=6.5, color="#444444")
+    foot = ("PRELIMINARY — cruciality is a diagnostic sensitivity measure, "
+           "not a criticality ranking on its own; criticality index (CI) is "
+           "shown per bar for context.  " + PRESENTATION_NOTE)
+    if damages is not None:
+        foot += ("  No exposure axis applies to this figure — cruciality/CI "
+                "are dimensionless, not a day delta or a date.  " + STANDING_LABEL)
+    fig.text(0.01, 0.01, foot, fontsize=6.5, color="#444444", wrap=True)
     _branding_banner(fig, sim_dict.get("branding"))
     fig.tight_layout(rect=(0, 0.05, 1, 0.94 if sim_dict.get("branding") else 1))
     fig.savefig(out_path)

@@ -5,3 +5,32 @@
 DCMA-03: 10        # accept up to 10% lagged relationships on this matter
 DCMA-06: 10        # high-float population tolerance
 DAT-04: 30         # tighter data-date currency expectation (days)
+
+# ---------------------------------------------------------------------------
+# v0.4 run config (reserved top-level "config:" key; additive — a profile
+# with ONLY the flat "ID: threshold" lines above, and no config: section, is
+# entirely unaffected and behaves byte-for-byte as before).  Every sub-key is
+# optional; an absent block leaves that v0.4 analysis/artifact at its default
+# (damages/weather/corpus/TIA all off; cockpit ON; internal_workbook OFF).
+# Uncomment and edit the block below to opt in on a matter-by-matter basis.
+#
+# config:
+#   damages:                          # backlog S7 — exposure arithmetic only;
+#     ld_rate_per_day: 25000          # quantum/causation/entitlement remain
+#     contractual_completion: "2026-03-31"   # reserved to the expert.
+#     time_cost_per_day: 12000
+#     currency: USD
+#   weather:                          # backlog N1 — station history CSV
+#     station_csv: /path/to/ghcn_station.csv   # (GHCN-Daily by-station LONG
+#     sensitive_tags: [earthwork, excavat, concrete, roof]   # CSV; offline)
+#   corpus:                           # backlog S9 — benchmark-corpus context
+#     path: /path/to/matter_corpus.jsonl
+#     sector: process-plant
+#     record: false                   # true = ALSO persist this project's
+#                                      # anonymized outcomes (opt-in write —
+#                                      # never silent; CLAUDE.md §9)
+#   tia_events: /path/to/tia_events.csv   # backlog S6 — push-button TIA
+#   cockpit: true                     # backlog S8 — interactive network
+#                                      # cockpit HTML (default on)
+#   internal_workbook: false          # N16-N20 — LI-11..LI-15 provocative
+#                                      # indices; PRIVILEGED surface, opt-in

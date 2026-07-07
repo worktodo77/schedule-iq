@@ -1,4 +1,4 @@
-# ScheduleIQ — Session Handoff (2026-07-07, evening)
+# ScheduleIQ — Session Handoff (2026-07-07, late — v0.4.0 complete)
 
 For the next Claude session.  Read this file, then `docs/BACKLOG.md` (the
 to-do list of record).
@@ -27,9 +27,24 @@ number reproducible and cited.
 - Engine port source: `worktodo77/mip39-schedule-analysis-tool` (read-only
   reference; keep it in session scope for provenance questions).
 
-## 3. State at handoff — v0.3.0 complete (engine release)
+## 3. State at handoff — v0.3.0 AND v0.4.0 complete
 
-Everything below is DONE, tested (1,839 passed + 1 conditional skip;
+v0.4.0 (RJL's blanket approval of 2026-07-07, "build all items awaiting my
+call") added on top of v0.3.0: N16-N20 provocative indices LI-11..15
+(79-check matrix; privileged/internal surfaces only), S6 TIA workbench +
+ported collapse engine (MIP 3.6-3.9), S7 damages overlay, RC6 publication
+package (built/licensed/verified — THE PUBLIC PUSH IS THE ONE REMAINING
+HUMAN STEP), N1 weather overlay (offline GHCN), N2 work-pattern
+reconstruction, S5 editing-session forensics (+ ingest audit columns),
+F1 ribbon / F2 phase / F4 per-period compliance, F3 P6 XML (PMXML)
+ingestion + F5 MPXJ Asta/Phoenix, S8 self-contained HTML cockpit,
+S9 anonymized benchmark corpus, S10 offline duration priors (LLM
+narratives expressly out of scope), and the consolidated v0.4 wiring
+(profile `config:` schema, v04_analytics_supplement.xlsx, cockpit.html,
+opt-in INTERNAL_PRIVILEGED workbook, corpus record opt-in).
+Suite at v0.4.0: 2,062 passed + 2 conditional skips.
+
+v0.3.0 state (engine release; all still true, tested at 1,839 + 1 then;
 `PYTHONPATH=src python3 -m pytest tests/ -q` after
 `python3 tests/fixtures/make_fixtures.py`), committed, and pushed:
 
@@ -69,9 +84,9 @@ Everything below is DONE, tested (1,839 passed + 1 conditional skip;
 
 ## 4. Next work (in rough order)
 
-1. **RJL decisions** (do NOT build without approval): N16–N20 provocative
-   metrics; RC6 public spec publication; PARKED items (S5–S10, F1–F5,
-   N1–N2).  L3 (real-file validation) and L4 (release/installer) are RJL's.
+1. **RJL's own steps**: L3 real-file validation; L4 release/installer;
+   the RC6 public push (docs/public_spec is built and stamped READY).
+   Nothing remains PARKED except ideas not yet proposed.
 2. After L3: recalibrate FCBI/RDI absolute-day anchors in scorecard.yaml;
    run the handshake + engine analytics against the real matter series and
    review SET-02 rates (real P6 files will surface convention gaps the

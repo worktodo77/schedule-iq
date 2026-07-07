@@ -35,6 +35,13 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--responsibility", default=None,
                    help="responsibility-mapping CSV (pattern, scope [wbs|activity], "
                         "party) for the intake responsibility overlay")
+    a.add_argument("--no-cockpit", action="store_true",
+                   help="skip the interactive network cockpit HTML artifact "
+                        "(overrides --profile's config: {cockpit: true})")
+    a.add_argument("--internal-workbook", action="store_true",
+                   help="write the INTERNAL_PRIVILEGED_ workbook (LI-11..LI-15 "
+                        "provocative indices) — overrides --profile's config: "
+                        "{internal_workbook: false}")
 
     sub.add_parser("matrix", help="print the metric matrix")
     sub.add_parser("gui", help="launch the desktop application")
@@ -56,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     rr = run(ns.files, ns.out, profile=ns.profile, paper=ns.paper,
              make_pdf=not ns.no_pdf, benchmark=ns.benchmark,
              events_csv=ns.events, responsibility_csv=ns.responsibility,
+             no_cockpit=ns.no_cockpit, internal_workbook=ns.internal_workbook,
              progress=lambda m: print(f"  {m}"))
     print("\nOutputs:")
     for p in rr.outputs:

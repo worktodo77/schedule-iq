@@ -472,6 +472,136 @@ def _sra_section(sa: SeriesAnalysis, fig_dir: str) -> list[dict]:
         return []
 
 
+def _n1(x) -> str:
+    return "—" if x is None else (f"{x:.1f}" if isinstance(x, float) else str(x))
+
+
+def _pct1(x) -> str:
+    return "—" if x is None else f"{x:.0f}%"
+
+
+def _forensics_supplement_section(sa: SeriesAnalysis, weather: dict | None = None
+                                  ) -> list[dict]:
+    """SCHEDULE FORENSICS SUPPLEMENT (PRELIMINARY) — v0.4 wiring wave.
+
+    Short numbered paragraphs plus at most one table each, degrading to
+    nothing per part on any failure (same "never sinks a run" discipline as
+    ``_impact_section``/``_forensic_section``/``_sra_section``).  Weather is
+    the one part this function cannot recompute itself (it needs an
+    analyst-supplied station CSV path it has no access to), so it is passed
+    in already-computed (``analytics.weather.WeatherAnalysis.to_dict()``,
+    ``None`` when the overlay was not configured/run this pass); every other
+    part is computed fresh here, matching the established pattern.
+
+    DELIBERATELY EXCLUDES the LI-11..LI-15 provocative indices (SMI/DDI/ARR/
+    PPS/RSA) — ``analytics.li_provocative`` / ``analytics.li_wiring.
+    li_provocative_results`` are never imported or referenced here.  Those
+    five indices default to the PRIVILEGED/INTERNAL surface
+    (ANALYTICS_PROPOSAL §11; CLAUDE.md §7) and belong on the internal
+    workbook (``report.excel_v04.write_internal_workbook``) ONLY, never in
+    the standard report handed to a counterparty."""
+    body: list[dict] = []
+
+    # -- weather exhibit (only when the caller ran the overlay this pass) ----
+    if weather:
+        try:
+            rows = weather.get("weather_delay_exhibit") or []
+            if rows:
+                body.append({"type": "h3", "text": "Weather-Delay Exhibit"})
+                body.append({"type": "np", "text":
+                             "Weather-lost days for station "
+                             f"{weather.get('station') or '—'} are compared "
+                             f"against a {len(weather.get('norm_years') or [])}"
+                             "-year norm.  Exceedance is presented both ways "
+                             "(windows better than the norm are listed "
+                             "alongside abnormal ones); entitlement and "
+                             "causation are reserved to the expert."})
+                trows = [["Period", "Norm Lost (d)", "Actual Lost (d)",
+                         "Exceedance (d)", "Note"]]
+                for r in rows[:10]:
+                    trows.append([r.get("period"), _n1(r.get("norm_lost_days")),
+                                 _n1(r.get("actual_lost_days")),
+                                 _n1(r.get("exceedance_days")),
+                                 r.get("observational_note", "")])
+                body.append({"type": "table", "font_sz": 16, "rows": trows})
+        except Exception:
+            pass
+
+    # -- editing-session flag summary (§6.1) ----------------------------------
+    try:
+        if len(sa.schedules) >= 2:
+            from ..analytics.editsessions import mine_edit_sessions
+            es = mine_edit_sessions(sa.schedules)
+            summ = es.summary or {}
+            if summ.get("flagged_sessions"):
+                body.append({"type": "h3", "text": "Editing-Session Flags"})
+                body.append({"type": "np", "text":
+                             f"{summ.get('flagged_sessions')} of "
+                             f"{summ.get('sessions')} reconstructed editing "
+                             "session(s) from the P6 audit columns warrant "
+                             f"explanation ({summ.get('bulk_before_claim', 0)} "
+                             "bulk session(s) dated ahead of a claim/submission, "
+                             f"{summ.get('unusual_user', 0)} single-update "
+                             f"user(s), {summ.get('logic_with_actuals', 0)} "
+                             "session(s) where logic changed alongside newly "
+                             "entered actuals).  Every flag has an innocent "
+                             "explanation that must be checked against the "
+                             "contemporaneous record before any inference is "
+                             "drawn; none of the foregoing is a finding of "
+                             "manipulation."})
+        elif len(sa.schedules) == 1:
+            pass
+    except Exception:
+        pass
+
+    # -- compliance trend row (Fuse F4) ---------------------------------------
+    try:
+        if len(sa.schedules) >= 2:
+            from ..analytics.compliance import period_compliance
+            ca = period_compliance(sa.schedules)
+            if ca.windows:
+                latest = ca.windows[-1]
+                body.append({"type": "h3", "text": "Per-Period Start/Finish Compliance"})
+                body.append({"type": "np", "text":
+                             f"For the latest window ({latest.earlier_label} "
+                             f"→ {latest.later_label}), start compliance "
+                             f"(0-day tolerance) was "
+                             f"{_pct1(latest.start_compliance_pct_0d)}, finish "
+                             f"compliance (0-day tolerance) was "
+                             f"{_pct1(latest.finish_compliance_pct_0d)}, and "
+                             "commitment reliability (planned-to-start "
+                             f"activities that actually started in-window) was "
+                             f"{_pct1(latest.commitment_reliability_pct)}."})
+    except Exception:
+        pass
+
+    # -- Ribbon top/bottom groups (Fuse F1) -----------------------------------
+    try:
+        from ..analytics.ribbon import ribbon_analysis
+        ra = ribbon_analysis(sa.schedules[-1], sa.assessments[-1])
+        if ra.rows:
+            body.append({"type": "h3", "text": "Ribbon Analysis — WBS Quality Concentration"})
+            worst = ra.rows[:5]
+            best = list(reversed(ra.rows[-5:]))
+            body.append({"type": "np", "text":
+                         "Regrouping the latest update's offender findings by "
+                         "WBS branch, the lowest-scoring branches are "
+                         + "; ".join(f"{r.group_name} ({r.score:.0f}/100)"
+                                     for r in worst)
+                         + "; the highest-scoring are "
+                         + "; ".join(f"{r.group_name} ({r.score:.0f}/100)"
+                                     for r in best)
+                         + ".  A branch score is a triage aid pointing at "
+                           "where quality problems concentrate, not an "
+                           "opinion on that branch's adequacy."})
+    except Exception:
+        pass
+
+    if not body:
+        return []
+    return [{"type": "h2", "text": "SCHEDULE FORENSICS SUPPLEMENT (PRELIMINARY)"}] + body
+
+
 def _dt_str(iso) -> str:
     if not iso:
         return "—"
@@ -491,7 +621,7 @@ def _scenario_prose(scenario: str) -> str:
 
 
 def build_series_report(sa: SeriesAnalysis, out_docx: str,
-                        paper: str = "letter") -> str:
+                        paper: str = "letter", weather: dict | None = None) -> str:
     fig_dir = os.path.join(os.path.dirname(os.path.abspath(out_docx)), "figures")
     os.makedirs(fig_dir, exist_ok=True)
     run_dt = datetime.now()
@@ -514,12 +644,13 @@ def build_series_report(sa: SeriesAnalysis, out_docx: str,
         except Exception:
             pass
         blocks += _change_blocks(sa)
+    blocks += _forensics_supplement_section(sa, weather=weather)  # v0.4: never sinks a run
     blocks += _basis_blocks()
     return build_docx(blocks, out_docx, footnotes=FOOTNOTES, paper=paper)
 
 
 def build_single_report(a: ScheduleAssessment, out_docx: str,
-                        paper: str = "letter") -> str:
+                        paper: str = "letter", weather: dict | None = None) -> str:
     fig_dir = os.path.join(os.path.dirname(os.path.abspath(out_docx)), "figures")
     os.makedirs(fig_dir, exist_ok=True)
     sa = SeriesAnalysis(schedules=[a.schedule], assessments=[a])
@@ -540,5 +671,6 @@ def build_single_report(a: ScheduleAssessment, out_docx: str,
     blocks += _impact_section(sa, fig_dir)          # A3: never sinks a run
     blocks += _forensic_section(sa, fig_dir)        # D9/N3/N4: never sinks a run
     blocks += _sra_section(sa, fig_dir)             # M3: never sinks a run
+    blocks += _forensics_supplement_section(sa, weather=weather)  # v0.4: never sinks a run
     blocks += _basis_blocks()
     return build_docx(blocks, out_docx, footnotes=FOOTNOTES, paper=paper)

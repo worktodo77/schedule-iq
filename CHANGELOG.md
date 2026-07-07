@@ -124,7 +124,7 @@ matrix expanded to 74 checks (SET-02 added).
   run and the Word report with per-block refusal messages.  Suite: 1839
   tests + 1 skip.
 
-## 0.4.0 — 2026-07-07 (in progress)
+## 0.4.0 — 2026-07-07
 
 RJL approval of 2026-07-07 ("build all items awaiting my call") green-lit
 N16-N20, RC6 publication, and all PARKED items.  Check-affecting change:

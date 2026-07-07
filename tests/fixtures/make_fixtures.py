@@ -524,6 +524,263 @@ def build_cpm_fixtures() -> None:
     _write_cpm_xer(os.path.join(HERE, "demo_cpm_divergent.xer"), divergent)
 
 
+# ==========================================================================
+# Issue-impact fixture (ADR-0007 A2/A4/P5 — the impact.py analytics module).
+#
+# demo_impact.xer follows the SAME engine-of-record pattern as demo_cpm: a
+# placeholder file is written, parsed, run through the bridge+engine BASELINE
+# (constraints on, retained logic), and the engine's ES/EF/LS/LF/TF/FF are
+# written back as the stored tool-of-record values — so the ADR-0007 handshake
+# passes at 100% and the impact scenarios measure real diagnostic deltas.
+#
+# Topology (three chains merging into the finish milestone MS-IMP, plus two
+# genuinely open-ended incomplete activities), engineered so every impact
+# scenario has a NONZERO, mechanism-explained delta.  See the mechanism map in
+# tests/test_impact.py.  In one line each:
+#   * Chain A (IA30..IA60) is the sole baseline controller — NO date constraint
+#     sits on it, so both the out-of-sequence override and the lead-zeroing
+#     propagate cleanly to MS-IMP.  It carries the genuine OOS (IA40 started
+#     before its in-progress predecessor IA30 finished), a -16h lead
+#     (IA40->IA50) and a +80h lag (IA50->IA60, on the 7-day/10h calendar).
+#   * Chain B (IB10..IB20) has a very long true logic length but a MANDATORY
+#     FINISH pins IB20 far earlier than logic, hiding chain B below chain A in
+#     the baseline; releasing constraints lets chain B spring back PAST chain A,
+#     so MS-IMP moves LATER (a positive constraints-released delta — the classic
+#     "the Mandatory Finish was masking chain B" story).
+#   * Chain C (IC10..IC20) carries the SNET (holds IC15 beyond its logic date =>
+#     float absorbed) and the EXPECTED_FINISH (on IC20); it stays below chain A,
+#     so its per-constraint target deltas are ~0 (=> per-constraint deltas
+#     differ from chain B's).
+#   * ID10 (chain D, feeds MS-IMP) carries an SNLT whose date the schedule cannot
+#     meet (start no later than a date before the data date), so with constraints
+#     it has NEGATIVE total float (manufactured-critical) but positive float once
+#     released.  The SNLT is a late-side (backward) constraint, so it does not
+#     move MS-IMP's early finish and never masks the chain-A deltas.
+# ==========================================================================
+
+IMP_CAL_5D = "210"    # standard 5-day, 8h (default)
+IMP_CAL_7D = "211"    # 7-day, 10h (a non-dominant calendar)
+
+# (uid, code, name, xer_type, dur_workdays, cal)
+IMP_ACTS = [
+    (3000, "IMS-START", "Project Start",             "TT_Mile",    0,  IMP_CAL_5D),
+    (3010, "IA10", "Mobilization",                   "TT_Task",    5,  IMP_CAL_5D),
+    (3020, "IA20", "Earthworks",                     "TT_Task",    8,  IMP_CAL_5D),
+    (3030, "IA30", "Foundations (in progress)",      "TT_Task",    10, IMP_CAL_5D),
+    (3040, "IA40", "Steel Erection (OOS)",           "TT_Task",    8,  IMP_CAL_5D),
+    (3050, "IA50", "Cladding (7-day crew)",          "TT_Task",    8,  IMP_CAL_7D),
+    (3060, "IA60", "Fit-Out",                        "TT_Task",    10, IMP_CAL_5D),
+    (3070, "IB10", "Long-Lead Procurement",          "TT_Task",    30, IMP_CAL_5D),
+    (3075, "IB15", "Off-Site Fabrication",           "TT_Task",    25, IMP_CAL_5D),
+    (3080, "IB20", "Equipment Install (mand. fin.)", "TT_Task",    15, IMP_CAL_5D),
+    (3090, "IC10", "Commissioning Prep (in prog.)",  "TT_Task",    8,  IMP_CAL_5D),
+    (3095, "IC15", "System Integration (SNET)",      "TT_Task",    4,  IMP_CAL_5D),
+    (3100, "IC20", "Testing (expected finish)",      "TT_Task",    5,  IMP_CAL_5D),
+    (3110, "ID10", "Regulatory Submittal (SNLT)",    "TT_Task",    6,  IMP_CAL_5D),
+    (3120, "IE10", "Isolated Permitting (open end)", "TT_Task",    6,  IMP_CAL_5D),
+    (3130, "IE20", "Spare-Parts Storage (open end)", "TT_Task",    5,  IMP_CAL_5D),
+    (3200, "MS-IMP", "Mechanical Completion",        "TT_FinMile", 0,  IMP_CAL_5D),
+]
+
+# (pred, succ, xer_type, lag_hours)
+IMP_RELS = [
+    # chain A (sole baseline controller; no date constraint on it)
+    (3000, 3010, "PR_FS", 0),
+    (3010, 3020, "PR_FS", 0),
+    (3020, 3030, "PR_FS", 0),
+    (3030, 3040, "PR_FS", 0),      # OOS pair: IA40 started before IA30 finished
+    (3040, 3050, "PR_FS", -16),    # LEAD: -16h @ 8h/day (IA40 cal) -> -2 wd
+    (3050, 3060, "PR_FS", 80),     # LAG: +80h @ 10h/day (IA50 7-day cal) -> +8 wd
+    (3060, 3200, "PR_FS", 0),
+    # chain B (long true logic; MANDATORY FINISH hides it below chain A)
+    (3000, 3070, "PR_FS", 0),
+    (3070, 3075, "PR_FS", 0),
+    (3075, 3080, "PR_FS", 0),
+    (3080, 3200, "PR_FS", 0),
+    # chain C (SNET + EXPECTED_FINISH; stays below chain A)
+    (3000, 3090, "PR_FS", 0),
+    (3090, 3095, "PR_FS", 0),
+    (3095, 3100, "PR_FS", 0),
+    (3100, 3200, "PR_FS", 0),
+    # chain D (feeds MS-IMP; SNLT manufactures negative float off the early-date
+    # driving path)
+    (3010, 3110, "PR_FS", 0),
+    (3110, 3200, "PR_FS", 0),
+    # open ends (no forward path to MS-IMP)
+    (3000, 3120, "PR_FS", 0),
+    (3010, 3130, "PR_FS", 0),
+]
+
+IMP_DD = datetime(2025, 4, 14, 8, 0)     # data date, mid-project (a Monday)
+
+# Actuals (all before the data date).  Completed: IA10, IA20.
+# In progress: IA30 (foundations), IA40 (steel — OOS), IC10, IE20.
+IMP_ACTUALS = {
+    3010: (datetime(2025, 3, 3, 8, 0),  datetime(2025, 3, 7, 17, 0)),    # 5 wd
+    3020: (datetime(2025, 3, 10, 8, 0), datetime(2025, 3, 19, 17, 0)),   # 8 wd
+    3030: (datetime(2025, 3, 20, 8, 0), None),                           # in progress
+    3040: (datetime(2025, 4, 2, 8, 0),  None),                           # OOS (started
+    #      2025-04-02, before its in-progress predecessor IA30 will finish)
+    3090: (datetime(2025, 4, 7, 8, 0),  None),                           # in progress
+    3130: (datetime(2025, 4, 8, 8, 0),  None),                           # in progress
+}
+IMP_STATUS = {3010: "TK_Complete", 3020: "TK_Complete", 3030: "TK_Active",
+              3040: "TK_Active", 3090: "TK_Active", 3130: "TK_Active"}
+IMP_REMAIN_WD = {3030: 6, 3040: 6, 3090: 5, 3130: 3}     # remaining workdays
+
+# Constraints.  MANDATORY_FINISH on IB20 (early — masks chain B); SNET on IC15
+# (holds it beyond its logic date); EXPECTED_FINISH on IC20 (a not-started
+# activity, so the engine actually applies it — pinned activities ignore XF).
+IMP_CONSTRAINTS = {
+    3080: ("CS_MANDFIN", datetime(2025, 4, 25, 17, 0)),     # MF, early -> hides B
+    3095: ("CS_MSOA", datetime(2025, 5, 5, 8, 0)),          # SNET -> float absorbed
+    3110: ("CS_MSOB", datetime(2025, 3, 25, 8, 0)),         # SNLT, unmeetable ->
+    #      manufactured-critical (negative float with the constraint only)
+}
+IMP_EXPECT = {3100: datetime(2025, 5, 16, 17, 0)}           # EXPECTED_FINISH (XF)
+
+
+def _imp_hpd(cal: str) -> int:
+    return 10 if cal == IMP_CAL_7D else 8
+
+
+def _imp_common_tables(x: "Xer", dd: datetime) -> None:
+    x.table("CALENDAR",
+            ["clndr_id", "clndr_name", "clndr_type", "day_hr_cnt", "week_hr_cnt",
+             "default_flag", "clndr_data"],
+            [[IMP_CAL_5D, "IMP Standard 5-Day", "CA_Base", 8, 40, "Y", cal_blob_5d()],
+             [IMP_CAL_7D, "IMP 7-Day 10hr", "CA_Project", 10, 70, "N", cal_blob_7d()]])
+    x.table("PROJECT",
+            ["proj_id", "proj_short_name", "plan_start_date", "plan_end_date",
+             "scd_end_date", "last_recalc_date"],
+            [[1, "DEMO-IMPACT", dt(datetime(2025, 3, 3, 8, 0)),
+              dt(datetime(2025, 10, 1, 17, 0)), dt(datetime(2025, 9, 1, 17, 0)),
+              dt(dd)]])
+    # Retained logic; progress override off; critical-float threshold left empty
+    # (record does not assert per-activity criticality -> is_critical skipped in
+    # the compare, keeping the handshake plumbing clean).  Predecessor lag cal.
+    x.table("SCHEDOPTIONS",
+            ["schedoptions_id", "proj_id", "sched_retained_logic",
+             "sched_progress_override", "sched_open_critical_flag",
+             "sched_critical_float_hr_cnt", "sched_use_expect_end_flag",
+             "sched_calendar_on_relationship_lag"],
+            [[1, 1, "Y", "N", "N", "", "Y", "rcal_Predecessor"]])
+    x.table("PROJWBS",
+            ["wbs_id", "proj_id", "parent_wbs_id", "wbs_short_name", "wbs_name",
+             "proj_node_flag"],
+            [[40, 1, "", "IMP", "Impact Demo Project", "Y"]])
+
+
+def _imp_task_rows(stored: dict) -> list:
+    rows = []
+    for uid, code, name, ttype, dur, cal in IMP_ACTS:
+        hpd = _imp_hpd(cal)
+        od_h = dur * hpd
+        status = IMP_STATUS.get(uid, "TK_NotStart")
+        a_start, a_finish = IMP_ACTUALS.get(uid, (None, None))
+        if status == "TK_Complete":
+            rem_h, phys = 0, 100
+        elif status == "TK_Active":
+            rem_wd = IMP_REMAIN_WD.get(uid, dur)
+            rem_h = rem_wd * hpd
+            phys = int(round(100 * (1 - rem_wd / dur))) if dur else 0
+        else:
+            rem_h, phys = od_h, 0
+        sv = stored[uid]
+        cstr_t, cstr_d = IMP_CONSTRAINTS.get(uid, ("", None))
+        expect = IMP_EXPECT.get(uid)
+        rows.append([
+            uid, 1, 40, cal, code, name, ttype, status, od_h, rem_h,
+            dt(a_start), dt(a_finish),
+            _dtd(sv["es"]), _dtd(sv["ef"], finish=True),
+            _dtd(sv["ls"]), _dtd(sv["lf"], finish=True),
+            _dtd(sv["es"]), _dtd(sv["ef"], finish=True),
+            sv["tf_hr"], sv["ff_hr"],
+            cstr_t, dt(cstr_d), "", "", phys, "CP_Drtn", "", "", dt(expect),
+        ])
+    return rows
+
+
+def _write_imp_xer(path: str, stored: dict) -> None:
+    x = Xer()
+    _imp_common_tables(x, IMP_DD)
+    x.table("TASK", _CPM_TASK_FIELDS, _imp_task_rows(stored))
+    x.table("TASKPRED",
+            ["task_pred_id", "task_id", "pred_task_id", "pred_type", "lag_hr_cnt"],
+            [[i + 1, s, p, t, lag] for i, (p, s, t, lag) in enumerate(IMP_RELS)])
+    x.write(path)
+
+
+def _imp_run_once(stored_for_file: dict) -> dict:
+    """Write a temp impact XER carrying ``stored_for_file``, parse it, run the
+    bridge+engine BASELINE (constraints on, retained logic), and return the
+    engine's ES/EF/LS/LF/TF/FF per uid encoded for the XER fields."""
+    from scheduleiq.ingest import load
+    from scheduleiq.cpm.bridge import build_engine_inputs
+    from scheduleiq.cpm.engine import run_analysis
+
+    tmp = os.path.join(HERE, "_demo_impact_tmp.xer")
+    _write_imp_xer(tmp, stored_for_file)
+    try:
+        sched = load(tmp)[0]
+        ei = build_engine_inputs(sched)
+        result = run_analysis(
+            activities=ei.activities, relationships=ei.relationships,
+            project_start=ei.project_start, workday_table=ei.workday_table,
+            calendar=ei.calendar, convention=ei.convention,
+            calendar_registry=ei.calendar_registry, lag_strategy=ei.lag_strategy,
+            constraints=ei.constraints or None, statusing_mode=ei.statusing_mode,
+        )
+        if not result.is_valid:
+            issues = [i.issue_code for i in result.validation.issues if i.blocking]
+            raise RuntimeError(f"demo_impact engine run is invalid (blocking: {issues}); "
+                               "fixture network must be CPM-consistent.")
+        hpd_by_cal = {uid: _imp_hpd(cal) for uid, _c, _n, _t, _d, cal in IMP_ACTS}
+        stored = {}
+        for uid_int, _c, _n, _t, _d, _cal in IMP_ACTS:
+            sa = result.scheduled[str(uid_int)]
+            hpd = hpd_by_cal[uid_int]
+            stored[uid_int] = {
+                "es": sa.early_start, "ef": sa.early_finish,
+                "ls": sa.late_start, "lf": sa.late_finish,
+                "tf_hr": sa.total_float * hpd, "ff_hr": sa.free_float * hpd,
+            }
+        return stored
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def _imp_engine_stored_values() -> dict:
+    """Two-pass, so the stored values are self-consistent with the handshake.
+
+    The bridge sizes its workday tables from the DATES present in the parsed
+    file.  A placeholder file (no stored early/late dates) yields a narrower
+    range than the final file, and CROSS-CALENDAR free float is sensitive to
+    the table anchor — so a single placeholder pass leaves free float slightly
+    off (the handshake would then land below 100%).  The engine DATES are
+    range-independent, so pass 1 (from the placeholder) fixes the dates; pass 2
+    runs against a file already carrying those dates, giving the exact range the
+    handshake will see and thus range-consistent free floats.  A file written
+    with pass-2 values re-parses to the identical date range, so pass 2 is a
+    fixpoint (asserted below)."""
+    placeholder = {uid: {"es": None, "ef": None, "ls": None, "lf": None,
+                        "tf_hr": "", "ff_hr": ""} for uid, *_ in IMP_ACTS}
+    s1 = _imp_run_once(placeholder)     # correct dates (range-independent)
+    s2 = _imp_run_once(s1)              # correct range -> correct free float
+    s3 = _imp_run_once(s2)              # fixpoint check
+    if s2 != s3:
+        raise RuntimeError("demo_impact stored values did not reach a fixpoint; "
+                           "the fixture would not handshake at 100%.")
+    return s2
+
+
+def build_impact_fixture() -> None:
+    """Write demo_impact.xer (handshake 100%; the A2/A4/P5 impact fixture)."""
+    stored = _imp_engine_stored_values()
+    _write_imp_xer(os.path.join(HERE, "demo_impact.xer"), stored)
+
+
 def main():
     # Baseline: no progress, DD = project start
     build(os.path.join(HERE, "demo_baseline.xer"), dd=D0, pct={})
@@ -572,6 +829,8 @@ def main():
           extreme_float={1180: 400 * 8})           # DEFECT: absurd float (FLT-03)
     # CPM validation-handshake fixtures (ADR-0007 / SET-02) — additive.
     build_cpm_fixtures()
+    # Issue-impact fixture (ADR-0007 A2/A4/P5) — additive.
+    build_impact_fixture()
     print("fixtures written:", sorted(f for f in os.listdir(HERE) if f.endswith(".xer")))
 
 

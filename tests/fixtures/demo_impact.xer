@@ -1,0 +1,55 @@
+ERMHDR	19.12	2025-06-01	Project	admin	Admin User	dbxDatabaseNoName	Project Management	USD
+%T	CALENDAR
+%F	clndr_id	clndr_name	clndr_type	day_hr_cnt	week_hr_cnt	default_flag	clndr_data
+%R	210	IMP Standard 5-Day	CA_Base	8	40	Y	(0||CalendarData()((0||DaysOfWeek()((0||1()())(0||2()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||3()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||4()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||5()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||6()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||7()())))(0||Exceptions()((0||0(d|45658)())))))
+%R	211	IMP 7-Day 10hr	CA_Project	10	70	N	(0||CalendarData()((0||DaysOfWeek()((0||1()((0||0(s|07:00|f|17:00)())))(0||2()((0||0(s|07:00|f|17:00)())))(0||3()((0||0(s|07:00|f|17:00)())))(0||4()((0||0(s|07:00|f|17:00)())))(0||5()((0||0(s|07:00|f|17:00)())))(0||6()((0||0(s|07:00|f|17:00)())))(0||7()((0||0(s|07:00|f|17:00)())))))))
+%T	PROJECT
+%F	proj_id	proj_short_name	plan_start_date	plan_end_date	scd_end_date	last_recalc_date
+%R	1	DEMO-IMPACT	2025-03-03 08:00	2025-10-01 17:00	2025-09-01 17:00	2025-04-14 08:00
+%T	SCHEDOPTIONS
+%F	schedoptions_id	proj_id	sched_retained_logic	sched_progress_override	sched_open_critical_flag	sched_critical_float_hr_cnt	sched_use_expect_end_flag	sched_calendar_on_relationship_lag
+%R	1	1	Y	N	N		Y	rcal_Predecessor
+%T	PROJWBS
+%F	wbs_id	proj_id	parent_wbs_id	wbs_short_name	wbs_name	proj_node_flag
+%R	40	1		IMP	Impact Demo Project	Y
+%T	TASK
+%F	task_id	proj_id	wbs_id	clndr_id	task_code	task_name	task_type	status_code	target_drtn_hr_cnt	remain_drtn_hr_cnt	act_start_date	act_end_date	early_start_date	early_end_date	late_start_date	late_end_date	target_start_date	target_end_date	total_float_hr_cnt	free_float_hr_cnt	cstr_type	cstr_date	cstr_type2	cstr_date2	phys_complete_pct	complete_pct_type	suspend_date	resume_date	expect_end_date
+%R	3000	1	40	210	IMS-START	Project Start	TT_Mile	TK_NotStart	0	0			2025-04-14 08:00	2025-04-14 17:00	2025-01-17 08:00	2025-01-17 17:00	2025-04-14 08:00	2025-04-14 17:00	-488	-248					0	CP_Drtn			
+%R	3010	1	40	210	IA10	Mobilization	TT_Task	TK_Complete	40	0	2025-03-03 08:00	2025-03-07 17:00	2025-03-03 08:00	2025-03-07 17:00	2025-03-18 08:00	2025-03-24 17:00	2025-03-03 08:00	2025-03-07 17:00	88	0					100	CP_Drtn			
+%R	3020	1	40	210	IA20	Earthworks	TT_Task	TK_Complete	64	0	2025-03-10 08:00	2025-03-19 17:00	2025-03-10 08:00	2025-03-19 17:00	2025-03-25 08:00	2025-04-03 17:00	2025-03-10 08:00	2025-03-19 17:00	88	0					100	CP_Drtn			
+%R	3030	1	40	210	IA30	Foundations (in progress)	TT_Task	TK_Active	80	48	2025-03-20 08:00		2025-03-20 08:00	2025-04-21 17:00	2025-04-04 08:00	2025-05-06 17:00	2025-03-20 08:00	2025-04-21 17:00	88	-112					40	CP_Drtn			
+%R	3040	1	40	210	IA40	Steel Erection (OOS)	TT_Task	TK_Active	64	48	2025-04-02 08:00		2025-04-02 08:00	2025-04-29 17:00	2025-05-07 08:00	2025-06-03 17:00	2025-04-02 08:00	2025-04-29 17:00	200	376					25	CP_Drtn			
+%R	3050	1	40	211	IA50	Cladding (7-day crew)	TT_Task	TK_NotStart	80	80			2025-04-28 08:00	2025-05-05 17:00	2025-05-31 08:00	2025-06-07 17:00	2025-04-28 08:00	2025-05-05 17:00	330	-510					0	CP_Drtn			
+%R	3060	1	40	210	IA60	Fit-Out	TT_Task	TK_NotStart	80	80			2025-05-14 08:00	2025-05-27 17:00	2025-06-16 08:00	2025-06-27 17:00	2025-05-14 08:00	2025-05-27 17:00	184	0					0	CP_Drtn			
+%R	3070	1	40	210	IB10	Long-Lead Procurement	TT_Task	TK_NotStart	240	240			2025-04-15 08:00	2025-05-26 17:00	2025-01-20 08:00	2025-02-28 17:00	2025-04-15 08:00	2025-05-26 17:00	-488	0					0	CP_Drtn			
+%R	3075	1	40	210	IB15	Off-Site Fabrication	TT_Task	TK_NotStart	200	200			2025-05-27 08:00	2025-06-30 17:00	2025-03-03 08:00	2025-04-04 17:00	2025-05-27 08:00	2025-06-30 17:00	-488	-488					0	CP_Drtn			
+%R	3080	1	40	210	IB20	Equipment Install (mand. fin.)	TT_Task	TK_NotStart	120	120			2025-04-07 08:00	2025-04-25 17:00	2025-04-07 08:00	2025-04-25 17:00	2025-04-07 08:00	2025-04-25 17:00	0	176	CS_MANDFIN	2025-04-25 17:00			0	CP_Drtn			
+%R	3090	1	40	210	IC10	Commissioning Prep (in prog.)	TT_Task	TK_Active	64	40	2025-04-07 08:00		2025-04-07 08:00	2025-04-21 17:00	2025-05-30 08:00	2025-06-13 17:00	2025-04-07 08:00	2025-04-21 17:00	312	72					38	CP_Drtn			
+%R	3095	1	40	210	IC15	System Integration (SNET)	TT_Task	TK_NotStart	32	32			2025-05-05 08:00	2025-05-08 17:00	2025-06-16 08:00	2025-06-19 17:00	2025-05-05 08:00	2025-05-08 17:00	240	0	CS_MSOA	2025-05-05 08:00			0	CP_Drtn			
+%R	3100	1	40	210	IC20	Testing (expected finish)	TT_Task	TK_NotStart	40	40			2025-05-09 08:00	2025-05-16 17:00	2025-06-20 08:00	2025-06-27 17:00	2025-05-09 08:00	2025-05-16 17:00	240	56					0	CP_Drtn			2025-05-16 17:00
+%R	3110	1	40	210	ID10	Regulatory Submittal (SNLT)	TT_Task	TK_NotStart	48	48			2025-04-14 08:00	2025-04-21 17:00	2025-03-25 08:00	2025-04-01 17:00	2025-04-14 08:00	2025-04-21 17:00	-112	208	CS_MSOB	2025-03-25 08:00			0	CP_Drtn			
+%R	3120	1	40	210	IE10	Isolated Permitting (open end)	TT_Task	TK_NotStart	48	48			2025-04-15 08:00	2025-04-22 17:00	2025-06-23 08:00	2025-06-30 17:00	2025-04-15 08:00	2025-04-22 17:00	392	392					0	CP_Drtn			
+%R	3130	1	40	210	IE20	Spare-Parts Storage (open end)	TT_Task	TK_Active	40	24	2025-04-08 08:00		2025-04-08 08:00	2025-04-16 17:00	2025-06-20 08:00	2025-06-30 17:00	2025-04-08 08:00	2025-04-16 17:00	424	424					40	CP_Drtn			
+%R	3200	1	40	210	MS-IMP	Mechanical Completion	TT_FinMile	TK_NotStart	0	0			2025-05-28 08:00	2025-05-28 17:00	2025-06-30 08:00	2025-06-30 17:00	2025-05-28 08:00	2025-05-28 17:00	184	184					0	CP_Drtn			
+%T	TASKPRED
+%F	task_pred_id	task_id	pred_task_id	pred_type	lag_hr_cnt
+%R	1	3010	3000	PR_FS	0
+%R	2	3020	3010	PR_FS	0
+%R	3	3030	3020	PR_FS	0
+%R	4	3040	3030	PR_FS	0
+%R	5	3050	3040	PR_FS	-16
+%R	6	3060	3050	PR_FS	80
+%R	7	3200	3060	PR_FS	0
+%R	8	3070	3000	PR_FS	0
+%R	9	3075	3070	PR_FS	0
+%R	10	3080	3075	PR_FS	0
+%R	11	3200	3080	PR_FS	0
+%R	12	3090	3000	PR_FS	0
+%R	13	3095	3090	PR_FS	0
+%R	14	3100	3095	PR_FS	0
+%R	15	3200	3100	PR_FS	0
+%R	16	3110	3010	PR_FS	0
+%R	17	3200	3110	PR_FS	0
+%R	18	3120	3000	PR_FS	0
+%R	19	3130	3010	PR_FS	0
+%E

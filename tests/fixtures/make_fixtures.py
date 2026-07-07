@@ -781,6 +781,276 @@ def build_impact_fixture() -> None:
     _write_imp_xer(os.path.join(HERE, "demo_impact.xer"), stored)
 
 
+# ==========================================================================
+# MIP 3.4 half-step fixture pair (backlog D9 — analytics/halfstep.py).
+#
+# demo_hs1.xer / demo_hs2.xer are TWO consecutive updates of one project,
+# each built with the SAME engine-of-record two-pass pattern as demo_impact
+# (stored tool-of-record values produced by the ported engine, so BOTH files
+# handshake at 100%).  Single 5-day/8h calendar so every asserted delta is
+# clean workday arithmetic.
+#
+# Designed mechanisms (each asserted in tests/test_halfstep.py):
+#
+#   PROGRESS (hs1 -> hs2, overlaid onto hs1's network = the half-step H):
+#     * HA30 Foundations finished LATE: hs1 forecast EF 2025-04-11 (RD 5 at
+#       DD 2025-04-07); hs2 actual finish 2025-04-18 (5 wd slow).
+#     * HA40 Steel started late (AS 2025-04-21) and still carries RD 4 at the
+#       hs2 DD 2025-05-05 — the chain-P slip drives MS-HS from the E_n engine
+#       EF 2025-05-28 to the half-step EF 2025-06-10: progress_effect = +9 wd.
+#     * Chain Q progressed roughly to plan (HB10, HB15 complete).
+#
+#   REVISIONS (hs2's network vs hs1's — the named attribution classes, each
+#   re-applied ALONE on top of H; deltas at MS-HS on the 5-day calendar):
+#     * logic_added   — new tie HB20 -> HA50 (FS): the envelope now waits for
+#       equipment install ("reroute": part of the path now runs through chain
+#       Q).  Alone on H: HA50 ES 2025-05-09 -> 2025-05-19 => +6 wd.
+#     * logic_deleted — the old tie HB20 -> HA70 (FS) is removed (the other
+#       half of the reroute).  It was NOT binding in H (chain Q float) => 0 wd
+#       — a genuine revision whose isolated effect is honestly zero.
+#     * duration_changed — HA50 Envelope OD 8 -> 12 wd (scope growth on the
+#       controlling chain).  Alone on H: +4 wd.
+#     * constraint_changed — SNET 2025-05-26 added on HA60 Fit-Out.  Alone on
+#       H (HA60 ES 2025-05-21): +3 wd.  In the FULL hs2 network the other
+#       revisions push HA60 past the SNET, so the constraint contributes
+#       nothing to E_n1 — the designed INTERACTION that makes the attribution
+#       residual nonzero (sum of classes +21 vs revision_effect +18 => -3).
+#     * new_activities — HD10 "Owner Change – Additional Testing" (8 wd)
+#       inserted HA60 -> HD10 -> HA70 (its incident ties are attributed to
+#       this class, not to logic_added).  Alone on H: +8 wd.
+#     * deleted_activities — HX10 Temporary Works (3 wd, high float, present
+#       only in hs1) is descoped in hs2; its removal is off-path => 0 wd, and
+#       in the half-step it keeps hs1's unprogressed state (disclosed).
+#
+#   IDENTITY (exact by construction, asserted): total = progress + revision;
+#   E_n MS-HS 2025-05-28, H 2025-06-10, E_n1 2025-07-04 => +9 / +18 / +27 wd.
+# ==========================================================================
+
+HS_CAL_5D = "230"    # the pair's single calendar: standard 5-day, 8h
+
+# (uid, code, name, xer_type, dur_workdays)
+HS_ACTS_1 = [
+    (4000, "HMS-START", "Project Start",            "TT_Mile",    0),
+    (4010, "HA10", "Mobilization",                  "TT_Task",    5),
+    (4020, "HA20", "Groundworks",                   "TT_Task",   10),
+    (4030, "HA30", "Foundations",                   "TT_Task",   10),
+    (4040, "HA40", "Steel Erection",                "TT_Task",   10),
+    (4050, "HA50", "Envelope",                      "TT_Task",    8),
+    (4060, "HA60", "Fit-Out",                       "TT_Task",   10),
+    (4070, "HA70", "Commissioning",                 "TT_Task",    5),
+    (4100, "HB10", "Procurement",                   "TT_Task",   20),
+    (4105, "HB15", "Fabrication",                   "TT_Task",    8),
+    (4110, "HB20", "Equipment Install",             "TT_Task",   10),
+    (4120, "HC10", "Landscaping",                   "TT_Task",    6),
+    (4130, "HC20", "Signage",                       "TT_Task",    4),
+    (4150, "HX10", "Temporary Works",               "TT_Task",    3),
+    (4200, "MS-HS", "Mechanical Completion",        "TT_FinMile", 0),
+]
+
+# hs2: HX10 descoped (deleted); HD10 added (owner change order); HA50 OD 8->12.
+HS_ACTS_2 = ([a for a in HS_ACTS_1 if a[0] not in (4050, 4150)]
+             + [(4050, "HA50", "Envelope", "TT_Task", 12),
+                (4140, "HD10", "Owner Change - Additional Testing", "TT_Task", 8)])
+
+# (pred, succ, xer_type, lag_hours)
+HS_RELS_1 = [
+    # chain P — the controlling chain to MS-HS
+    (4000, 4010, "PR_FS", 0),
+    (4010, 4020, "PR_FS", 0),
+    (4020, 4030, "PR_FS", 0),
+    (4030, 4040, "PR_FS", 0),
+    (4040, 4050, "PR_FS", 0),
+    (4050, 4060, "PR_FS", 0),
+    (4060, 4070, "PR_FS", 0),
+    (4070, 4200, "PR_FS", 0),
+    # chain Q — procurement/equipment, modest float
+    (4000, 4100, "PR_FS", 0),
+    (4100, 4105, "PR_FS", 0),
+    (4105, 4110, "PR_FS", 0),
+    (4110, 4070, "PR_FS", 0),
+    # chain R — high float
+    (4010, 4120, "PR_FS", 0),
+    (4120, 4130, "PR_FS", 0),
+    (4130, 4200, "PR_FS", 0),
+    # HX10 — off-path temporary works (deleted in hs2)
+    (4010, 4150, "PR_FS", 0),
+]
+
+HS_RELS_2 = ([r for r in HS_RELS_1
+              if r[:2] not in ((4110, 4070),      # logic_deleted (reroute, half 2)
+                               (4010, 4150))]     # goes with the deleted HX10
+             + [(4110, 4050, "PR_FS", 0),         # logic_added (reroute, half 1)
+                (4060, 4140, "PR_FS", 0),         # new-activity ties (HD10)
+                (4140, 4070, "PR_FS", 0)])
+
+HS1_DD = datetime(2025, 4, 7, 8, 0)    # data date, early project (a Monday)
+HS2_DD = datetime(2025, 5, 5, 8, 0)    # one reporting period later (a Monday)
+
+# hs1 progress: HA10/HA20 complete on plan; HA30 + HB10 in progress on plan.
+HS1_ACTUALS = {
+    4010: (datetime(2025, 3, 3, 8, 0),  datetime(2025, 3, 7, 17, 0)),    # 5 wd
+    4020: (datetime(2025, 3, 10, 8, 0), datetime(2025, 3, 21, 17, 0)),   # 10 wd
+    4030: (datetime(2025, 3, 24, 8, 0), None),                           # in prog
+    4100: (datetime(2025, 3, 3, 8, 0),  None),                           # in prog
+}
+HS1_STATUS = {4010: "TK_Complete", 4020: "TK_Complete",
+              4030: "TK_Active", 4100: "TK_Active"}
+HS1_REMAIN_WD = {4030: 5, 4100: 4}
+HS1_CONSTRAINTS: dict = {}
+
+# hs2 progress: HA30 finished LATE (2025-04-18 vs the 2025-04-11 forecast);
+# HA40 started late and is mid-flight; chain Q complete through HB15.
+HS2_ACTUALS = {
+    4010: (datetime(2025, 3, 3, 8, 0),  datetime(2025, 3, 7, 17, 0)),
+    4020: (datetime(2025, 3, 10, 8, 0), datetime(2025, 3, 21, 17, 0)),
+    4030: (datetime(2025, 3, 24, 8, 0), datetime(2025, 4, 18, 17, 0)),   # SLOW
+    4040: (datetime(2025, 4, 21, 8, 0), None),                           # in prog
+    4100: (datetime(2025, 3, 3, 8, 0),  datetime(2025, 4, 10, 17, 0)),
+    4105: (datetime(2025, 4, 11, 8, 0), datetime(2025, 4, 22, 17, 0)),
+}
+HS2_STATUS = {4010: "TK_Complete", 4020: "TK_Complete", 4030: "TK_Complete",
+              4040: "TK_Active", 4100: "TK_Complete", 4105: "TK_Complete"}
+HS2_REMAIN_WD = {4040: 4}
+HS2_CONSTRAINTS = {4060: ("CS_MSOA", datetime(2025, 5, 26, 8, 0))}   # SNET added
+
+
+def _hs_common_tables(x: "Xer", dd: datetime) -> None:
+    x.table("CALENDAR",
+            ["clndr_id", "clndr_name", "clndr_type", "day_hr_cnt", "week_hr_cnt",
+             "default_flag", "clndr_data"],
+            [[HS_CAL_5D, "HS Standard 5-Day", "CA_Base", 8, 40, "Y", cal_blob_5d()]])
+    x.table("PROJECT",
+            ["proj_id", "proj_short_name", "plan_start_date", "plan_end_date",
+             "scd_end_date", "last_recalc_date"],
+            [[1, "DEMO-HS", dt(datetime(2025, 3, 3, 8, 0)),
+              dt(datetime(2025, 9, 1, 17, 0)), dt(datetime(2025, 8, 1, 17, 0)),
+              dt(dd)]])
+    # Retained logic; progress override off; critical-float threshold left empty
+    # (record does not assert per-activity criticality); predecessor lag cal —
+    # same plumbing choices as the demo_cpm/demo_impact fixtures.
+    x.table("SCHEDOPTIONS",
+            ["schedoptions_id", "proj_id", "sched_retained_logic",
+             "sched_progress_override", "sched_open_critical_flag",
+             "sched_critical_float_hr_cnt", "sched_use_expect_end_flag",
+             "sched_calendar_on_relationship_lag"],
+            [[1, 1, "Y", "N", "N", "", "N", "rcal_Predecessor"]])
+    x.table("PROJWBS",
+            ["wbs_id", "proj_id", "parent_wbs_id", "wbs_short_name", "wbs_name",
+             "proj_node_flag"],
+            [[50, 1, "", "HS", "Half-Step Demo Project", "Y"]])
+
+
+def _hs_task_rows(acts, stored, status_map, actuals, remain_wd, constraints) -> list:
+    rows = []
+    for uid, code, name, ttype, dur in acts:
+        od_h = dur * 8
+        status = status_map.get(uid, "TK_NotStart")
+        a_start, a_finish = actuals.get(uid, (None, None))
+        if status == "TK_Complete":
+            rem_h, phys = 0, 100
+        elif status == "TK_Active":
+            rem = remain_wd.get(uid, dur)
+            rem_h = rem * 8
+            phys = int(round(100 * (1 - rem / dur))) if dur else 0
+        else:
+            rem_h, phys = od_h, 0
+        sv = stored[uid]
+        cstr_t, cstr_d = constraints.get(uid, ("", None))
+        rows.append([
+            uid, 1, 50, HS_CAL_5D, code, name, ttype, status, od_h, rem_h,
+            dt(a_start), dt(a_finish),
+            _dtd(sv["es"]), _dtd(sv["ef"], finish=True),
+            _dtd(sv["ls"]), _dtd(sv["lf"], finish=True),
+            _dtd(sv["es"]), _dtd(sv["ef"], finish=True),
+            sv["tf_hr"], sv["ff_hr"],
+            cstr_t, dt(cstr_d), "", "", phys, "CP_Drtn", "", "", "",
+        ])
+    return rows
+
+
+_HS_CFGS = {
+    "hs1": dict(acts=HS_ACTS_1, rels=HS_RELS_1, dd=HS1_DD, actuals=HS1_ACTUALS,
+                status=HS1_STATUS, remain=HS1_REMAIN_WD,
+                constraints=HS1_CONSTRAINTS),
+    "hs2": dict(acts=HS_ACTS_2, rels=HS_RELS_2, dd=HS2_DD, actuals=HS2_ACTUALS,
+                status=HS2_STATUS, remain=HS2_REMAIN_WD,
+                constraints=HS2_CONSTRAINTS),
+}
+
+
+def _write_hs_xer(path: str, cfg: dict, stored: dict) -> None:
+    x = Xer()
+    _hs_common_tables(x, cfg["dd"])
+    x.table("TASK", _CPM_TASK_FIELDS,
+            _hs_task_rows(cfg["acts"], stored, cfg["status"], cfg["actuals"],
+                          cfg["remain"], cfg["constraints"]))
+    x.table("TASKPRED",
+            ["task_pred_id", "task_id", "pred_task_id", "pred_type", "lag_hr_cnt"],
+            [[i + 1, s, p, t, lag] for i, (p, s, t, lag) in enumerate(cfg["rels"])])
+    x.write(path)
+
+
+def _hs_run_once(cfg: dict, stored_for_file: dict) -> dict:
+    """Write a temp half-step XER carrying ``stored_for_file``, parse it, run the
+    bridge+engine baseline, and return ES/EF/LS/LF/TF/FF per uid (same
+    engine-of-record plumbing as _imp_run_once)."""
+    from scheduleiq.ingest import load
+    from scheduleiq.cpm.bridge import build_engine_inputs
+    from scheduleiq.cpm.engine import run_analysis
+
+    tmp = os.path.join(HERE, "_demo_hs_tmp.xer")
+    _write_hs_xer(tmp, cfg, stored_for_file)
+    try:
+        sched = load(tmp)[0]
+        ei = build_engine_inputs(sched)
+        result = run_analysis(
+            activities=ei.activities, relationships=ei.relationships,
+            project_start=ei.project_start, workday_table=ei.workday_table,
+            calendar=ei.calendar, convention=ei.convention,
+            calendar_registry=ei.calendar_registry, lag_strategy=ei.lag_strategy,
+            constraints=ei.constraints or None, statusing_mode=ei.statusing_mode,
+        )
+        if not result.is_valid:
+            issues = [i.issue_code for i in result.validation.issues if i.blocking]
+            raise RuntimeError(f"demo_hs engine run is invalid (blocking: {issues}); "
+                               "fixture network must be CPM-consistent.")
+        stored = {}
+        for uid_int, _c, _n, _t, _d in cfg["acts"]:
+            sa = result.scheduled[str(uid_int)]
+            stored[uid_int] = {
+                "es": sa.early_start, "ef": sa.early_finish,
+                "ls": sa.late_start, "lf": sa.late_finish,
+                "tf_hr": sa.total_float * 8, "ff_hr": sa.free_float * 8,
+            }
+        return stored
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def _hs_engine_stored_values(cfg: dict) -> dict:
+    """Two-pass + fixpoint check, exactly like _imp_engine_stored_values (the
+    workday-table range depends on the dates written into the file, and free
+    float is range-sensitive across tables)."""
+    placeholder = {uid: {"es": None, "ef": None, "ls": None, "lf": None,
+                        "tf_hr": "", "ff_hr": ""} for uid, *_ in cfg["acts"]}
+    s1 = _hs_run_once(cfg, placeholder)
+    s2 = _hs_run_once(cfg, s1)
+    s3 = _hs_run_once(cfg, s2)
+    if s2 != s3:
+        raise RuntimeError("demo_hs stored values did not reach a fixpoint; "
+                           "the fixture would not handshake at 100%.")
+    return s2
+
+
+def build_halfstep_fixtures() -> None:
+    """Write demo_hs1.xer + demo_hs2.xer (both handshake at 100%; the MIP 3.4
+    half-step update pair)."""
+    for name, cfg in _HS_CFGS.items():
+        stored = _hs_engine_stored_values(cfg)
+        _write_hs_xer(os.path.join(HERE, f"demo_{name}.xer"), cfg, stored)
+
+
 def main():
     # Baseline: no progress, DD = project start
     build(os.path.join(HERE, "demo_baseline.xer"), dd=D0, pct={})
@@ -831,6 +1101,8 @@ def main():
     build_cpm_fixtures()
     # Issue-impact fixture (ADR-0007 A2/A4/P5) — additive.
     build_impact_fixture()
+    # MIP 3.4 half-step update pair (D9) — additive.
+    build_halfstep_fixtures()
     print("fixtures written:", sorted(f for f in os.listdir(HERE) if f.endswith(".xer")))
 
 

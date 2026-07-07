@@ -56,7 +56,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | D6 | Delay-event mapper (CSV events → activities → fragnet candidates) | DONE (v0.2 wave 2) |
 | D7 | Responsibility overlay (Owner/Contractor/Neutral tagging; aggregation only) | DONE (v0.2 wave 2) |
 | D8 | Evergreen-activity detector (percent-creep without RD/date movement) | DONE (v0.2 wave 2) |
-| D9 | MIP 3.4 half-step engine: per-window progress-vs-revision bifurcation with named revision attribution; MIP 3.3 as-is tables | APPROVED (needs E1) |
+| D9 | MIP 3.4 half-step engine: per-window progress-vs-revision bifurcation with named revision attribution; MIP 3.3 as-is tables | DONE (v0.3) |
 
 ## 5. New matrix checks (§3.3)
 

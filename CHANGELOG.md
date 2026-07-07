@@ -88,3 +88,9 @@ matrix expanded to 74 checks (SET-02 added).
   diagnostic waterfall one-pager + impact workbook + as-built figure, wired
   into the run (handshake-gated; refusal reported, never an error) and the
   Word report.  All engine numbers labelled diagnostic deltas (ADR-0007).
+- D9 MIP 3.4 half-step engine: per-update-pair bifurcation of milestone
+  movement into progress vs revision effects (identity exact by
+  construction), NAMED revision attribution from the change register
+  (per-class re-application with an honestly reported interaction residual,
+  top movers per class), progress contributors, MIP 3.3 as-is row;
+  handshake-gated; new engine-consistent fixture pair demo_hs1/demo_hs2.

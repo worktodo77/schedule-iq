@@ -1,0 +1,49 @@
+ERMHDR	19.12	2025-06-01	Project	admin	Admin User	dbxDatabaseNoName	Project Management	USD
+%T	CALENDAR
+%F	clndr_id	clndr_name	clndr_type	day_hr_cnt	week_hr_cnt	default_flag	clndr_data
+%R	230	HS Standard 5-Day	CA_Base	8	40	Y	(0||CalendarData()((0||DaysOfWeek()((0||1()())(0||2()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||3()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||4()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||5()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||6()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||7()())))(0||Exceptions()((0||0(d|45658)())))))
+%T	PROJECT
+%F	proj_id	proj_short_name	plan_start_date	plan_end_date	scd_end_date	last_recalc_date
+%R	1	DEMO-HS	2025-03-03 08:00	2025-09-01 17:00	2025-08-01 17:00	2025-04-07 08:00
+%T	SCHEDOPTIONS
+%F	schedoptions_id	proj_id	sched_retained_logic	sched_progress_override	sched_open_critical_flag	sched_critical_float_hr_cnt	sched_use_expect_end_flag	sched_calendar_on_relationship_lag
+%R	1	1	Y	N	N		N	rcal_Predecessor
+%T	PROJWBS
+%F	wbs_id	proj_id	parent_wbs_id	wbs_short_name	wbs_name	proj_node_flag
+%R	50	1		HS	Half-Step Demo Project	Y
+%T	TASK
+%F	task_id	proj_id	wbs_id	clndr_id	task_code	task_name	task_type	status_code	target_drtn_hr_cnt	remain_drtn_hr_cnt	act_start_date	act_end_date	early_start_date	early_end_date	late_start_date	late_end_date	target_start_date	target_end_date	total_float_hr_cnt	free_float_hr_cnt	cstr_type	cstr_date	cstr_type2	cstr_date2	phys_complete_pct	complete_pct_type	suspend_date	resume_date	expect_end_date
+%R	4000	1	50	230	HMS-START	Project Start	TT_Mile	TK_NotStart	0	0			2025-04-07 08:00	2025-04-07 17:00	2025-03-14 08:00	2025-03-14 17:00	2025-04-07 08:00	2025-04-07 17:00	-128	-208					0	CP_Drtn			
+%R	4010	1	50	230	HA10	Mobilization	TT_Task	TK_Complete	40	0	2025-03-03 08:00	2025-03-07 17:00	2025-03-03 08:00	2025-03-07 17:00	2025-05-08 08:00	2025-05-14 17:00	2025-03-03 08:00	2025-03-07 17:00	384	0					100	CP_Drtn			
+%R	4020	1	50	230	HA20	Groundworks	TT_Task	TK_Complete	80	0	2025-03-10 08:00	2025-03-21 17:00	2025-03-10 08:00	2025-03-21 17:00	2025-03-10 08:00	2025-03-21 17:00	2025-03-10 08:00	2025-03-21 17:00	0	0					100	CP_Drtn			
+%R	4030	1	50	230	HA30	Foundations	TT_Task	TK_Active	80	40	2025-03-24 08:00		2025-03-24 08:00	2025-04-11 17:00	2025-03-24 08:00	2025-04-11 17:00	2025-03-24 08:00	2025-04-11 17:00	0	0					50	CP_Drtn			
+%R	4040	1	50	230	HA40	Steel Erection	TT_Task	TK_NotStart	80	80			2025-04-14 08:00	2025-04-25 17:00	2025-04-14 08:00	2025-04-25 17:00	2025-04-14 08:00	2025-04-25 17:00	0	0					0	CP_Drtn			
+%R	4050	1	50	230	HA50	Envelope	TT_Task	TK_NotStart	64	64			2025-04-28 08:00	2025-05-07 17:00	2025-04-28 08:00	2025-05-07 17:00	2025-04-28 08:00	2025-05-07 17:00	0	0					0	CP_Drtn			
+%R	4060	1	50	230	HA60	Fit-Out	TT_Task	TK_NotStart	80	80			2025-05-08 08:00	2025-05-21 17:00	2025-05-08 08:00	2025-05-21 17:00	2025-05-08 08:00	2025-05-21 17:00	0	0					0	CP_Drtn			
+%R	4070	1	50	230	HA70	Commissioning	TT_Task	TK_NotStart	40	40			2025-05-22 08:00	2025-05-28 17:00	2025-05-22 08:00	2025-05-28 17:00	2025-05-22 08:00	2025-05-28 17:00	0	0					0	CP_Drtn			
+%R	4100	1	50	230	HB10	Procurement	TT_Task	TK_Active	160	32	2025-03-03 08:00		2025-03-03 08:00	2025-04-11 17:00	2025-03-17 08:00	2025-04-25 17:00	2025-03-03 08:00	2025-04-11 17:00	80	0					80	CP_Drtn			
+%R	4105	1	50	230	HB15	Fabrication	TT_Task	TK_NotStart	64	64			2025-04-14 08:00	2025-04-23 17:00	2025-04-28 08:00	2025-05-07 17:00	2025-04-14 08:00	2025-04-23 17:00	80	0					0	CP_Drtn			
+%R	4110	1	50	230	HB20	Equipment Install	TT_Task	TK_NotStart	80	80			2025-04-24 08:00	2025-05-07 17:00	2025-05-08 08:00	2025-05-21 17:00	2025-04-24 08:00	2025-05-07 17:00	80	80					0	CP_Drtn			
+%R	4120	1	50	230	HC10	Landscaping	TT_Task	TK_NotStart	48	48			2025-04-07 08:00	2025-04-14 17:00	2025-05-15 08:00	2025-05-22 17:00	2025-04-07 08:00	2025-04-14 17:00	224	0					0	CP_Drtn			
+%R	4130	1	50	230	HC20	Signage	TT_Task	TK_NotStart	32	32			2025-04-15 08:00	2025-04-18 17:00	2025-05-23 08:00	2025-05-28 17:00	2025-04-15 08:00	2025-04-18 17:00	224	224					0	CP_Drtn			
+%R	4150	1	50	230	HX10	Temporary Works	TT_Task	TK_NotStart	24	24			2025-04-07 08:00	2025-04-09 17:00	2025-05-27 08:00	2025-05-29 17:00	2025-04-07 08:00	2025-04-09 17:00	288	288					0	CP_Drtn			
+%R	4200	1	50	230	MS-HS	Mechanical Completion	TT_FinMile	TK_NotStart	0	0			2025-05-29 08:00	2025-05-29 17:00	2025-05-29 08:00	2025-05-29 17:00	2025-05-29 08:00	2025-05-29 17:00	0	0					0	CP_Drtn			
+%T	TASKPRED
+%F	task_pred_id	task_id	pred_task_id	pred_type	lag_hr_cnt
+%R	1	4010	4000	PR_FS	0
+%R	2	4020	4010	PR_FS	0
+%R	3	4030	4020	PR_FS	0
+%R	4	4040	4030	PR_FS	0
+%R	5	4050	4040	PR_FS	0
+%R	6	4060	4050	PR_FS	0
+%R	7	4070	4060	PR_FS	0
+%R	8	4200	4070	PR_FS	0
+%R	9	4100	4000	PR_FS	0
+%R	10	4105	4100	PR_FS	0
+%R	11	4110	4105	PR_FS	0
+%R	12	4070	4110	PR_FS	0
+%R	13	4120	4010	PR_FS	0
+%R	14	4130	4120	PR_FS	0
+%R	15	4200	4130	PR_FS	0
+%R	16	4150	4010	PR_FS	0
+%E

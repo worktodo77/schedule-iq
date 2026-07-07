@@ -854,6 +854,21 @@ checks:
       - "AACE29R §2.2 (update validation)"
     fuse_equivalent: ""
     applies_to: series
+  - id: SET-02
+    name: "Engine match rate (validation handshake)"
+    category: "Trend & Change (series)"
+    description: "The ADR-0007 diagnostic CPM engine re-schedules the file exactly as imported (actual-date-anchored, honoring its date constraints and scheduling options) and its computed dates/floats are compared to the tool-of-record values stored in the file.  The match rate is reported; below the threshold, engine-dependent features refuse to run and the mismatches are listed.  Diagnostic only: it measures the ported engine's fidelity to the schedule of record, not a defect in the schedule itself."
+    formula: "population = real activities present in both the engine result and the record; match = an activity whose every compared field is within tolerance (CALENDAR_AWARE: dates within +-1 calendar day — LIM-044 carried; floats within +-1 workday); value = 100 x matched / population.  When the network fails the engine's validator, the handshake is a fail with value 0 and the blocking issues listed."
+    unit: percent
+    threshold: 99
+    direction: min
+    severity: info
+    references:
+      - "AACE29R §2.1-2.3 (source validation discipline)"
+      - "SCL Protocol 2nd ed. (reliance on the schedule of record)"
+    fuse_equivalent: ""
+    applies_to: file
+    notes: "Tool-of-record dates remain the schedule; engine output is diagnostic only (ADR-0007).  Refusal gate for engine-dependent features."
   - id: CAL-04
     name: "Calendar definition changes between updates"
     category: "Trend & Change (series)"

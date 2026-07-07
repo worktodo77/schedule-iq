@@ -64,8 +64,18 @@ it defensible.
 
 ## 7. Known limitations (disclose when relevant)
 
-- No CPM engine: float/dates are analyzed as computed by the tool of record
-  (ADR-0004); multi-calendar float caveats are flagged by CP-01/CAL-02.
+- Diagnostic CPM engine (ADR-0007, supersedes the ADR-0004 "no CPM engine"
+  disclosure): a firm-owned CPM core is ported as `scheduleiq.cpm` and used only
+  as a **diagnostic**.  The tool-of-record dates and float stored in the file
+  remain the only values reported as *the schedule*; engine output is always a
+  labelled diagnostic delta, never a competing schedule.  Before any
+  engine-dependent feature runs, the engine re-schedules the file as imported
+  (actual-date-anchored, honoring its date constraints and scheduling options)
+  and its computed dates/floats are compared to the record — check **SET-02**
+  (the validation handshake).  Below the configured threshold (default 99%),
+  SET-02 gates: engine-dependent features refuse to run and the mismatches are
+  listed.  DCMA-12's float-walk stays as the no-engine fallback and cross-check;
+  multi-calendar float caveats are flagged by CP-01/CAL-02.
 - Baseline-dependent checks (DCMA-11/13/14, Hit Task %) use the file's
   planned/baseline dates; if the XER lacks a linked baseline, the planned
   (target) dates stand in and the report says so via the matrix formula text.

@@ -54,3 +54,15 @@ from .relationship_logic import compute_relationship_constraint
 from .results import AnalysisResult, CriticalPathInfo, ScheduledActivity
 from .longest_path import LongestPathResult, PathInfo, trace_longest_paths
 from .engine import run_analysis
+
+# ADR-0007 §3 integration layer (E3/E4): ingest -> engine bridge and the
+# validation handshake (SET-02).  Additive; imported after the core surface.
+from .bridge import EngineInputs, build_engine_inputs, resolve_lag_strategy
+from .handshake import (
+    HandshakeRefusal,
+    HandshakeResult,
+    build_reference,
+    clear_handshake_cache,
+    require_valid_handshake,
+    run_handshake,
+)

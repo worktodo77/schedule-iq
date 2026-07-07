@@ -884,3 +884,55 @@ def prg01_progress(sched: Schedule, cd: CheckDef, thr):
     return judge(cd, v, thr, [], len(done), len(pop),
                  f"{len(done)} completed ({v:.1f}%), {len(prog)} in progress, "
                  f"{len(pop) - len(done) - len(prog)} not started.")
+
+
+# ===========================================================================
+# Diagnostic CPM engine handshake (ADR-0007)
+# ===========================================================================
+@register("SET-02")
+def set02_engine_handshake(sched: Schedule, cd: CheckDef, thr):
+    """Engine match rate — the ADR-0007 validation handshake (SET-02).
+
+    The ported diagnostic CPM engine re-schedules the file as imported and its
+    computed dates/floats are compared to the stored tool-of-record values; the
+    match rate is graded against the row threshold (default 99%, min direction).
+    This is an engine-FIDELITY diagnostic (info severity): it measures how far the
+    ported engine's re-computation departs from the schedule of record, not a
+    defect in the schedule.  Tool-of-record dates remain the schedule (ADR-0007).
+
+    When the engine's network validator finds a blocking defect, the handshake
+    is a fail (value 0.0) and the blocking issues are surfaced — the old
+    CPM-inconsistent fixtures degrade gracefully here rather than erroring.  This
+    check never raises; per the engine.evaluate contract it returns a graded
+    MetricResult (evaluate() already wraps genuinely unexpected errors)."""
+    from ...cpm.handshake import run_handshake
+
+    hs = run_handshake(sched, threshold_pct=(thr if thr is not None else 99.0))
+
+    if not hs.engine_is_valid:
+        issues = hs.blocking_issues[:5]
+        finds = [Finding("engine", "network validation",
+                         "; ".join(issues) or "network failed validation")]
+        n = (f"Engine could not re-schedule the file (network validation failed); "
+             f"handshake fails at 0.0% (convention {hs.convention}, lag strategy "
+             f"{hs.lag_strategy}, statusing {hs.statusing_mode}).")
+        return judge(cd, 0.0, thr, finds, 0, hs.total_activities, n)
+
+    # One finding per mismatching activity (up to ~25), naming the field deltas.
+    by_code: dict[str, list[str]] = {}
+    order: list[str] = []
+    for m in hs.mismatches:
+        code = m["code"]
+        if code not in by_code:
+            by_code[code] = []
+            order.append(code)
+        if len(by_code[code]) < 4:
+            by_code[code].append(f"{m['field']}: engine {m['engine']} vs record {m['record']}")
+    finds = [Finding(code, "", "; ".join(by_code[code])) for code in order[:25]]
+
+    n = (f"Engine match rate {hs.match_rate_pct:.1f}% "
+         f"({hs.within_tolerance}/{hs.total_activities} activities within tolerance; "
+         f"convention {hs.convention}, lag strategy {hs.lag_strategy}, statusing "
+         f"{hs.statusing_mode}; {hs.constraint_applications} constraint application(s)).")
+    return judge(cd, hs.match_rate_pct, thr, finds,
+                 hs.within_tolerance, hs.total_activities, n)

@@ -12,9 +12,16 @@ Run:  python make_fixtures.py  (writes into this directory).
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Make ``scheduleiq`` importable when this script is run directly (the CPM
+# handshake fixtures below build their stored values by running the ported
+# engine).  Harmless when PYTHONPATH already points at src.
+_SRC = os.path.abspath(os.path.join(HERE, "..", "..", "src"))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 D0 = datetime(2025, 1, 6, 8, 0)          # project start (a Monday)
 
 CAL_5D = "100"    # standard 5-day
@@ -291,6 +298,232 @@ def build(path: str, dd: datetime, pct: dict[int, float],
     x.write(path)
 
 
+# ==========================================================================
+# CPM validation-handshake fixtures (ADR-0007, SET-02).
+#
+# demo_cpm.xer and demo_cpm_divergent.xer are a compact, CPM-CONSISTENT project
+# whose stored tool-of-record early/late/float values are produced by RUNNING
+# the ported engine (scheduleiq.cpm) through the bridge on the in-memory model,
+# then written back into the file.  The circularity is DELIBERATE: this fixture
+# validates the integration PLUMBING (bridge -> engine -> compare -> handshake),
+# not engine correctness.  Engine CORRECTNESS is validated separately by the
+# hand-computed tests under tests/cpm/.  demo_cpm therefore handshakes at 100%;
+# demo_cpm_divergent is identical except exactly three activities' stored
+# early/late dates are shifted (+5 workdays) with their floats left stale, so
+# the handshake lands deterministically below the 99% threshold.
+# ==========================================================================
+
+CPM_CAL_5D = "200"    # standard 5-day, 8h
+CPM_CAL_7D = "201"    # 7-day, 10h (a non-dominant calendar)
+
+# (uid, code, name, xer_type, dur_workdays, cal)
+CPM_ACTS = [
+    (2000, "MS-START", "Project Start",          "TT_Mile",    0,  CPM_CAL_5D),
+    (2010, "A10",  "Mobilization",                "TT_Task",    5,  CPM_CAL_5D),
+    (2020, "A20",  "Site Preparation",            "TT_Task",    8,  CPM_CAL_5D),
+    (2030, "A30",  "Excavation (in progress)",    "TT_Task",    10, CPM_CAL_5D),
+    (2040, "A40",  "Foundations (7-day crew)",    "TT_Task",    6,  CPM_CAL_7D),
+    (2050, "A50",  "Underground Services",        "TT_Task",    4,  CPM_CAL_5D),
+    (2060, "A60",  "Structural Steel",            "TT_Task",    7,  CPM_CAL_5D),
+    (2070, "A70",  "Cladding (7-day crew)",       "TT_Task",    5,  CPM_CAL_7D),
+    (2080, "A80",  "MEP Rough-In",                "TT_Task",    3,  CPM_CAL_5D),
+    (2090, "A90",  "Fit-Out",                     "TT_Task",    6,  CPM_CAL_5D),
+    (2100, "A100", "Commissioning",               "TT_Task",    4,  CPM_CAL_5D),
+    (2110, "MS-END", "Substantial Completion",    "TT_FinMile", 0,  CPM_CAL_5D),
+]
+
+# (pred, succ, xer_type, lag_hours) — FS/SS/FF incl. a negative lead.
+CPM_RELS = [
+    (2000, 2010, "PR_FS", 0),
+    (2010, 2020, "PR_FS", 0),
+    (2020, 2030, "PR_FS", 0),
+    (2030, 2040, "PR_FS", 0),
+    (2030, 2050, "PR_SS", 16),      # SS + 2wd (8h/day)
+    (2040, 2060, "PR_FS", -16),     # negative lead, -2wd
+    (2050, 2060, "PR_FS", 0),
+    (2060, 2070, "PR_FF", 8),       # FF + 1wd
+    (2060, 2080, "PR_FS", 0),
+    (2070, 2090, "PR_FS", 0),
+    (2080, 2090, "PR_FS", 0),
+    (2090, 2100, "PR_FS", 0),
+    (2100, 2110, "PR_FS", 0),
+    (2040, 2110, "PR_FS", 0),
+]
+
+CPM_DD = datetime(2025, 3, 24, 8, 0)     # data date (a Monday)
+
+# Actuals (all before the data date).  Completed: 2010, 2020.  In progress: 2030.
+CPM_ACTUALS = {
+    2010: (datetime(2025, 3, 3, 8, 0),  datetime(2025, 3, 7, 17, 0)),   # 5 wd
+    2020: (datetime(2025, 3, 10, 8, 0), datetime(2025, 3, 19, 17, 0)),  # 8 wd
+    2030: (datetime(2025, 3, 20, 8, 0), None),                          # in progress
+}
+CPM_STATUS = {2010: "TK_Complete", 2020: "TK_Complete", 2030: "TK_Active"}
+CPM_REMAIN_WD = {2030: 6}                # in-progress remaining duration (workdays)
+
+# One SNET (start no earlier than) and one FNLT (finish no later than).
+CPM_CONSTRAINTS = {
+    2050: ("CS_MSOA", datetime(2025, 4, 7, 8, 0)),    # SNET, real forward effect
+    2080: ("CS_MEOB", datetime(2025, 7, 31, 17, 0)),  # FNLT (benign; logged)
+}
+
+# The three activities whose stored dates are corrupted in the divergent file.
+CPM_DIVERGENT_UIDS = (2060, 2090, 2100)
+
+_CPM_TASK_FIELDS = [
+    "task_id", "proj_id", "wbs_id", "clndr_id", "task_code", "task_name",
+    "task_type", "status_code", "target_drtn_hr_cnt", "remain_drtn_hr_cnt",
+    "act_start_date", "act_end_date", "early_start_date", "early_end_date",
+    "late_start_date", "late_end_date", "target_start_date", "target_end_date",
+    "total_float_hr_cnt", "free_float_hr_cnt", "cstr_type", "cstr_date",
+    "cstr_type2", "cstr_date2", "phys_complete_pct", "complete_pct_type",
+    "suspend_date", "resume_date", "expect_end_date",
+]
+
+
+def _cpm_hpd(cal: str) -> int:
+    return 10 if cal == CPM_CAL_7D else 8
+
+
+def _dtd(d, finish: bool = False) -> str:
+    """A cpm engine ``date`` -> XER datetime string (time is cosmetic; the
+    handshake reads only the .date())."""
+    if d is None:
+        return ""
+    hh = "17:00" if finish else "08:00"
+    return f"{d.isoformat()} {hh}"
+
+
+def _cpm_common_tables(x: "Xer", dd: datetime) -> None:
+    x.table("CALENDAR",
+            ["clndr_id", "clndr_name", "clndr_type", "day_hr_cnt", "week_hr_cnt",
+             "default_flag", "clndr_data"],
+            [[CPM_CAL_5D, "CPM Standard 5-Day", "CA_Base", 8, 40, "Y", cal_blob_5d()],
+             [CPM_CAL_7D, "CPM 7-Day 10hr", "CA_Project", 10, 70, "N", cal_blob_7d()]])
+    x.table("PROJECT",
+            ["proj_id", "proj_short_name", "plan_start_date", "plan_end_date",
+             "scd_end_date", "last_recalc_date"],
+            [[1, "DEMO-CPM", dt(datetime(2025, 3, 3, 8, 0)),
+              dt(datetime(2025, 9, 1, 17, 0)), dt(datetime(2025, 8, 1, 17, 0)), dt(dd)]])
+    # rcal_Predecessor lag calendar; retained logic; progress override off; the
+    # critical-float threshold is intentionally left EMPTY so the record does not
+    # assert per-activity criticality (is_critical is then skipped in the compare,
+    # keeping the plumbing fixture free of the longest-path-vs-TF=0 question).
+    x.table("SCHEDOPTIONS",
+            ["schedoptions_id", "proj_id", "sched_retained_logic",
+             "sched_progress_override", "sched_open_critical_flag",
+             "sched_critical_float_hr_cnt", "sched_use_expect_end_flag",
+             "sched_calendar_on_relationship_lag"],
+            [[1, 1, "Y", "N", "N", "", "N", "rcal_Predecessor"]])
+    x.table("PROJWBS",
+            ["wbs_id", "proj_id", "parent_wbs_id", "wbs_short_name", "wbs_name",
+             "proj_node_flag"],
+            [[30, 1, "", "CPM", "CPM Demo Project", "Y"]])
+
+
+def _cpm_task_rows(stored: dict) -> list:
+    """Assemble TASK rows.  ``stored`` maps uid -> dict(es, ef, ls, lf, tf_hr,
+    ff_hr) of the values to write into the tool-of-record date/float fields."""
+    rows = []
+    for uid, code, name, ttype, dur, cal in CPM_ACTS:
+        hpd = _cpm_hpd(cal)
+        od_h = dur * hpd
+        status = CPM_STATUS.get(uid, "TK_NotStart")
+        a_start, a_finish = CPM_ACTUALS.get(uid, (None, None))
+        if status == "TK_Complete":
+            rem_h = 0
+            phys = 100
+        elif status == "TK_Active":
+            rem_wd = CPM_REMAIN_WD.get(uid, dur)
+            rem_h = rem_wd * hpd
+            phys = int(round(100 * (1 - rem_wd / dur))) if dur else 0
+        else:
+            rem_h = od_h
+            phys = 0
+        sv = stored[uid]
+        cstr_t, cstr_d = CPM_CONSTRAINTS.get(uid, ("", None))
+        rows.append([
+            uid, 1, 30, cal, code, name, ttype, status, od_h, rem_h,
+            dt(a_start), dt(a_finish),
+            _dtd(sv["es"]), _dtd(sv["ef"], finish=True),
+            _dtd(sv["ls"]), _dtd(sv["lf"], finish=True),
+            _dtd(sv["es"]), _dtd(sv["ef"], finish=True),
+            sv["tf_hr"], sv["ff_hr"],
+            cstr_t, dt(cstr_d), "", "", phys, "CP_Drtn", "", "", "",
+        ])
+    return rows
+
+
+def _write_cpm_xer(path: str, stored: dict) -> None:
+    x = Xer()
+    _cpm_common_tables(x, CPM_DD)
+    x.table("TASK", _CPM_TASK_FIELDS, _cpm_task_rows(stored))
+    x.table("TASKPRED",
+            ["task_pred_id", "task_id", "pred_task_id", "pred_type", "lag_hr_cnt"],
+            [[i + 1, s, p, t, lag] for i, (p, s, t, lag) in enumerate(CPM_RELS)])
+    x.write(path)
+
+
+def _engine_stored_values() -> dict:
+    """Run the ported engine (via the bridge) on the CPM fixture model and return
+    the computed ES/EF/LS/LF/TF/FF per uid, encoded for the XER date/float fields.
+
+    A throwaway XER (with placeholder stored values) is written, parsed, and fed
+    through the exact bridge+engine path the handshake uses, so the values written
+    back are guaranteed self-consistent with the handshake."""
+    from scheduleiq.ingest import load
+    from scheduleiq.cpm.bridge import build_engine_inputs
+    from scheduleiq.cpm.engine import run_analysis
+
+    placeholder = {uid: {"es": None, "ef": None, "ls": None, "lf": None,
+                        "tf_hr": "", "ff_hr": ""} for uid, *_ in CPM_ACTS}
+    tmp = os.path.join(HERE, "_demo_cpm_tmp.xer")
+    _write_cpm_xer(tmp, placeholder)
+    try:
+        sched = load(tmp)[0]
+        ei = build_engine_inputs(sched)
+        result = run_analysis(
+            activities=ei.activities, relationships=ei.relationships,
+            project_start=ei.project_start, workday_table=ei.workday_table,
+            calendar=ei.calendar, convention=ei.convention,
+            calendar_registry=ei.calendar_registry, lag_strategy=ei.lag_strategy,
+            constraints=ei.constraints or None, statusing_mode=ei.statusing_mode,
+        )
+        if not result.is_valid:
+            issues = [i.issue_code for i in result.validation.issues if i.blocking]
+            raise RuntimeError(f"demo_cpm engine run is invalid (blocking: {issues}); "
+                               "fixture network must be CPM-consistent.")
+        hpd_by_cal = {uid: _cpm_hpd(cal) for uid, _c, _n, _t, _d, cal in CPM_ACTS}
+        stored = {}
+        for uid_int, _c, _n, _t, _d, _cal in CPM_ACTS:
+            sa = result.scheduled[str(uid_int)]
+            hpd = hpd_by_cal[uid_int]
+            stored[uid_int] = {
+                "es": sa.early_start, "ef": sa.early_finish,
+                "ls": sa.late_start, "lf": sa.late_finish,
+                "tf_hr": sa.total_float * hpd, "ff_hr": sa.free_float * hpd,
+            }
+        return stored
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def build_cpm_fixtures() -> None:
+    """Write demo_cpm.xer (handshake 100%) and demo_cpm_divergent.xer (< 99%)."""
+    stored = _engine_stored_values()
+    _write_cpm_xer(os.path.join(HERE, "demo_cpm.xer"), stored)
+
+    # Divergent: shift exactly three activities' stored dates by +5 workdays
+    # (= +7 calendar days on the 5-day calendar), leaving their floats stale.
+    divergent = {uid: dict(v) for uid, v in stored.items()}
+    for uid in CPM_DIVERGENT_UIDS:
+        for k in ("es", "ef", "ls", "lf"):
+            if divergent[uid][k] is not None:
+                divergent[uid][k] = divergent[uid][k] + timedelta(days=7)
+    _write_cpm_xer(os.path.join(HERE, "demo_cpm_divergent.xer"), divergent)
+
+
 def main():
     # Baseline: no progress, DD = project start
     build(os.path.join(HERE, "demo_baseline.xer"), dd=D0, pct={})
@@ -337,6 +570,8 @@ def main():
           extra_holidays=[45842],                 # DEFECT: 2025-07-04 holiday added
           wbs_override={1130: 21},                # DEFECT: WBS re-parent 22 -> 21
           extreme_float={1180: 400 * 8})           # DEFECT: absurd float (FLT-03)
+    # CPM validation-handshake fixtures (ADR-0007 / SET-02) — additive.
+    build_cpm_fixtures()
     print("fixtures written:", sorted(f for f in os.listdir(HERE) if f.endswith(".xer")))
 
 

@@ -69,11 +69,24 @@ Interpretation flags (recorded in AnalysisContext for analyst review):
   - Longest-path tracing (INFRA-008): controlling predecessors identified from
     forward-pass constraints; all four PDM relationship types supported.
 
+Date constraints (LIM-028 — CLOSED in this port):
+  Optional P6-style date constraints (SNET/SNLT/FNET/FNLT/SO/FO/MS/MF/ALAP/XF)
+  are applied in the forward and backward passes at day granularity when the
+  caller passes ``constraints=`` to run_analysis(). See scheduleiq.cpm.constraints.
+  Every applied constraint is disclosed in a ConstraintApplication log
+  (P6-compatible analytical convention; not exact P6 emulation — ADR-006).
+
+Progress Override statusing mode (net-new — the source implements Retained
+Logic only, per ADR-002):
+  run_analysis() accepts ``statusing_mode=StatusingMode.PROGRESS_OVERRIDE`` to
+  drop the retained-logic tie from an in-progress (started-but-incomplete)
+  predecessor to its successor's remaining work. The default,
+  StatusingMode.RETAINED_LOGIC, is bit-identical to prior behavior.
+
 Explicitly excluded (LIM references):
-  - Date constraints (START_ON, FINISH_ON, etc.) — LIM-028
   - Resource constraints
   - Hour-level lag precision (fractional workday lags truncated to integer)
-  - Progress Override (ADR-002)
+  - Exact P6 constraint/statusing emulation (day-granularity approximation only).
 """
 
 from __future__ import annotations
@@ -84,6 +97,15 @@ from typing import Any, Optional
 
 from .calendar_ops import _adjust_nonworkday, nearest_workday_index as _wd_index
 from .calendar_registry import CalendarRegistry, LagCalendarStrategy
+from .constraints import (
+    ConstraintApplication,
+    ConstraintType,
+    SchedulingConstraint,
+    StatusingMode,
+    apply_backward_constraint,
+    apply_forward_constraint,
+    constraint_is_start_anchored,
+)
 from .context import AnalysisContext, CalculationMode, ScheduleMetadata
 from .conventions import EFConvention, fs_forward_offset
 from .lag_analysis import apply_lag

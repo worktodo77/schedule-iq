@@ -1,0 +1,82 @@
+{
+  "_description": "Synthetic destatusing test scenarios for Rules A through F. All dates are synthetic. Calendar: Mon-Fri, 8h/day. new_dd = 2024-01-10 (Wednesday), old_dd = 2024-01-17 (Wednesday). Workday table: 2024-01-01 through 2024-01-31.",
+  "_new_dd": "2024-01-10",
+  "_old_dd": "2024-01-17",
+  "_table_start": "2024-01-01",
+  "_table_end": "2024-01-31",
+
+  "rule_a": {
+    "_note": "CALC-005: AS and AF both before new_dd. Do nothing.",
+    "act_id": "ACT-A",
+    "actual_start": "2024-01-03",
+    "actual_finish": "2024-01-05",
+    "expected": {
+      "actual_start": "2024-01-03",
+      "actual_finish": "2024-01-05"
+    }
+  },
+
+  "rule_b": {
+    "_note": "CALC-006: AS and AF both after new_dd, before old_dd. Remove AS/AF, OD=AD, PC=0.",
+    "act_id": "ACT-B",
+    "actual_start": "2024-01-11",
+    "actual_finish": "2024-01-15",
+    "actual_duration": 3.0,
+    "expected": {
+      "actual_start": null,
+      "actual_finish": null,
+      "original_duration": 3.0,
+      "percent_complete": 0.0
+    }
+  },
+
+  "rule_c": {
+    "_note": "CALC-007: ES and EF both after old_dd. Do nothing.",
+    "act_id": "ACT-C",
+    "early_start": "2024-01-22",
+    "early_finish": "2024-01-26",
+    "expected": {
+      "early_start": "2024-01-22",
+      "early_finish": "2024-01-26"
+    }
+  },
+
+  "rule_d": {
+    "_note": "CALC-008: AS before new_dd, AF after new_dd. Remove AF. RD = workdays(new_dd, old_AF). WF-06: PC = AD_before/(AD_before+RD) where AD_before = wd(AS->new_dd). new_dd=2024-01-10(wd=8), old_AF=2024-01-17(wd=13). RD=13-8=5. AD_before=wd(1/8->1/10)=2. PC=2/7=0.2857 (caller AD=3 no longer used for PC).",
+    "act_id": "ACT-D",
+    "actual_start": "2024-01-08",
+    "actual_finish": "2024-01-17",
+    "actual_duration": 3.0,
+    "expected": {
+      "actual_finish": null,
+      "remaining_duration": 5.0,
+      "percent_complete": 0.2857142857142857
+    }
+  },
+
+  "rule_e": {
+    "_note": "CALC-009: AS between new_dd and old_dd, EF after old_dd. Remove AS. OD=AD+RD. PC=0.",
+    "act_id": "ACT-E",
+    "actual_start": "2024-01-12",
+    "early_finish": "2024-01-22",
+    "actual_duration": 2.0,
+    "remaining_duration": 6.0,
+    "expected": {
+      "actual_start": null,
+      "original_duration": 8.0,
+      "percent_complete": 0.0
+    }
+  },
+
+  "rule_f": {
+    "_note": "CALC-010: AS before new_dd, EF after old_dd. Compute RD and PC from new_dd to old EF. new_dd=2024-01-10(wd=8), old_EF=2024-01-24(wd=18). RD=18-8=10. AD=5. PC=5/15=0.3333...",
+    "act_id": "ACT-F",
+    "actual_start": "2024-01-03",
+    "early_finish": "2024-01-24",
+    "actual_duration": 5.0,
+    "expected": {
+      "remaining_duration": 10.0,
+      "percent_complete": 0.3333333333333333
+    }
+  }
+}

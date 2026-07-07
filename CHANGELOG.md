@@ -100,3 +100,9 @@ matrix expanded to 74 checks (SET-02 added).
   deltas equals the endpoint movement, asserted), reconciliation against
   as-imported runs and record dates, event annotation (D6) and observational
   responsibility subtotals (D7); handshake-gated.
+- N4 methodology-robustness certificate: variant grid over framing
+  (MIP 3.4 half-step / MIP 3.3 as-is / N3 daily), statusing (retained vs
+  override), window boundaries (±1 update), and contested-revision
+  exclusion; observational per-party allocation with disclosed heuristics;
+  stability stats + STABLE/MODERATE/UNSTABLE banding and the §8.4
+  stability sentence per party; memoized engine reuse across variants.

@@ -114,7 +114,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | N1 | §8.1 Weather & external-conditions overlay | PARKED (proposed 2026-07-07) |
 | N2 | §8.2 As-built work-pattern reconstruction (de facto calendars, overtime/suspension detection) | PARKED (proposed) |
 | N3 | §8.3 Daily-resolution delay ledger ("continuous windows") | DONE (v0.3) |
-| N4 | §8.4 Methodology-robustness certificate | APPROVED (RJL 2026-07-07; needs D9/N3) |
+| N4 | §8.4 Methodology-robustness certificate | DONE (v0.3) |
 | N5 | §8.5 Reproducibility capsule & evidence sealing | DONE (v0.2 wave 2) |
 
 ## 10. Bespoke LI metrics (§9 of ANALYTICS_PROPOSAL.md) — awaiting review

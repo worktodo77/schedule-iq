@@ -1,0 +1,7 @@
+code,optimistic_days,most_likely_days,pessimistic_days,dist
+# Tier-b three-point sample for the Monte Carlo module (absolute remaining workdays).
+# Columns: activity code, optimistic, most-likely, pessimistic (workdays), distribution.
+HA50,10,12,20,triangular
+HA60,8,10,16,pert
+HB20,8,10,14,triangular
+HC10,4,6,9,uniform

@@ -1,0 +1,138 @@
+{
+  "_description": "Synthetic fixtures for CALC-002 (Lag Workday Conversion) and CALC-003 (Lag Variance). All data is synthetic; no proprietary project information.",
+  "table_start": "2024-01-01",
+  "table_end": "2024-01-31",
+  "_workday_reference": {
+    "2024-01-01": 1,
+    "2024-01-02": 2,
+    "2024-01-03": 3,
+    "2024-01-04": 4,
+    "2024-01-05": 5,
+    "2024-01-08": 6,
+    "2024-01-09": 7,
+    "2024-01-10": 8,
+    "2024-01-11": 9,
+    "2024-01-12": 10,
+    "2024-01-15": 11,
+    "2024-01-16": 12,
+    "2024-01-17": 13,
+    "2024-01-18": 14,
+    "2024-01-19": 15,
+    "2024-01-22": 16,
+    "2024-01-23": 17,
+    "2024-01-24": 18,
+    "2024-01-25": 19,
+    "2024-01-26": 20
+  },
+  "apply_lag_scenarios": [
+    {
+      "_note": "lag=0 on workday returns same date (wd1 + 0 = wd1 = Jan 1)",
+      "anchor": "2024-01-01",
+      "lag_workdays": 0,
+      "anchor_is_start": true,
+      "expected": "2024-01-01"
+    },
+    {
+      "_note": "lag=2 on Monday → Wednesday (wd1 + 2 = wd3 = Jan 3)",
+      "anchor": "2024-01-01",
+      "lag_workdays": 2,
+      "anchor_is_start": true,
+      "expected": "2024-01-03"
+    },
+    {
+      "_note": "lag=1 on Friday crosses weekend → Monday (wd5 + 1 = wd6 = Jan 8)",
+      "anchor": "2024-01-05",
+      "lag_workdays": 1,
+      "anchor_is_start": true,
+      "expected": "2024-01-08"
+    },
+    {
+      "_note": "negative lag (lead) on Wednesday → Monday (wd8 - 2 = wd6 = Jan 8)",
+      "anchor": "2024-01-10",
+      "lag_workdays": -2,
+      "anchor_is_start": true,
+      "expected": "2024-01-08"
+    },
+    {
+      "_note": "negative lag crosses weekend backward: Monday - 1 → Friday (wd6 - 1 = wd5 = Jan 5)",
+      "anchor": "2024-01-08",
+      "lag_workdays": -1,
+      "anchor_is_start": true,
+      "expected": "2024-01-05"
+    },
+    {
+      "_note": "Saturday anchor (start-type) advances to Monday before lag=1 → Tuesday (Jan 6 → Jan 8 wd6, +1 = wd7 = Jan 9)",
+      "anchor": "2024-01-06",
+      "lag_workdays": 1,
+      "anchor_is_start": true,
+      "expected": "2024-01-09"
+    },
+    {
+      "_note": "Saturday anchor (finish-type) retreats to Friday before lag=1 → Monday (Jan 6 → Jan 5 wd5, +1 = wd6 = Jan 8)",
+      "anchor": "2024-01-06",
+      "lag_workdays": 1,
+      "anchor_is_start": false,
+      "expected": "2024-01-08"
+    }
+  ],
+  "compute_lag_between_scenarios": [
+    {
+      "_note": "Same date, lag=0 (wd5 - wd5 = 0)",
+      "from_date": "2024-01-05",
+      "to_date": "2024-01-05",
+      "from_is_start": false,
+      "to_is_start": true,
+      "expected_lag": 0
+    },
+    {
+      "_note": "Friday to Monday, lag=1 (wd6 - wd5 = 1)",
+      "from_date": "2024-01-05",
+      "to_date": "2024-01-08",
+      "from_is_start": false,
+      "to_is_start": true,
+      "expected_lag": 1
+    },
+    {
+      "_note": "Monday to Friday, lag=4 (wd10 - wd6 = 4)",
+      "from_date": "2024-01-08",
+      "to_date": "2024-01-12",
+      "from_is_start": false,
+      "to_is_start": true,
+      "expected_lag": 4
+    },
+    {
+      "_note": "Reversed dates, negative lag — out-of-sequence (wd6 - wd8 = -2)",
+      "from_date": "2024-01-10",
+      "to_date": "2024-01-08",
+      "from_is_start": false,
+      "to_is_start": true,
+      "expected_lag": -2
+    }
+  ],
+  "lag_variance_scenarios": [
+    {
+      "_note": "No change — variance = 0",
+      "as_planned_lag": 2,
+      "as_built_lag": 2,
+      "expected_variance": 0
+    },
+    {
+      "_note": "Lag grew by 3 (delay) — positive variance",
+      "as_planned_lag": 1,
+      "as_built_lag": 4,
+      "expected_variance": 3
+    },
+    {
+      "_note": "Lag shrank by 2 (compression) — negative variance",
+      "as_planned_lag": 5,
+      "as_built_lag": 3,
+      "expected_variance": -2
+    },
+    {
+      "_note": "Zero planned, 2 built — delay from zero baseline",
+      "as_planned_lag": 0,
+      "as_built_lag": 2,
+      "expected_variance": 2
+    }
+  ]
+}

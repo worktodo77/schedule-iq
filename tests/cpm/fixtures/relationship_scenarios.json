@@ -1,0 +1,166 @@
+{
+  "_description": "Synthetic fixtures for CALC-004 (Retained Logic Driving Relationship). All data is synthetic; no proprietary project information.",
+  "table_start": "2024-01-01",
+  "table_end": "2024-01-31",
+  "_workday_reference": {
+    "2024-01-08": 6,
+    "2024-01-09": 7,
+    "2024-01-10": 8,
+    "2024-01-12": 10,
+    "2024-01-15": 11,
+    "2024-01-16": 12,
+    "2024-01-17": 13,
+    "2024-01-18": 14,
+    "2024-01-19": 15
+  },
+  "_test_predecessor": {
+    "pred_es": "2024-01-08",
+    "pred_ef": "2024-01-12",
+    "_note": "pred_es=Jan 8 (wd6), pred_ef=Jan 12 (wd10), OD=5 workdays"
+  },
+  "relationship_constraint_scenarios": [
+    {
+      "_note": "FS lag=0: constrained ES = pred_ef + 0 = Jan 12 (wd10)",
+      "rel_type": "FS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 0,
+      "expected_constraint_type": "ES",
+      "expected_constrained_date": "2024-01-12"
+    },
+    {
+      "_note": "FS lag=1: constrained ES = Jan 12 + 1 = Jan 15 (wd11, crosses weekend)",
+      "rel_type": "FS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 1,
+      "expected_constraint_type": "ES",
+      "expected_constrained_date": "2024-01-15"
+    },
+    {
+      "_note": "FS lag=-1 (lead): constrained ES = Jan 12 - 1 = Jan 11 (wd9)",
+      "rel_type": "FS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": -1,
+      "expected_constraint_type": "ES",
+      "expected_constrained_date": "2024-01-11"
+    },
+    {
+      "_note": "SS lag=0: constrained ES = pred_es + 0 = Jan 8 (wd6)",
+      "rel_type": "SS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 0,
+      "expected_constraint_type": "ES",
+      "expected_constrained_date": "2024-01-08"
+    },
+    {
+      "_note": "SS lag=2: constrained ES = Jan 8 + 2 = Jan 10 (wd8)",
+      "rel_type": "SS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 2,
+      "expected_constraint_type": "ES",
+      "expected_constrained_date": "2024-01-10"
+    },
+    {
+      "_note": "FF lag=0: constrained EF = pred_ef + 0 = Jan 12 (wd10)",
+      "rel_type": "FF",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 0,
+      "expected_constraint_type": "EF",
+      "expected_constrained_date": "2024-01-12"
+    },
+    {
+      "_note": "FF lag=2: constrained EF = Jan 12 + 2 = Jan 16 (wd12)",
+      "rel_type": "FF",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 2,
+      "expected_constraint_type": "EF",
+      "expected_constrained_date": "2024-01-16"
+    },
+    {
+      "_note": "SF lag=0: constrained EF = pred_es + 0 = Jan 8 (wd6)",
+      "rel_type": "SF",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 0,
+      "expected_constraint_type": "EF",
+      "expected_constrained_date": "2024-01-08"
+    },
+    {
+      "_note": "SF lag=5: constrained EF = Jan 8 + 5 = Jan 15 (wd11)",
+      "rel_type": "SF",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 5,
+      "expected_constraint_type": "EF",
+      "expected_constrained_date": "2024-01-15"
+    }
+  ],
+  "driving_relationship_scenarios": [
+    {
+      "_note": "FS lag=1 is driving: constrained ES (Jan 15) == succ_es (Jan 15)",
+      "rel_type": "FS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 1,
+      "succ_es": "2024-01-15",
+      "succ_ef": "2024-01-19",
+      "expected_driving": true
+    },
+    {
+      "_note": "FS lag=0 NOT driving: constrained ES (Jan 12) != succ_es (Jan 15)",
+      "rel_type": "FS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 0,
+      "succ_es": "2024-01-15",
+      "succ_ef": "2024-01-19",
+      "expected_driving": false
+    },
+    {
+      "_note": "SS lag=5 is driving: constrained ES = Jan 8 + 5 = Jan 15 (wd11) == succ_es",
+      "rel_type": "SS",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 5,
+      "succ_es": "2024-01-15",
+      "succ_ef": "2024-01-19",
+      "expected_driving": true
+    },
+    {
+      "_note": "FF lag=3 is driving: constrained EF = Jan 12 + 3 = Jan 17 (wd13) == succ_ef (Jan 17)",
+      "rel_type": "FF",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 3,
+      "succ_es": "2024-01-15",
+      "succ_ef": "2024-01-17",
+      "expected_driving": true
+    },
+    {
+      "_note": "SF lag=7 is driving: constrained EF = Jan 8 + 7 = Jan 17 (wd13) == succ_ef (Jan 17)",
+      "rel_type": "SF",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 7,
+      "succ_es": "2024-01-15",
+      "succ_ef": "2024-01-17",
+      "expected_driving": true
+    },
+    {
+      "_note": "FF lag=0 NOT driving: constrained EF (Jan 12) != succ_ef (Jan 19)",
+      "rel_type": "FF",
+      "pred_es": "2024-01-08",
+      "pred_ef": "2024-01-12",
+      "lag_workdays": 0,
+      "succ_es": "2024-01-15",
+      "succ_ef": "2024-01-19",
+      "expected_driving": false
+    }
+  ]
+}

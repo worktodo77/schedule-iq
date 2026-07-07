@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+scheduleiq_output/
+.pytest_cache/

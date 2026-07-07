@@ -1,0 +1,45 @@
+name: test-and-build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .[dev]
+      - run: python tests/fixtures/make_fixtures.py
+      - run: pytest -q
+      - name: matrix render up to date
+        run: |
+          python scripts/render_matrix.py
+          git diff --exit-code docs/METRIC_MATRIX.md
+
+  windows-build:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: pip install .[gui,mpp,pdf,dev]
+      - run: pyinstaller installer/scheduleiq.spec
+      - name: Zip bundle
+        run: Compress-Archive -Path dist/ScheduleIQ -DestinationPath "ScheduleIQ-${{ github.ref_name }}-windows.zip"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ScheduleIQ-*.zip
+          generate_release_notes: true

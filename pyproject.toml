@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scheduleiq"
+version = "0.1.0"
+description = "Schedule quality, health, trend, and change analysis for Primavera P6 (.xer) and Microsoft Project (.mpp/.xml) — Long International"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary — Long International internal use" }
+dependencies = [
+    "openpyxl>=3.1",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.5"]
+mpp = ["mpxj>=13.0"]          # pulls JPype; requires a Java runtime
+pdf = ["docx2pdf>=0.1.8"]     # Word-based conversion on Windows/macOS
+dev = ["pytest>=7.0", "pyinstaller>=6.0"]
+
+[project.scripts]
+scheduleiq = "scheduleiq.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+scheduleiq = ["metrics/matrix.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

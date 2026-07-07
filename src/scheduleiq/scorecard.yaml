@@ -1,0 +1,598 @@
+# ============================================================================
+# LI Schedule Report Card — scoring specification, LI-RC v1.0
+#
+# This file IS the published spec (docs/REPORT_CARD_DESIGN.md is the design
+# narrative; this file is the machine-readable and human-readable source of
+# truth that scorecard.py loads and score_trace.json cites).  Every number in
+# a report card traces back to a line in this file.  Changes to this file are
+# a spec revision (bump spec_version) and require a changelog entry per
+# GOVERNANCE.md §1 once published.
+#
+# How to read this file
+# ----------------------
+# 1. `categories` are the seven per-schedule (file) categories of
+#    docs/REPORT_CARD_DESIGN.md §3.  Each lists its member check IDs (from
+#    metrics/matrix.yaml).  A member's WEIGHT is derived automatically from
+#    its matrix severity (see `severity_weights`) UNLESS the check also has a
+#    published numeric threshold, in which case it is treated as
+#    "banded-info" even at severity=info (see the worked rule below).
+# 2. Each member's 0-100 CONFORMANCE SCORE comes from a piecewise-linear
+#    curve.  The default curve (`default_curve`) is derived straight from the
+#    matrix threshold; `curve_overrides` lists every check where the default
+#    formula needs help (mainly: threshold == 0, "zero-tolerance" checks,
+#    where 3x0 = 0 is degenerate, and the one banded check with an upper AND
+#    lower band, LOG-05).  A check NOT listed in `curve_overrides` uses the
+#    default formula exactly as written below — nothing is hidden.
+# 3. `profiles` gives the two per-schedule category-weight sets (baseline vs.
+#    update).  `gates` are the anti-gaming integrity caps.  `grade_bands`
+#    convert the final 0-100 number to a letter.
+# 4. `series_categories` / `series_curve_overrides` / `series_gate` /
+#    `trajectory` are the four-plus-one series (multi-file) categories of
+#    §4, built on top of the same machinery.
+# 5. `internal_variant` is RC5 scaffolding: weight-0 placeholders for the
+#    provocative indices (N16-N20), proposed but not yet built or approved
+#    for scoring.  They never move a grade today.
+#
+# Default curve formula (applies to every check NOT named in curve_overrides)
+# -----------------------------------------------------------------------
+#   direction = max (lower value is better), matrix threshold T > 0:
+#       points = [(0, 100), (T, 70), (3*T, 0)]          # 3x = the default
+#                                                         # fail_ceiling_multiplier
+#   direction = max, T == 0 (a "zero-tolerance" check — the matrix says the
+#   ideal value AND the published pass mark are both zero, so the 70-point
+#   anchor collapses into the 100-point anchor):
+#       points = [(0, 100), (Z, 0)]     Z = zero_tolerance_defaults.count_ceiling
+#                                             (unit == count/index/days), or
+#                                           zero_tolerance_defaults.percent_ceiling
+#                                             (unit == percent)
+#   direction = min (higher value is better), matrix threshold T:
+#       ideal = 100 (unit == percent) or 1.0 (unit == index/ratio)
+#       points = [(T/3, 0), (T, 70), (ideal, 100)]
+#       (T/3 collapses into T when T == 0, i.e. same zero-tolerance rule
+#       mirrored — no direction=min check in the matrix currently has T == 0)
+#   direction = info, or threshold is null: the check has no default curve.
+#   It never carries a member weight above 0 unless `curve_overrides` (file
+#   card) or `series_curve_overrides` (series card) gives it an explicit
+#   points list — see "why some info checks ARE scored" below.
+#
+# Why some info-severity checks ARE scored ("banded-info")
+# ----------------------------------------------------------
+# Design principle 2 (REPORT_CARD_DESIGN.md): "Informational metrics score
+# only where the matrix defines bands ... otherwise they inform the
+# narrative, not the grade."  Operationally: an info-severity check with a
+# real published threshold in matrix.yaml (e.g. LOG-05 logic density,
+# FLT-01 critical percentage, DAT-04 data-date currency) IS banded and gets
+# member weight `severity_weights.banded_info` (1).  An info-severity check
+# with threshold: null (a pure inventory/census, e.g. STR-01 schedule
+# census, CAL-01 calendar count) gets weight `severity_weights.info` (0):
+# it is still evaluated and still counted in the coverage denominator, it
+# simply cannot move a category score because there is no published band to
+# score it against.
+# ============================================================================
+
+spec_version: "LI-RC v1.0"
+title: "The LI Schedule Report Card"
+publication_status: "internal — publication of the spec + reference scorer is a
+  separate decision, RC6, tracked in docs/public_spec/ (prepared, not yet
+  published)."
+
+# --------------------------------------------------------------------------
+# Default curve rule and its two escape hatches.
+# --------------------------------------------------------------------------
+default_curve:
+  fail_ceiling_multiplier: 3.0
+  rationale: "The published standard threshold is a pass mark, not
+    excellence (DCMA-01 design principle): meeting a 5% limit exactly earns
+    70/100 (a C-), not 100.  3x the pass mark is the point a check has gone
+    from 'needs attention' to 'this metric has failed wholesale' — the same
+    multiple DCMA itself uses informally when describing 'grossly' out-of-
+    tolerance schedules."
+  zero_tolerance_defaults:
+    count_ceiling: 5
+    percent_ceiling: 15
+    rationale: "Thresholds of exactly zero make the 3x rule degenerate
+      (3 x 0 = 0).  Absent a per-check override, five offending records (for
+      a raw count) or 15% of the population (for a percent) is treated as
+      the point a 'should never happen' condition has become systemic
+      rather than isolated.  Every score of this kind is a placeholder for
+      the underlying offender list, which is always in the results
+      workbook regardless of the numeric score."
+
+severity_weights:
+  critical: 3
+  warning: 2
+  banded_info: 1
+  info: 0
+  rationale: "Mirrors the existing health-score convention (critical checks
+    weigh more than warnings) and extends it one notch further: a banded
+    informational check (a real published band, just not a FAIL/WARNING
+    severity in the matrix) still moves a category score a little; a pure
+    census/inventory check with no band cannot move it at all."
+
+# --------------------------------------------------------------------------
+# Per-check curve overrides (file-card checks).  Anything NOT listed here
+# uses default_curve exactly as documented above.
+# --------------------------------------------------------------------------
+curve_overrides:
+  DCMA-02:
+    fail_ceiling: 15
+    rationale: "Zero-tolerance percent check (leads); percent_ceiling default."
+  DCMA-07:
+    fail_ceiling: 15
+    rationale: "Zero-tolerance percent check (negative float); percent_ceiling
+      default — also mirrors FLT-01's own 20% 'critical percentage'
+      informational band, i.e. by the time 15% of the schedule carries
+      negative float the plan is not a plan."
+  DCMA-09:
+    fail_ceiling: 1
+    rationale: "Zero-tolerance count check (invalid dates) AND an integrity
+      gate — see gates.gate_status_integrity.  Unlike the generic
+      count_ceiling default (5), gate checks score 0 on the FIRST instance:
+      a single invalid date already means downstream dates cannot be
+      trusted, so 'status FAIL' and 'score 0' are the same condition by
+      construction, matching exactly when the gate fires."
+  DCMA-10:
+    fail_ceiling: 15
+    rationale: "Zero-tolerance percent check (unloaded activities);
+      percent_ceiling default."
+  DCMA-12:
+    fail_ceiling: 3
+    rationale: "Zero-tolerance count check (critical-path continuity
+      breaks) AND an integrity gate — see gates.gate_logic_continuity.
+      Continuity breaks are rare and each one undermines the entire
+      critical-path narrative, so the ceiling is lower than the generic
+      count default (3, not 5).  ADDED AS A SCORED MEMBER of Logic & Network
+      Integrity (the design narrative's §3 table lists DCMA-12 only in the
+      gates prose, not the member list) so that a critical-severity check
+      is never left ungraded — the same dual member/gate role DCMA-09 and
+      DAT-01 already play in Status & Data Integrity.  Flagged for lead
+      confirmation."
+  LOG-01: {fail_ceiling: 5, rationale: "Zero-tolerance count check (dangling starts); count_ceiling default."}
+  LOG-02: {fail_ceiling: 5, rationale: "Zero-tolerance count check (dangling finishes); count_ceiling default."}
+  LOG-03: {fail_ceiling: 5, rationale: "Zero-tolerance count check (SF relationships); count_ceiling default."}
+  LOG-04: {fail_ceiling: 5, rationale: "Zero-tolerance count check (duplicate relationships), banded-info; count_ceiling default."}
+  LOG-05:
+    points: [[0, 0], [2, 100], [4, 100], [8, 0]]
+    rationale: "The one genuinely two-sided band in the matrix (design §2
+      worked example): logic density below ~2 relationships/activity is
+      under-linked, above ~4 is likely redundant/unmaintainable; the design
+      band [2, 4] is full credit, decaying symmetrically outside it.  8 (2x
+      the top of the band) is treated as equally bad as 0."
+  LOG-06: {fail_ceiling: 5, rationale: "Zero-tolerance count check (merge hotspots), banded-info; count_ceiling default."}
+  LOG-07: {fail_ceiling: 5, rationale: "Zero-tolerance count check (out-of-sequence progress); count_ceiling default."}
+  LOG-08: {fail_ceiling: 5, rationale: "Zero-tolerance count check (logic on LOE/summary); count_ceiling default."}
+  LOG-09: {fail_ceiling: 5, rationale: "Zero-tolerance count check (redundant logic), banded-info; count_ceiling default."}
+  LOG-10:
+    fail_ceiling: 5
+    rationale: "Zero-tolerance count check (hollow-logic screen), banded-info.
+      Series-applies: always N/A in a per-file ScheduleAssessment (it
+      compares two files), so it never actually contributes to a file
+      card's arithmetic; listed here only so the curve is fully documented
+      for the day a per-file proxy is built.  It IS scored where it
+      belongs: as a file-quality-trajectory input indirectly, and could be
+      promoted to a series category member in a future spec revision."
+  REL-01: {fail_ceiling: 5, rationale: "Zero-tolerance count check (zombie relationships); count_ceiling default."}
+  CON-02: {fail_ceiling: 5, rationale: "Zero-tolerance count check (Expected Finish constraints); count_ceiling default."}
+  CON-03: {fail_ceiling: 5, rationale: "Zero-tolerance count check (ALAP activities), banded-info; count_ceiling default."}
+  FLT-03: {fail_ceiling: 5, rationale: "Zero-tolerance count check (float exceeding remaining duration); count_ceiling default."}
+  DUR-01: {fail_ceiling: 5, rationale: "Zero-tolerance count check (zero-duration non-milestones), banded-info; count_ceiling default."}
+  DUR-03: {fail_ceiling: 5, rationale: "Zero-tolerance count check (OD/RD mismatch, not started); count_ceiling default."}
+  DAT-01:
+    fail_ceiling: 1
+    rationale: "Zero-tolerance count check (status/actual-date contradictions)
+      AND an integrity gate — see gates.gate_status_integrity.  Unlike the
+      generic count_ceiling default (5), gate checks score 0 on the FIRST
+      instance: the gate's whole purpose is 'a single occurrence already
+      means this data cannot be trusted,' so 'status FAIL' and 'score 0'
+      are made the same condition by construction, rather than the gate
+      firing on a stricter or looser threshold than the score implies."
+  DAT-02: {fail_ceiling: 5, rationale: "Zero-tolerance count check (actual dates without progress); count_ceiling default."}
+  DAT-05: {fail_ceiling: 5, rationale: "Zero-tolerance count check (actual-duration anomalies); count_ceiling default."}
+  CAL-03: {fail_ceiling: 5, rationale: "Zero-tolerance count check (5-day calendars with no holidays), banded-info; count_ceiling default."}
+  RES-01: {fail_ceiling: 5, rationale: "Zero-tolerance count check (milestones carrying resources), banded-info; count_ceiling default."}
+  RES-02: {fail_ceiling: 5, rationale: "Zero-tolerance count check (completed activities with remaining values); count_ceiling default."}
+  STR-02:
+    points: [[0, 0], [2, 100]]
+    rationale: "Mirrored zero-tolerance check on the direction=min side:
+      the matrix ideal AND published minimum are both 2 start/finish
+      milestones, so (as with the max-direction zero-tolerance checks) the
+      70-point anchor collapses into the 100-point anchor; 0 milestones
+      scores 0."
+
+# --------------------------------------------------------------------------
+# Per-schedule (file card) categories — design §3.
+# --------------------------------------------------------------------------
+categories:
+  - id: logic_network
+    name: "Logic & Network Integrity"
+    members: [DCMA-01, DCMA-02, DCMA-03, DCMA-04, DCMA-12, LOG-01, LOG-02,
+              LOG-03, LOG-04, LOG-05, LOG-06, LOG-08, LOG-09, LOG-10, REL-01]
+    rationale: "Everything that determines whether the network drives dates
+      at all: open ends, leads/lags, relationship-type mix, dangling and
+      redundant logic, LOE/summary logic, zombie relationships, and the
+      critical-path continuity gate (DCMA-12)."
+  - id: constraint_float
+    name: "Constraint & Float Discipline"
+    members: [DCMA-05, DCMA-06, DCMA-07, CON-01, CON-02, CON-03, FLT-01, FLT-02, FLT-03]
+    rationale: "How much of the schedule's timing is being set by constraints
+      and float artifacts rather than by logic and genuine performance."
+  - id: duration_estimating
+    name: "Duration & Estimating"
+    members: [DCMA-08, DUR-01, DUR-02, DUR-03]
+    rationale: "Whether durations reflect a real basis of estimate (not
+      templated, not silently re-estimated) and are short enough to measure
+      progress against."
+  - id: status_integrity
+    name: "Status & Data Integrity"
+    members: [DCMA-09, DAT-01, DAT-02, DAT-03, DAT-04, DAT-05, RES-02, LOG-07]
+    rationale: "Whether the as-of-data-date record is internally consistent
+      and current enough to trust — the foundation every other category's
+      numbers rest on, hence its own integrity gate."
+  - id: modeling_mechanics
+    name: "Modeling Mechanics"
+    members: [CAL-01, CAL-02, CAL-03, CAL-05, CP-01, STR-01, STR-02, STR-03, RES-01]
+    rationale: "Calendars, structure, and basic census — the plumbing that
+      makes every other metric's units (days, floats) mean what they say."
+  - id: resource_cost
+    name: "Resource & Cost Loading"
+    members: [DCMA-10]
+    rationale: "Single-member category by design (§3): whether the schedule
+      is loaded well enough to support resource- or cost-based delay and
+      disruption analysis at all."
+  - id: execution_performance
+    name: "Execution Performance"
+    applies_to: update
+    members: [DCMA-11, DCMA-13, DCMA-14, PRG-01]
+    rationale: "Update-file-only: whether the contractor is executing to the
+      baselined plan (BEI, CPLI, missed tasks).  A baseline file has no
+      execution history to grade, so its weight is redistributed — see
+      profiles.baseline below — rather than penalizing a baseline for
+      having no progress yet."
+
+# --------------------------------------------------------------------------
+# Per-profile category weights (design §3: "Weights are per-profile").
+# --------------------------------------------------------------------------
+profiles:
+  update:
+    weights:
+      logic_network: 25
+      constraint_float: 20
+      duration_estimating: 10
+      status_integrity: 20
+      modeling_mechanics: 10
+      resource_cost: 5
+      execution_performance: 10
+    rationale: "The design §3 table verbatim; sums to 100."
+  baseline:
+    redistribute_from: execution_performance
+    redistribute_to: [logic_network, constraint_float, duration_estimating,
+                       status_integrity, modeling_mechanics]
+    rationale: "A baseline file is graded on the same five categories as an
+      update, just carrying execution_performance's 10 points, split
+      pro-rata by each target category's own update-profile weight (a
+      category that already carries more of the grade absorbs
+      proportionally more of the redistributed weight).  Worked example
+      from the update weights above (25/20/10/20/10, summing to 85):
+      logic_network      25 + 10*(25/85) = 27.94
+      constraint_float   20 + 10*(20/85) = 22.35
+      duration_estimating 10 + 10*(10/85) = 11.18
+      status_integrity   20 + 10*(20/85) = 22.35
+      modeling_mechanics 10 + 10*(10/85) = 11.18
+      resource_cost stays at 5.  (25+20+10+20+10) exactly and the six
+      numbers above sum to 100.0.  scorecard.py computes this exactly at
+      run time rather than hard-coding the rounded figures here, so the
+      arithmetic can never drift out of sync with the update weights above."
+
+# --------------------------------------------------------------------------
+# Grade bands (design §3, verbatim).
+# --------------------------------------------------------------------------
+grade_bands:
+  bands:
+    - {min: 90, letter: "A"}
+    - {min: 85, letter: "A-"}
+    - {min: 80, letter: "B+"}
+    - {min: 75, letter: "B"}
+    - {min: 70, letter: "C+"}
+    - {min: 60, letter: "C"}
+    - {min: 50, letter: "D"}
+    - {min: 0,  letter: "F"}
+  rationale: "Design §3 verbatim, with the Fuse-continuity note that Fuse's
+    'good' band (>75) is roughly a B here."
+
+# --------------------------------------------------------------------------
+# File-card integrity gates (design §3).
+# --------------------------------------------------------------------------
+gates:
+  - id: gate_status_integrity
+    name: "Status & Data Integrity failure"
+    trigger: "member score of DCMA-09 == 0, or member score of DAT-01 == 0"
+    category_caps: {status_integrity: 40}
+    overall_cap: 78
+    rationale: "You cannot grade well on data you cannot trust.  A schedule
+      whose dates or statuses have failed wholesale (5+ invalid dates or
+      status contradictions — see curve_overrides) cannot earn better than
+      a C+ overall no matter how clean the rest of the network is."
+  - id: gate_logic_continuity
+    name: "Critical-path continuity break"
+    trigger: "raw value of DCMA-12 > 0 (i.e. status FAIL)"
+    category_caps: {logic_network: 60}
+    overall_cap: null
+    rationale: "An unresolved continuity break means the 'critical path'
+      the rest of the network's logic score is implicitly measured against
+      may not be real; caps Logic & Network Integrity at a C (60) until the
+      break is confirmed and resolved.  Does not cap the overall grade on
+      its own — a continuity break is a logic-category problem, not
+      evidence the whole schedule's data is untrustworthy (compare the
+      status-integrity gate, which does cap overall)."
+
+# ============================================================================
+# Series (multi-file) report card — design §4.
+# ============================================================================
+series_categories:
+  - id: record_discipline
+    name: "Update & Record Discipline"
+    weight: 25
+    members: [TRD-05, SET-01, CAL-04, DAT-04, SPEC-CADENCE]
+    member_weights: {TRD-05: 3, SET-01: 3, CAL-04: 1, DAT-04: 1, SPEC-CADENCE: 1}
+    rationale: "The as-built record's basic hygiene: no rewritten history
+      (TRD-05, also the series gate), no settings drift or calendar
+      surgery, current data, and a regular update cadence (D1).  TRD-05 and
+      SET-01 are weighted as critical (3) because each silently changes
+      every downstream date without touching an activity; CAL-04, DAT-04,
+      and cadence are weighted as secondary/supporting signals (1)."
+  - id: plan_stability
+    name: "Plan Stability"
+    weight: 20
+    members: [LI-02, LI-04, TRD-02, TRD-03, TRD-07, LI-06]
+    member_weights: {LI-02: 2, LI-04: 2, TRD-02: 2, TRD-03: 2, TRD-07: 1, LI-06: 2}
+    rationale: "Whether the plan itself — its logic, its critical set, its
+      scope — is holding still enough to analyze, versus being rewritten
+      update to update.  LHL (LI-02), critical-path stability (TRD-02),
+      logic churn (TRD-03), and baseline dilution (LI-06, how much of
+      today's driving path was never in the contract baseline) are the
+      headline signals (weight 2); path concentration (PCI, LI-04) is
+      likewise a headline weight-2 signal; scope churn (TRD-07) is
+      secondary (weight 1) because it is already partially reflected in
+      logic churn."
+  - id: float_progress
+    name: "Float & Progress Management"
+    weight: 20
+    members: [LI-01, TRD-01, LI-09, LI-08, SPEC-EVERGREEN]
+    member_weights: {LI-01: 2, TRD-01: 2, LI-09: 2, LI-08: 2, SPEC-EVERGREEN: 1}
+    rationale: "Whether float erosion (FCBI, TRD-01), compression ahead of
+      held dates (BWI), and mitigation responsiveness (Intervention
+      Latency) show a schedule under active, honest management rather than
+      quiet compression; percent-complete creep without matching schedule
+      effect (evergreen activities, D8) is a secondary corroborating
+      signal (weight 1)."
+  - id: forecast_credibility
+    name: "Forecast Credibility"
+    weight: 20
+    members: [LI-03, LI-05, EVM-02, EVM-01, TRD-04, SPEC-TSPI]
+    member_weights: {LI-03: 2, LI-05: 2, EVM-02: 2, EVM-01: 2, TRD-04: 2, SPEC-TSPI: 2}
+    rationale: "Whether the scheduler's own forecasts can be relied on: the
+      empirical error band (FRB), unproven required pace (RDI), execution
+      indices (CEI/Hit Task), completion-date slippage rate, and the
+      independent earned-schedule TSPI(t) cross-check all carry equal
+      (headline, weight 2) influence — no single forecast-credibility lens
+      is treated as more authoritative than the others."
+
+series_gate:
+  id: gate_record_discipline
+  name: "Retroactive actual-date change"
+  trigger: "raw value of TRD-05 > 0"
+  category_caps: {record_discipline: 40}
+  overall_cap: 78
+  rationale: "The as-built record is the foundation of everything else built
+    on top of it (path reconstruction, earned schedule, delay attribution).
+    Any unexplained rewrite of a previously reported actual date caps
+    Update & Record Discipline at 40 and the series overall grade at C+
+    until each instance is explained — mirrors the file-card status-
+    integrity gate one level up."
+
+# --------------------------------------------------------------------------
+# Series curve overrides — every series-category member's 0-100 mapping.
+# Series checks mostly carry threshold: null in the matrix (they are
+# written as informational trend metrics); promoting a subset of them into
+# scored series-category members means EVERY one of them needs an explicit,
+# published mapping here — there is no "default" to fall back on the way
+# there is for file-card checks with a real matrix threshold.  Every entry
+# below is an LI-authored normalization per design §4 ("each mapping lives
+# in scorecard.yaml with its rationale line"); the lead audits these.
+# --------------------------------------------------------------------------
+series_curve_overrides:
+  TRD-01:
+    points: [[-6, 0], [-2, 70], [0, 100]]
+    rationale: "Mean total-float movement, working days per update; positive
+      values (net float gain) clamp at 100.  -2 wd/update chosen as the
+      point sustained erosion becomes a genuine trend rather than update-to-
+      update noise; -6 (3x, the spec's standard multiplier) is a floor
+      collapsing to 0."
+  TRD-02:
+    points: [[0.15, 0], [0.5, 70], [1.0, 100]]
+    rationale: "Critical-set Jaccard overlap between consecutive updates.
+      50% overlap is the working pass mark for path continuity; below 15%
+      the critical path is effectively a different path every update."
+  TRD-03:
+    points: [[0, 100], [10, 70], [30, 0]]
+    rationale: "Peak logic churn, percent of the network changed per update.
+      10% mirrors the DCMA-style 5%-pass-mark pattern used across this spec,
+      doubled because a series-level churn metric is naturally noisier than
+      a single-file percentage; 30% (3x) is wholesale logic replacement."
+  TRD-04:
+    points: [[0, 100], [0.5, 70], [1.5, 0]]
+    rationale: "Average completion-slip rate (days of finish-date slip per
+      elapsed day).  0.5 is a materially sustained slip; 1.5 means the
+      finish date is receding faster than time is passing — the project is
+      losing ground overall, not just failing to gain it."
+  TRD-07:
+    points: [[0, 100], [10, 70], [30, 0]]
+    rationale: "Total activities added or deleted across the series,
+      normalized to a percentage of the latest update's real-activity
+      population (the matrix check itself is a raw count with no population
+      denominator).  Same 10%/30% convention as TRD-03."
+  LI-01:
+    points: [[0, 100], [20, 70], [60, 0]]
+    rationale: "FCBI cumulative burn, in working days.  The working-day
+      scale is broadly comparable across mid-size commercial/industrial
+      schedules; very large or very short projects may need a profile
+      override (flagged for lead review — RC1 known limitation)."
+  LI-02:
+    special: true
+    points: [[1, 0], [6, 70], [12, 100]]
+    censored_pass_threshold: 0.10
+    not_reached_partial_score: 70.0
+    rationale: "Design-specified mapping (docs/REPORT_CARD_DESIGN.md and the
+      RC1 backlog item, verbatim): 100 if the Kaplan-Meier median survival
+      is >= 12 months, or the median was never reached with fewer than 10%
+      of relationships having 'died' (i.e. the network is so stable there
+      is not enough churn to even estimate a half-life); 70 at 6 months; 0
+      at 1 month; linear between.  If the median was not reached but 10% or
+      more of relationships have already changed, scored at the 70-point
+      (pass-mark) placeholder pending more update history for a confident
+      read — implemented in scorecard.py (_score_li02) because it branches
+      on censoring, not a single curve."
+  LI-03:
+    points: [[0, 100], [20, 70], [60, 0]]
+    rationale: "FRB empirical forecast-error band width (largest bucket),
+      working days.  Same working-day-scale caveat as LI-01."
+  LI-04:
+    points: [[0.05, 0], [0.15, 100], [0.35, 100], [0.6, 0]]
+    rationale: "PCI (Herfindahl concentration of criticality across the top
+      float paths) is two-sided per design §4: too diffuse (no coherent
+      critical path) and too concentrated (manufactured consolidation) are
+      both concerning; [0.15, 0.35] is full credit."
+  LI-05:
+    points: [[0, 100], [20, 70], [60, 0]]
+    rationale: "RDI cumulative recovery debt, working days.  Same
+      working-day-scale caveat as LI-01/LI-03."
+  LI-06:
+    points: [[0, 100], [25, 70], [75, 0]]
+    rationale: "BDI, percent of the latest driving path that is
+      post-baseline.  A quarter of today's completion story never being in
+      the contract baseline is a material departure; three-quarters is
+      essentially a different project than the one baselined."
+  LI-08:
+    special: true
+    points: [[0, 100], [2, 70], [6, 0]]
+    unresolved_only_score: 20.0
+    rationale: "Intervention Latency, median updates from a chain first
+      showing negative float to the first responsive edit.  0 updates
+      (same-update response) scores 100; 2 updates is a reasonably prompt
+      published pass mark; 6 (3x) is the ceiling.  If there is no median
+      (no responsive edit was ever observed) but at least one unresolved
+      emergence event exists, scored at a fixed 20 — 'did not act' is worse
+      than any measured latency; if there are no emergence events at all,
+      there is nothing to grade and the check is left N/A.  Implemented in
+      scorecard.py (_score_li08) because of this branch."
+  LI-09:
+    points: [[1.0, 100], [1.5, 70], [3.0, 0]]
+    rationale: "BWI, remaining near-critical density normalized to the
+      first update (1.0 = no worse than the start).  1.5 (50% densification
+      ahead of a held milestone) is a material compression signal; 3.0
+      (tripling) is the ceiling."
+  SET-01:
+    points: [[0, 100], [3, 0]]
+    rationale: "Zero-tolerance count check (scheduling-settings drift) and a
+      heavily-weighted (critical) member; three simultaneous setting
+      changes is treated as a wholesale recovery-by-settings event."
+  TRD-05:
+    points: [[0, 100], [3, 0]]
+    rationale: "Zero-tolerance count check (retroactive actual-date changes)
+      and the series gate; the curve still resolves to a number for the
+      trace even though the gate makes the category/overall caps the
+      operative consequence above zero."
+  CAL-04:
+    points: [[0, 100], [1, 70], [5, 0]]
+    rationale: "Calendar definition changes between updates; the matrix
+      carries no threshold for this check (a pure count), so this is an
+      LI-authored series-card normalization: one edit is ordinary
+      maintenance tolerance, five is a de facto recalendaring of the
+      project."
+  DAT-04:
+    points: [[0, 100], [45, 70], [135, 0]]
+    rationale: "Series-level reuse of the file-card DAT-04 curve (matrix
+      threshold 45 days), applied to the mean data-date currency across
+      all files in the series."
+  EVM-01:
+    points: [[26.67, 0], [80, 70], [100, 100]]
+    rationale: "Default direction=min derivation from the matrix threshold
+      (80%): floor = threshold/3 = 26.67."
+  EVM-02:
+    points: [[0.25, 0], [0.75, 70], [1.0, 100]]
+    rationale: "Default direction=min derivation from the matrix threshold
+      (0.75): floor = threshold/3 = 0.25."
+  SPEC-CADENCE:
+    name: "Update cadence regularity"
+    unit: ratio
+    source: "intake.scorecard.build_scorecard — share of update intervals
+      flagged against the dominant cadence (D1, backlog item)."
+    points: [[0, 100], [0.25, 70], [0.75, 0]]
+    rationale: "Not a matrix check (D1 lives in the intake-review workbook,
+      not the matrix/engine); wired here as a first-class series-card
+      member per design §4's explicit 'cadence (D1)' listing.  A quarter of
+      update intervals being irregular is the pass-mark; three-quarters
+      (3x) is effectively no fixed reporting cadence at all.  Flagged as a
+      non-matrix input for the lead's audit — see this file's header note
+      and the RC2 implementation notes in scorecard.py."
+  SPEC-EVERGREEN:
+    name: "Evergreen (percent-complete-creep) activities"
+    unit: percent
+    source: "intake.evergreen.find_evergreen_activities (D8, backlog item)."
+    points: [[0, 100], [5, 70], [15, 0]]
+    rationale: "Not a matrix check.  Percentage of the latest update's real-
+      activity population flagged as 'evergreen' (percent complete rising
+      without commensurate remaining-duration movement).  5% is treated as
+      the pass mark, 15% (3x) as a systemic EV-integrity problem.  Same
+      non-matrix-input flag as SPEC-CADENCE."
+  SPEC-TSPI:
+    name: "Earned-schedule TSPI(t)"
+    unit: index
+    source: "analytics.earned_schedule.earned_schedule — latest period's
+      to-complete SPI(t) (S3, backlog item)."
+    points: [[0, 100], [1.0, 70], [3.0, 0]]
+    rationale: "Not a matrix check.  TSPI(t) <= 1 means the remaining plan
+      needs a pace at or below what has already been demonstrated (fine);
+      1.0 is the published pass mark (remaining plan exactly matches
+      demonstrated pace, i.e. no cushion); 3.0 is a remaining plan that
+      requires triple the demonstrated pace, treated as not credible.  Same
+      non-matrix-input flag as SPEC-CADENCE."
+
+# --------------------------------------------------------------------------
+# Series file-quality trajectory (design §4, fifth category).
+# --------------------------------------------------------------------------
+trajectory:
+  weight: 15
+  level_is_mean_of: "per-file overall scores (FileCard.overall) across the series"
+  slope_is_mean_successive_delta_of: "per-file overall scores, points per update"
+  slope_points: [[-3, 30], [0, 70], [3, 100]]
+  combination: "trajectory_score = 0.5 * level_score + 0.5 * slope_score"
+  rationale: "Design §4/RC1 verbatim for the slope grading (improving >= +3
+    pts/update = 100, flat = 70, deteriorating <= -3 = 30 — note the floor
+    is 30, not 0: slope is a direction signal layered on top of the level,
+    and a deteriorating-but-still-adequate portfolio should not be graded
+    as harshly as a data-integrity gate failure).  'level' is simply the
+    mean per-file overall score restated as its own 0-100 input (it is
+    already a grade).  The two are weighted evenly so that a mediocre
+    but-improving portfolio and a good-but-collapsing portfolio both land
+    near the middle of the category — which is the intended signal: the
+    card's grade table plus its trend arrows tell the fuller story, the
+    trajectory category score is deliberately just the headline blend."
+
+# --------------------------------------------------------------------------
+# RC5 — internal-variant scaffolding.  Weight-0 placeholders; proven
+# identical to the standard card today by tests/test_scorecard.py.
+# --------------------------------------------------------------------------
+internal_variant:
+  members:
+    N16: {name: "SMI — Schedule Manipulation Indicator", weight: 0, status: "placeholder — PARKED, not yet built"}
+    N17: {name: "DDI — Directed Date Index", weight: 0, status: "placeholder — PARKED, not yet built"}
+    N18: {name: "ARR — Attribution Robustness Ratio", weight: 0, status: "placeholder — PARKED, not yet built"}
+    N19: {name: "PPS — Pacing Plausibility Score", weight: 0, status: "placeholder — PARKED, not yet built"}
+    N20: {name: "RSA — Rebuttal Surface Area", weight: 0, status: "placeholder — PARKED, not yet built"}
+  rationale: "docs/BACKLOG.md N16-N20: proposed provocative indices, not yet
+    built or approved for scoring (privileged/internal card only if and
+    when they are).  Listed here at weight 0 so the internal card variant
+    has a place to attach them without a spec revision; they never move a
+    grade today, which is exactly what tests/test_scorecard.py's
+    variant-identity test verifies."

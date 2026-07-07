@@ -1,0 +1,1042 @@
+# ============================================================================
+# ScheduleIQ Metric & Heuristic Matrix — the authoritative check inventory.
+#
+# Every check the software runs is defined here; the engine refuses to run
+# anything not in this file, and reports anything here without an
+# implementation as NOT EVALUATED.  Rendered to docs/METRIC_MATRIX.md.
+#
+# Fields:
+#   id / name / category
+#   description  what the check tests and why an analyst cares
+#   formula      population and arithmetic, as implemented
+#   unit         percent | count | ratio | index | days | info
+#   threshold    standard default (null = informational); analysts may
+#                override via a profile — overrides are recorded in output
+#   direction    max = value must be <= threshold; min = >=; info
+#   severity     critical (FAIL when tripped) | warning | info
+#   references   the standard/guide each check is grounded in
+#   fuse_equivalent   the Acumen Fuse metric this replicates (if any)
+#   applies_to   all | update (needs progress data) | series (multi-file)
+#
+# Reference key (full citations in docs/REFERENCES.md):
+#   DCMA14    DCMA 14-Point Schedule Assessment (DCMA-EA PAM 200.1, Oct 2012,
+#             §4; also reproduced in NDIA PASEG and GAO-16-89G discussions)
+#   GAO       GAO-16-89G Schedule Assessment Guide (Dec 2015), Best Practices 1-10
+#   NASA      NASA/SP-2010-3403 Schedule Management Handbook; NASA STAT health check
+#   PASEG     NDIA IPMD Planning & Scheduling Excellence Guide v6.0 (Sept 2025);
+#             GASP Section 2; Schedule Analysis Section 10
+#   AACE29R   AACE RP 29R-03 Forensic Schedule Analysis (2011), §2.1-2.3 source validation
+#   AACE78R   AACE RP 78R-13 Original Baseline Schedule Review (2014)
+#   SCL       SCL Delay and Disruption Protocol, 2nd ed. (2017)
+#   FUSE      Deltek Acumen Fuse metric library (help.deltek.com; Metrics &
+#             Descriptions Guide) — market-capability parity reference
+#   RPW       Ron Winter Consulting, Schedule Analyzer / "The Inner Workings
+#             of P6" — P6 forensic data-integrity practice
+#   CIOB      CIOB Guide to Good Practice in the Management of Time (2011)
+# ============================================================================
+checks:
+  # ------------------------------------------------------------------ DCMA 14
+  - id: DCMA-01
+    name: "Logic (missing predecessors/successors)"
+    category: "DCMA 14-Point Assessment"
+    description: "Incomplete activities missing a predecessor and/or successor.  Open-ended activities float free of the network, so slippage does not propagate and the critical path is unreliable."
+    formula: "count(incomplete activities missing pred or succ) / count(incomplete activities), excluding LOE/summary"
+    unit: percent
+    threshold: 5
+    direction: max
+    severity: critical
+    references:
+      - "DCMA14 Check 1 (<= 5%)"
+      - "GAO BP2 (sequencing; open ends)"
+      - "NASA STAT health check (<= 5%)"
+      - "PASEG §10.2 network logic"
+    fuse_equivalent: "Missing Logic / Open Ends"
+  - id: DCMA-02
+    name: "Leads (negative lags)"
+    category: "DCMA 14-Point Assessment"
+    description: "Relationships carrying negative lag.  Leads distort the critical path, hide real work, cannot be statused, and invalidate risk simulation."
+    formula: "count(relationships with lag < 0, incomplete successor) / count(relationships with incomplete successor)"
+    unit: percent
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "DCMA14 Check 2 (zero leads)"
+      - "GAO BP2 (avoid leads)"
+      - "FUSE Number of Leads (0)"
+    fuse_equivalent: "Number of Leads"
+  - id: DCMA-03
+    name: "Lags (positive lags)"
+    category: "DCMA 14-Point Assessment"
+    description: "Relationships carrying positive lag.  Lag is invisible unresourced 'work' that cannot be statused; excessive lag conceals scope and biases float."
+    formula: "count(relationships with lag > 0, incomplete successor) / count(relationships with incomplete successor)"
+    unit: percent
+    threshold: 5
+    direction: max
+    severity: warning
+    references:
+      - "DCMA14 Check 3 (<= 5%)"
+      - "GAO BP2 (minimize/justify lags)"
+      - "NASA STAT (<= 5%)"
+    fuse_equivalent: "Number of Lags"
+  - id: DCMA-04
+    name: "Relationship types (FS ratio)"
+    category: "DCMA 14-Point Assessment"
+    description: "Share of Finish-to-Start relationships.  FS logic is the most transparent; heavy SS/FF use obscures hand-offs and SF is effectively prohibited."
+    formula: "count(FS relationships) / count(all relationships), incomplete successors"
+    unit: percent
+    threshold: 90
+    direction: min
+    severity: warning
+    references:
+      - "DCMA14 Check 4 (FS >= 90%)"
+      - "GAO BP2 (FS preferred, SF rare)"
+      - "PASEG §5 (relationships)"
+    fuse_equivalent: "Relationship Types / FS Predecessor"
+  - id: DCMA-05
+    name: "Hard constraints"
+    category: "DCMA 14-Point Assessment"
+    description: "Incomplete activities with constraints preventing rightward movement (Must/Mandatory Start or Finish, Start/Finish On, Start/Finish No Later Than) — these override network logic and can fabricate or mask criticality."
+    formula: "count(incomplete with hard/late constraint) / count(incomplete)"
+    unit: percent
+    threshold: 5
+    direction: max
+    severity: critical
+    references:
+      - "DCMA14 Check 5 (<= 5%)"
+      - "GAO BP2 (constraints minimized, justified, documented)"
+      - "SCL Protocol 2nd ed. (programme to be logic-driven)"
+      - "PASEG §5.5 (task constraints)"
+    fuse_equivalent: "Hard Constraints"
+  - id: DCMA-06
+    name: "High float"
+    category: "DCMA 14-Point Assessment"
+    description: "Incomplete activities with total float greater than 44 working days (2 months).  Very high float usually means missing logic rather than genuine flexibility."
+    formula: "count(incomplete with TF > 44 wd via own calendar) / count(incomplete with float data)"
+    unit: percent
+    threshold: 5
+    direction: max
+    severity: warning
+    references:
+      - "DCMA14 Check 6 (<= 5% over 44 wd)"
+      - "GAO BP7 (reasonable total float)"
+      - "NASA STAT (<= 5%)"
+    fuse_equivalent: "High Float"
+  - id: DCMA-07
+    name: "Negative float"
+    category: "DCMA 14-Point Assessment"
+    description: "Incomplete activities with total float below zero.  The plan is not achievable as scheduled; requires a recovery plan or constraint correction.  For delay experts, negative float locates the contractual pressure points."
+    formula: "count(incomplete with TF < 0) / count(incomplete with float data)"
+    unit: percent
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "DCMA14 Check 7 (zero)"
+      - "GAO BP7 (negative float must be analyzed)"
+      - "NASA STAT (0)"
+    fuse_equivalent: "Negative Float"
+  - id: DCMA-08
+    name: "High duration"
+    category: "DCMA 14-Point Assessment"
+    description: "Incomplete tasks with baseline (original) duration greater than 44 working days.  Long activities mask slippage and defeat progress measurement; decompose them."
+    formula: "count(incomplete tasks with OD > 44 wd via own calendar) / count(incomplete tasks)"
+    unit: percent
+    threshold: 5
+    direction: max
+    severity: warning
+    references:
+      - "DCMA14 Check 8 (<= 5% over 44 wd)"
+      - "GAO BP4 (durations short and meaningful)"
+      - "FUSE Insufficient Detail"
+    fuse_equivalent: "High Duration / Insufficient Detail"
+  - id: DCMA-09
+    name: "Invalid dates"
+    category: "DCMA 14-Point Assessment"
+    description: "Actual dates after the data date, or forecast dates before it.  Either corrupts every downstream calculation; a schedule failing this check cannot be relied on for analysis as-is."
+    formula: "count(actual start/finish > DD) + count(forecast start/finish < DD)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "DCMA14 Check 9 (zero)"
+      - "GAO BP9 (valid status)"
+      - "AACE29R §2.1 source validation (data date integrity)"
+      - "RPW Schedule Analyzer date checks"
+    fuse_equivalent: "Invalid Dates / Invalid Forecast + Actual Dates"
+  - id: DCMA-10
+    name: "Resources (unloaded activities)"
+    category: "DCMA 14-Point Assessment"
+    description: "Incomplete tasks of at least one day with neither resources nor cost.  Applies when the schedule purports to be resource/cost loaded; unloaded work cannot support resource-based delay or disruption analysis."
+    formula: "count(incomplete tasks, dur >= 1d, no resources and no cost) / count(incomplete tasks, dur >= 1d)"
+    unit: percent
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "DCMA14 Check 10"
+      - "GAO BP3 (resources on all activities)"
+    fuse_equivalent: "Missing Resource Assignment"
+  - id: DCMA-11
+    name: "Missed tasks"
+    category: "DCMA 14-Point Assessment"
+    description: "Activities that finished, or are forecast to finish, later than their baseline finish among those due by the data date.  A leading indicator of baseline erosion."
+    formula: "count(due-by-DD activities with (actual or forecast finish) > baseline finish) / count(due-by-DD activities)"
+    unit: percent
+    threshold: 5
+    direction: max
+    severity: warning
+    references:
+      - "DCMA14 Check 11 (<= 5%)"
+      - "PASEG execution metrics"
+    fuse_equivalent: "Missed Tasks"
+    applies_to: update
+  - id: DCMA-12
+    name: "Critical path test (continuity)"
+    category: "DCMA 14-Point Assessment"
+    description: "The critical path must run continuously from the data date to project completion, driven by logic rather than constraints.  DCMA's test perturbs a critical duration (+600d) and verifies 1:1 finish slip; without a scheduling engine ScheduleIQ verifies minimum-float path continuity and reports breaks for manual confirmation."
+    formula: "walk minimum-total-float activities; count members without an on-path successor (excluding project finish)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "DCMA14 Check 12"
+      - "GAO BP6 (valid critical path)"
+      - "AACE78R (baseline CP review)"
+    fuse_equivalent: "Critical Path Test"
+    notes: "Automated proxy; confirm with a +600d perturbation in P6/MSP when the finding matters."
+  - id: DCMA-13
+    name: "Critical Path Length Index (CPLI)"
+    category: "DCMA 14-Point Assessment"
+    description: "(Critical path length + total float to the contractual finish) / critical path length, in remaining working days.  Below 0.95 the remaining plan is inefficient against the commitment."
+    formula: "(CP length from DD to forecast finish + float to must-finish/baseline finish) / CP length"
+    unit: index
+    threshold: 0.95
+    direction: min
+    severity: warning
+    references:
+      - "DCMA14 Check 13 (>= 0.95)"
+      - "PASEG §10.4 (CPLI)"
+    fuse_equivalent: "CPLI"
+    applies_to: update
+  - id: DCMA-14
+    name: "Baseline Execution Index (BEI)"
+    category: "DCMA 14-Point Assessment"
+    description: "Activities completed divided by activities baselined to complete by the data date.  Below 0.95 the contractor is not executing to plan."
+    formula: "count(completed) / (count(baseline finish <= DD) + count(missing baseline dates))  — per PAM 200.1, sparse baselining penalized"
+    unit: index
+    threshold: 0.95
+    direction: min
+    severity: warning
+    references:
+      - "DCMA14 Check 14 (>= 0.95)"
+      - "PASEG §10.4 (BEI)"
+    fuse_equivalent: "BEI / Baseline Execution Index"
+    applies_to: update
+
+  # ------------------------------------------------------- Logic and network
+  - id: LOG-01
+    name: "Dangling starts (FF-only predecessors)"
+    category: "Logic & Network Quality"
+    description: "Activities whose only predecessors are FF (or SF): the start is logically undriven even though 'logic exists', so it passes the open-ends check while still floating free.  Unreliable for CPM and risk analysis."
+    formula: "count(incomplete activities whose predecessor set is all FF)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "GAO BP2 (dangling activities)"
+      - "FUSE Open Start (Dangling)"
+      - "RPW (hanging activities)"
+    fuse_equivalent: "Open Start (Dangling Activity)"
+  - id: LOG-02
+    name: "Dangling finishes (SS-only successors)"
+    category: "Logic & Network Quality"
+    description: "Activities whose only successors are SS: the finish drives nothing downstream, so a growth in duration is invisible to the completion date."
+    formula: "count(incomplete activities whose successor set is all SS)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "GAO BP2 (dangling activities)"
+      - "FUSE Open Finish (Dangling)"
+    fuse_equivalent: "Open Finish (Dangling Activity)"
+  - id: LOG-03
+    name: "Start-to-Finish relationships"
+    category: "Logic & Network Quality"
+    description: "SF logic is almost never a genuine plan of work and is effectively prohibited by every published standard."
+    formula: "count(SF relationships)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "DCMA14 Check 4 (SF ~ 0)"
+      - "GAO BP2 (SF strongly discouraged)"
+    fuse_equivalent: "SF Predecessor"
+  - id: LOG-04
+    name: "Duplicate/parallel relationships"
+    category: "Logic & Network Quality"
+    description: "More than one relationship between the same activity pair (e.g., FS plus FF).  Sometimes legitimate, often accidental; inflates logic density and confuses tracing."
+    formula: "count(activity pairs with > 1 relationship)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "FUSE Redundancy checks"
+      - "RPW Schedule Analyzer"
+    fuse_equivalent: "Redundant Logic (duplicate pairs)"
+  - id: LOG-05
+    name: "Logic density"
+    category: "Logic & Network Quality"
+    description: "Average relationships per activity.  Below ~2 the network is under-linked; above ~4 the logic is likely redundant or unmaintainable.  Informational band rather than pass/fail."
+    formula: "count(relationships) / count(activities)"
+    unit: ratio
+    threshold: 2
+    direction: min
+    severity: info
+    references:
+      - "FUSE Logic Density (2-4 band)"
+      - "CIOB GPMT (network density guidance)"
+    fuse_equivalent: "Logic Density"
+    notes: "Report flags < 2 and annotates > 4."
+  - id: LOG-06
+    name: "Merge hotspots"
+    category: "Logic & Network Quality"
+    description: "Activities with an unusually high predecessor count.  Merge bias makes these dates optimistic (all predecessors must perform); prime candidates for risk focus.  ScheduleIQ flags >= 10 predecessors (Fuse's default trip of > 2 is noisy on construction schedules)."
+    formula: "count(activities with >= 10 predecessors)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "FUSE Merge Hotspot"
+      - "GAO BP8 (merge bias in SRA)"
+    fuse_equivalent: "Merge Hotspot"
+  - id: LOG-07
+    name: "Out-of-sequence progress"
+    category: "Logic & Network Quality"
+    description: "Successors started before their predecessors permitted.  OOS work means the as-built sequence departs from the logic; the P6 retained-logic vs progress-override setting then materially changes forecast dates — a core forensic intake question."
+    formula: "count(relationships where successor actual start precedes what the relationship allows)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "GAO BP9 (out-of-sequence corrected each update)"
+      - "PASEG §9.1 (statusing to timenow)"
+      - "RPW Inner Workings of P6 (retained logic vs progress override)"
+      - "AACE29R §2.2 update validation"
+    fuse_equivalent: "Out of Sequence Progress"
+    applies_to: update
+  - id: LOG-08
+    name: "Logic on LOE/summary activities"
+    category: "Logic & Network Quality"
+    description: "Relationships routed through level-of-effort, hammock, or summary activities.  Logic belongs on detail activities; LOE must never drive the critical path."
+    formula: "count(relationships with an LOE/summary endpoint)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "GAO BP2/BP6 (no summary logic; no LOE on CP)"
+      - "PASEG (LOE never drives discrete work)"
+    fuse_equivalent: "Links to/from Summary Activities"
+  - id: LOG-09
+    name: "Redundant (transitive) logic"
+    category: "Logic & Network Quality"
+    description: "A->C when A->B->C already exists.  Redundant links inflate density and make every trace noisier; usually debris from schedule surgery."
+    formula: "count(FS relationships whose predecessor reaches the successor by another FS path)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "FUSE Redundancy Index"
+      - "RPW Schedule Analyzer (redundant relationships)"
+    fuse_equivalent: "Redundancy Index Logic Check"
+  - id: REL-01
+    name: "Zombie relationships"
+    category: "Logic & Network Quality"
+    description: "Relationships whose predecessor or successor task ID does not resolve to an activity in the schedule.  A hallmark of export corruption or a partial activity delete that left dangling logic rows behind."
+    formula: "count(relationships where pred_uid or succ_uid not in schedule.activities)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "RPW Schedule Analyzer"
+      - "AACE29R §2.1 (source validation)"
+    fuse_equivalent: ""
+
+  # ------------------------------------------------------------- Constraints
+  - id: CON-01
+    name: "Soft constraints"
+    category: "Constraints"
+    description: "One-way constraints (Start/Finish No Earlier Than, As Late As Possible).  Less damaging than hard constraints but still bend the network; each should be justified in the basis document."
+    formula: "count(incomplete with soft constraint) / count(incomplete)"
+    unit: percent
+    threshold: 5
+    direction: max
+    severity: info
+    references:
+      - "GAO BP2 (all constraints minimized/justified/documented)"
+      - "FUSE Soft Constraints"
+      - "AACE78R (constraint review)"
+    fuse_equivalent: "Soft Constraints"
+  - id: CON-02
+    name: "Expected Finish constraints"
+    category: "Constraints"
+    description: "P6 Expected Finish dates silently override remaining duration at each recalculation — a notorious source of 'durations that change by themselves' between updates."
+    formula: "count(incomplete activities with expected finish set)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "RPW Inner Workings of P6 (expected finish)"
+      - "AACE29R §2.2 (update validation)"
+    fuse_equivalent: ""
+  - id: CON-03
+    name: "As-Late-As-Possible activities"
+    category: "Constraints"
+    description: "ALAP consumes all free float by design, pushing work (and cash) late and destroying early-warning float.  Rarely appropriate outside procurement/deliveries."
+    formula: "count(incomplete activities with ALAP constraint)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "GAO BP2"
+      - "RPW (ALAP cautions)"
+    fuse_equivalent: "Soft Constraints (ALAP variant)"
+
+  # ------------------------------------------------------------------- Float
+  - id: FLT-01
+    name: "Critical percentage"
+    category: "Float"
+    description: "Share of incomplete activities with total float <= 0.  A schedule that is 40% 'critical' has either real trouble or manufactured criticality (constraints, bad calendars); either way the critical path loses meaning."
+    formula: "count(incomplete with TF <= 0) / count(incomplete with float data)"
+    unit: percent
+    threshold: 20
+    direction: max
+    severity: info
+    references:
+      - "FUSE Critical (informational)"
+      - "CIOB GPMT (criticality review)"
+    fuse_equivalent: "Critical"
+  - id: FLT-02
+    name: "Near-critical percentage"
+    category: "Float"
+    description: "Activities within 5 working days of critical.  A large near-critical population signals path volatility: the critical path can flip between updates, complicating delay attribution."
+    formula: "count(incomplete with 0 < TF <= 5 wd) / count(incomplete with float data)"
+    unit: percent
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "AACE29R (near-critical path identification, MIP support)"
+      - "FUSE Near-Critical"
+    fuse_equivalent: "Near-Critical"
+  - id: FLT-03
+    name: "Float exceeding remaining project duration"
+    category: "Float"
+    description: "Incomplete activities whose total float, in their own calendar's working days, exceeds the working-day-equivalent time remaining in the project.  Float cannot legitimately exceed the runway left to the forecast finish; when it does, the calendar or a constraint is producing an artifact rather than genuine flexibility."
+    formula: "count(incomplete activities with TF days (own calendar) > working-day-equivalent of (finish_date - data_date)), where working-day-equivalent = calendar_days * 5/7 + 2d buffer (approximation for holidays/rounding; does not model the project's actual holiday calendar)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "RPW Inner Workings of P6"
+      - "GAO BP7"
+    fuse_equivalent: ""
+
+  # ------------------------------------------------- Durations and estimating
+  - id: DUR-01
+    name: "Zero-duration tasks (non-milestones)"
+    category: "Duration & Estimating"
+    description: "Tasks with zero duration that are not coded as milestones distort counts and usually indicate scope stubs or import artifacts."
+    formula: "count(incomplete tasks with OD = 0)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "FUSE Zero Duration"
+      - "RPW Schedule Analyzer"
+    fuse_equivalent: "Zero Duration (non-milestone)"
+  - id: DUR-02
+    name: "Templated durations (multiples of 5 days)"
+    category: "Duration & Estimating"
+    description: "A very high share of durations at 5/10/15/20 days suggests templated estimating rather than a basis of estimate — a credibility question for the baseline."
+    formula: "count(tasks with OD divisible by 5 wd) / count(tasks with OD > 0)"
+    unit: percent
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "GAO BP4 (durations from a documented basis)"
+      - "AACE78R (duration reasonableness)"
+    fuse_equivalent: ""
+  - id: DUR-03
+    name: "Original vs remaining duration mismatch (not started)"
+    category: "Duration & Estimating"
+    description: "Not-started activities where remaining duration differs from original duration: someone edited RD (or an Expected Finish did) without progress — a silent replan."
+    formula: "count(not-started with |RD - OD| > 0)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "RPW Schedule Analyzer"
+      - "AACE29R §2.2 (update validation)"
+    fuse_equivalent: ""
+
+  # ------------------------------------------------- Status and date integrity
+  - id: DAT-01
+    name: "Status vs actual-date consistency"
+    category: "Status & Date Integrity"
+    description: "In-progress without an actual start, completed without actual dates.  Impossible states that break as-built extraction for delay analysis."
+    formula: "count(status/actual-date contradictions)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "AACE29R §2.2-2.3 (update and as-built validation)"
+      - "RPW Schedule Analyzer"
+      - "GAO BP9"
+    fuse_equivalent: "Percent Complete anomalies"
+  - id: DAT-02
+    name: "Actual dates without progress"
+    category: "Status & Date Integrity"
+    description: "Not-started activities carrying actual dates — statusing errors or import damage."
+    formula: "count(not-started with actual start or finish)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "RPW Schedule Analyzer"
+      - "GAO BP9"
+    fuse_equivalent: ""
+  - id: DAT-03
+    name: "Suspend/resume usage"
+    category: "Status & Date Integrity"
+    description: "Suspended activities stop consuming remaining duration invisibly; each suspension needs a documented reason and matters for disruption analysis."
+    formula: "count(activities with suspend or resume dates)"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "RPW Inner Workings of P6"
+    fuse_equivalent: ""
+    applies_to: update
+  - id: DAT-04
+    name: "Data date currency"
+    category: "Status & Date Integrity"
+    description: "Days between the data date and the file's export date.  A schedule exported long after its data date may have been reworked post-period — a chain-of-custody flag for expert use."
+    formula: "abs(export date - data date), days"
+    unit: days
+    threshold: 45
+    direction: max
+    severity: info
+    references:
+      - "AACE29R §2.1 (source validation)"
+      - "SCL Protocol (contemporaneous records, Core Principle 1)"
+    fuse_equivalent: ""
+  - id: DAT-05
+    name: "Actual-duration anomalies"
+    category: "Status & Date Integrity"
+    description: "Actual finish before actual start, actuals reported earlier than the project start date, or a completed task with positive original duration whose actual start and finish coincide (zero as-built span) — as-built corruption that must be resolved before the dates support delay analysis."
+    formula: "count(actual finish < actual start) + count(actual start/finish < project start_date) + count(completed tasks with OD > 0 and actual_finish == actual_start)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "AACE29R §2.3 (as-built validation)"
+      - "RPW Schedule Analyzer"
+    fuse_equivalent: ""
+
+  # --------------------------------------------------------------- Calendars
+  - id: CAL-01
+    name: "Calendars in use"
+    category: "Calendars"
+    description: "Inventory of calendars actually assigned.  Many calendars (or surprise resource calendars) are the leading cause of float values analysts cannot reproduce."
+    formula: "count(distinct calendars assigned to activities)"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "RPW Inner Workings of P6 (calendars & float)"
+      - "AACE29R §2.1"
+    fuse_equivalent: "Number of Calendars"
+  - id: CAL-02
+    name: "Non-standard hours-per-day calendars"
+    category: "Calendars"
+    description: "Calendars not using 8h days make 'days' displays misleading (a 10-day duration on a 12h calendar is not what it looks like) and distort every day-denominated metric."
+    formula: "count(activities on calendars with hours/day != 8)"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "RPW Inner Workings of P6 (hours-per-day distortion)"
+    fuse_equivalent: ""
+  - id: CAL-03
+    name: "Working calendars without holidays"
+    category: "Calendars"
+    description: "A 5-day calendar with zero holiday exceptions almost certainly overstates capacity; check against the project location's calendar."
+    formula: "count(assigned 5-day calendars with no non-work exceptions)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "CIOB GPMT (calendar realism)"
+      - "AACE78R (calendar review)"
+    fuse_equivalent: ""
+  - id: CAL-05
+    name: "Quantified multi-calendar float distortion at the driving path"
+    category: "Calendars"
+    description: "For each activity on the driving path (reused from analytics.paths.driving_path, never recomputed), total float is restated in days via the activity's own calendar hours/day and, separately, via the project's dominant calendar hours/day; the two figures diverge whenever a driving-path activity sits on a non-dominant-hours calendar, because a day of float is not a calendar-neutral unit."
+    formula: "for each driving-path step with total_float_hours: own_days = TF_hr / own_calendar.hours_per_day; dominant_days = TF_hr / dominant_calendar.hours_per_day (dominant = calendar covering the most real activities); report max(abs(own_days - dominant_days)) across the path, with per-activity findings where the divergence exceeds 0.5d"
+    unit: days
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "RPW Inner Workings of P6 (multi-calendar float)"
+      - "AACE29R (critical path identification)"
+    fuse_equivalent: ""
+    applies_to: all
+
+  # ------------------------------------------------------ Resources and cost
+  - id: RES-01
+    name: "Milestones carrying resources"
+    category: "Resources & Cost"
+    description: "Milestones with resource assignments distort resource and EV metrics (and in Fuse's DCMA-with-EV variant require special handling)."
+    formula: "count(milestones with assignments)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "PASEG (milestones carry no work)"
+    fuse_equivalent: ""
+  - id: RES-02
+    name: "Completed activities with remaining values"
+    category: "Resources & Cost"
+    description: "Completed work retaining remaining duration, units, or cost — corrupt statusing that inflates the remaining plan."
+    formula: "count(completed with RD > 0 or remaining units/cost > 0)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "RPW Schedule Analyzer"
+      - "PASEG (statusing hygiene)"
+    fuse_equivalent: ""
+
+  # ------------------------------------------- Structure, CP, and progress
+  - id: CP-01
+    name: "Calendars on the critical path"
+    category: "Structure & Critical Path"
+    description: "Multiple calendars along the critical path make total float non-uniform (float is calendar-denominated), so 'zero float' means different things on different activities — confirm criticality by longest path, not float alone."
+    formula: "count(distinct calendars among TF <= 0 activities)"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "RPW Inner Workings of P6 (multi-calendar float)"
+      - "AACE29R (critical path identification)"
+    fuse_equivalent: ""
+  - id: STR-01
+    name: "Schedule census"
+    category: "Structure & Critical Path"
+    description: "Activity/relationship/WBS counts and type distribution — the basic profile every intake memo starts with."
+    formula: "counts by type"
+    unit: info
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "FUSE Characteristics group"
+      - "GAO BP1 (capture all activities)"
+    fuse_equivalent: "Characteristics (Milestones/Normal/Summaries/Hammocks)"
+  - id: STR-02
+    name: "Start and finish milestones present"
+    category: "Structure & Critical Path"
+    description: "The project should open and close on milestones so the network has defined entry/exit points."
+    formula: "count(start milestones) + count(finish milestones)"
+    unit: count
+    threshold: 2
+    direction: min
+    severity: info
+    references:
+      - "PASEG (program start/finish milestones)"
+      - "CIOB GPMT"
+    fuse_equivalent: "Milestones"
+  - id: PRG-01
+    name: "Progress census"
+    category: "Structure & Critical Path"
+    description: "Completed / in-progress / not-started distribution — context for every other update-file metric."
+    formula: "status distribution over real activities"
+    unit: percent
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "FUSE Progress/Status group"
+    fuse_equivalent: "In Progress / Complete / Not Started"
+    applies_to: update
+
+  # -------------------------------------------------- Series (trend) checks
+  - id: TRD-01
+    name: "Float erosion trend"
+    category: "Trend & Change (series)"
+    description: "Total float consumed per period on key paths.  Sustained erosion without recovery action is the classic early-warning the tribunal will ask why nobody saw."
+    formula: "delta of mean/min total float between consecutive updates"
+    unit: days
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "PASEG §10.4 (float trend / TFCI)"
+      - "SCL Protocol (contemporaneous monitoring)"
+    fuse_equivalent: "Performance trending"
+    applies_to: series
+  - id: TRD-02
+    name: "Critical path stability"
+    category: "Trend & Change (series)"
+    description: "Overlap (Jaccard) of critical-set membership between consecutive updates.  A path that flips every month makes windows-based delay methods hard and points at logic churn or calendar noise."
+    formula: "|CP(n) intersect CP(n+1)| / |CP(n) union CP(n+1)|"
+    unit: ratio
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "AACE29R (MIP selection: path volatility)"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: TRD-03
+    name: "Logic churn rate"
+    category: "Trend & Change (series)"
+    description: "Relationships added plus deleted between updates, as a share of the network.  High churn immediately before a claim window is a red flag for retrospective logic engineering."
+    formula: "(rels added + rels deleted) / rels in earlier update"
+    unit: percent
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "AACE29R §2.2 (update validation: logic changes)"
+      - "FUSE Forensics (logic changes)"
+    fuse_equivalent: "Forensic Analyzer logic changes"
+    applies_to: series
+  - id: TRD-04
+    name: "Forecast completion slippage"
+    category: "Trend & Change (series)"
+    description: "Movement of the forecast project finish per update, against data-date progression: slip rate > 1 means the end date moves faster than time passes."
+    formula: "delta(forecast finish) / delta(data date) per period"
+    unit: ratio
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "PASEG §10.4 (completion trend / schedule rate chart)"
+      - "SCL Protocol Pt B (progress records)"
+    fuse_equivalent: "Performance trending"
+    applies_to: series
+  - id: TRD-05
+    name: "Retroactive actual-date changes"
+    category: "Trend & Change (series)"
+    description: "Actual dates reported in one update and changed in a later one — 'rewriting history'.  Central to as-built reliability; every instance must be explained before the schedule is used for delay analysis."
+    formula: "count(activities whose actual start/finish differs between updates where both reported)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "AACE29R §2.3 (as-built validation)"
+      - "RPW Schedule Analyzer (actual date changes)"
+    fuse_equivalent: "Forensic Analyzer progress changes"
+    applies_to: series
+  - id: TRD-06
+    name: "Duration changes to existing activities"
+    category: "Trend & Change (series)"
+    description: "Original-duration edits between updates (especially on in-progress or completed work) — silent replans that mask slippage."
+    formula: "count(activities with OD changed between updates)"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "AACE29R §2.2"
+      - "FUSE Forensics (duration updates)"
+    fuse_equivalent: "Forensic Analyzer duration changes"
+    applies_to: series
+  - id: TRD-07
+    name: "Scope churn (activities added/deleted)"
+    category: "Trend & Change (series)"
+    description: "Activities added or removed per update.  Tracks scope evolution and locates when claim-relevant work entered the schedule."
+    formula: "count(added) + count(deleted) per update pair"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "GAO BP10 (baseline change control)"
+      - "FUSE Forensics (added/deleted)"
+    fuse_equivalent: "Forensic Analyzer added/deleted activities"
+    applies_to: series
+  - id: EVM-01
+    name: "Hit Task Percentage"
+    category: "Trend & Change (series)"
+    description: "Share of tasks baselined to finish in the period that actually finished on or before their baseline finish.  Read alongside BEI: BEI is cumulative, Hit Task % is per-period execution discipline."
+    formula: "count(finished on/before baseline finish, within period) / count(baseline finish within period)"
+    unit: percent
+    threshold: 80
+    direction: min
+    severity: info
+    references:
+      - "DCMA-EA PAM 200.1 (schedule execution metrics)"
+      - "PASEG §10.4"
+    fuse_equivalent: "Hit Task %"
+    applies_to: series
+  - id: EVM-02
+    name: "Current Execution Index (CEI)"
+    category: "Trend & Change (series)"
+    description: "Of tasks forecast (at the start of the period) to finish within the period, the share that actually finished.  Measures forecast credibility — a schedule whose near-term forecasts keep missing cannot be relied on for look-ahead analysis."
+    formula: "count(actually finished in period, of those forecast to) / count(forecast to finish in period)"
+    unit: index
+    threshold: 0.75
+    direction: min
+    severity: info
+    references:
+      - "DCMA-EA PAM 200.1 (schedule execution metrics)"
+      - "PASEG §10.4.5 (CEI)"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: TRD-08
+    name: "Baseline/plan date changes"
+    category: "Trend & Change (series)"
+    description: "Planned (target) dates shifted between updates without a formal re-baseline — erodes the yardstick that variances are measured against."
+    formula: "count(activities with planned start/finish changed between updates)"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "GAO BP10 (maintain baseline)"
+      - "SCL Protocol (programme updating discipline)"
+    fuse_equivalent: "Forensic Analyzer date changes"
+    applies_to: series
+  - id: SET-01
+    name: "Scheduling-settings drift between updates"
+    category: "Trend & Change (series)"
+    description: "Changes to core scheduling settings (retained logic vs progress override, relationship lag calendar, critical float threshold, open-ends criticality, use of Expected Finish) between consecutive updates.  A settings flip silently changes every forecast date without touching a single activity — 'recovery by settings' rather than by performance."
+    formula: "count(Schedule.settings fields changed between consecutive updates: retained_logic, progress_override, relationship_lag_calendar, critical_float_threshold_hours, make_open_ends_critical, use_expected_finish); each changed field is one finding naming before/after"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: critical
+    references:
+      - "RPW Inner Workings of P6 (settings)"
+      - "AACE29R §2.2 (update validation)"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: CAL-04
+    name: "Calendar definition changes between updates"
+    category: "Trend & Change (series)"
+    description: "Edits to a calendar's own definition (hours per day, workdays per week, weekly work-pattern spans, or holiday exceptions) between updates, for calendars present in both.  Editing the calendar re-times every activity assigned to it without changing a single duration or date field — a near-invisible way to move dates."
+    formula: "for calendars matched by uid (or by name when uid changes), diff hours_per_day, workdays_per_week, work_patterns spans, and exceptions_nonwork (holidays added/removed); each changed field is one finding"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "RPW Inner Workings of P6 (calendars & float)"
+      - "AACE29R §2.2"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LOG-10
+    name: "Hollow-logic screen"
+    category: "Trend & Change (series)"
+    description: "Activities added between updates with original duration of one day or less that already carry at least one predecessor and one successor in the later schedule — inserted directly into an existing logic chain rather than representing new discrete scope.  A classic path-rerouting stub ahead of a claim window."
+    formula: "count(ChangeSet.added activities with original duration <= 1 working day that have >= 1 predecessor and >= 1 successor among the later schedule's relationships)"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: info
+    references:
+      - "AACE29R §2.2 (update validation: logic changes)"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: DUR-04
+    name: "Remaining-duration compression without progress"
+    category: "Trend & Change (series)"
+    description: "Remaining duration falling faster than physics or reported progress justifies, for activities not yet complete in the later update — schedule crashing on paper to hold a date rather than genuine progress.  Branch 1 applies to every activity: RD cannot legitimately drop by more than the working time that passed between the two data dates on the activity's own calendar; exceeding it is a silent re-estimate.  Branch 2 compares RD movement to reported percent movement, and applies ONLY to Physical/Units percent-complete activities: Duration-% activities are excluded because P6 derives their percent from RD/OD, which would make the comparison self-referential."
+    formula: "branch 1 (all percent types): count(activities in both updates, not completed later, where (rd_earlier - rd_later) > working hours available between the data dates on the activity's own calendar (Calendar.is_workday x hours_per_day, iteration capped at 5 years) + 8h tolerance); branch 2 (Physical/Units percent only): count(rd_later < rd_earlier * (1 - max(0, pct_later - pct_earlier) / 100) - 4h tolerance); findings name the branch tripped, RD before/after, and (branch 2) pct before/after"
+    unit: count
+    threshold: 0
+    direction: max
+    severity: warning
+    references:
+      - "RPW Schedule Analyzer"
+      - "PASEG §9 (statusing discipline)"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: STR-03
+    name: "WBS re-parenting churn"
+    category: "Trend & Change (series)"
+    description: "Activities present in both updates whose resolved WBS node (code/name, not raw uid) changed — scope re-mapping that breaks the vertical traceability an expert relies on to tie activities back to the contract/cost breakdown."
+    formula: "count(activities matched by code across a consecutive pair whose earlier.wbs[wbs_uid] code/name differs from later.wbs[wbs_uid] code/name)"
+    unit: count
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "GAO BP5 (vertical traceability)"
+    fuse_equivalent: ""
+    applies_to: series
+
+  # ------------------------------------------ LI proprietary indices (series)
+  - id: LI-01
+    name: "FCBI — Float Criticality Burn Index"
+    category: "LI Proprietary Indices"
+    description: "Float consumption weighted by path criticality (kernel 2^(-RF/lambda), lambda 5 wd).  Burn and recovery tracked separately; normalized burn above 100% means erosion beyond available float (paths driven deeper negative).  RJL concept."
+    formula: "sum over activities of max(0, -dTF days) x 2^(-RF/5); RF = min relative float of containing float paths"
+    unit: days
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §9.1"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-02
+    name: "LHL — Logic Half-Life"
+    category: "LI Proprietary Indices"
+    description: "Kaplan-Meier median survival of relationship signatures across updates, in months; on/off driving-path split.  Short half-life = the network is a rolling narrative, not a plan."
+    formula: "KM median of (pred, succ, type) lifespans, right-censored; baseline pair excluded by default"
+    unit: index
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §9.2"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-03
+    name: "FRB — Forecast Reliability Band"
+    category: "LI Proprietary Indices"
+    description: "Empirical error band on the scheduler's own forecasts: central-80% interval of (actual - forecast finish) working days, bucketed by forecast horizon; bias and dispersion reported separately."
+    formula: "per horizon bucket: median, P10, P90 of realized forecast errors"
+    unit: days
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §9.3"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-04
+    name: "PCI — Path Concentration Index"
+    category: "LI Proprietary Indices"
+    description: "Herfindahl concentration of criticality across the top float paths (same kernel as FCBI).  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
+    formula: "sum of squared kernel-weight shares over top-10 float paths, per update"
+    unit: ratio
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §9.4"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-05
+    name: "RDI — Recovery Debt Index"
+    category: "LI Proprietary Indices"
+    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the maximum demonstrated pace."
+    formula: "sum over windows of max(0, required pace - max demonstrated pace) x window working days"
+    unit: days
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §9.5"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-06
+    name: "BDI — Baseline Dilution Index"
+    category: "LI Proprietary Indices"
+    description: "Share of the latest driving path (by working-day length) attributable to post-baseline activities or logic — how much of today's completion story was never in the contract baseline."
+    formula: "100 x post-baseline step-days / total step-days along the latest driving path"
+    unit: percent
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §10.1"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-07
+    name: "CDI — Criticality Dwell Index"
+    category: "LI Proprietary Indices"
+    description: "Each activity's share of total project criticality-time (one unit allocated per update across the near-critical band by kernel weight).  The leaderboard is the delay analysis's cast of characters."
+    formula: "accumulated kernel-weighted allocation per activity / windows allocated; scalar = top-decile share"
+    unit: ratio
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §10.2"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-08
+    name: "IL — Intervention Latency"
+    category: "LI Proprietary Indices"
+    description: "Median updates (and days) from a chain first showing negative float to the first responsive edit on that chain (logic, duration, calendar, or resources).  Quantifies mitigation responsiveness; distinguishes 'did not act' from 'acted and it did not work'."
+    formula: "median over emergence events of (first responsive update - emergence update); unresolved counted separately"
+    unit: index
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §10.3"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-09
+    name: "BWI — Bow-Wave Index"
+    category: "LI Proprietary Indices"
+    description: "Remaining near-critical work per remaining working period ahead of a held milestone, normalized to the first update.  Rising BWI while the date holds = compression that must eventually break; projected break reported against demonstrated pace."
+    formula: "density_u / density_first, density = near-critical remaining days / working days to target"
+    unit: ratio
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §10.4"
+    fuse_equivalent: ""
+    applies_to: series
+  - id: LI-10
+    name: "MML — Measured-Mile Locator"
+    category: "LI Proprietary Indices"
+    description: "Per trade/WBS: disruption contrast ratio (most-impacted window productivity / cleanest window productivity) with candidate periods located; flags when no clean mile exists.  Preliminary — period selection confirmed by the expert."
+    formula: "min-window productivity / max-window productivity per top-level WBS; resource-based where loaded, activity-day basis otherwise"
+    unit: ratio
+    threshold: null
+    direction: info
+    severity: info
+    references:
+      - "LI bespoke methodology — ANALYTICS_PROPOSAL.md §10.5"
+    fuse_equivalent: ""
+    applies_to: series

@@ -1,0 +1,78 @@
+ERMHDR	19.12	2025-06-01	Project	admin	Admin User	dbxDatabaseNoName	Project Management	USD
+%T	CALENDAR
+%F	clndr_id	clndr_name	clndr_type	day_hr_cnt	week_hr_cnt	default_flag	clndr_data
+%R	100	Standard 5-Day	CA_Base	8	40	Y	(0||CalendarData()((0||DaysOfWeek()((0||1()())(0||2()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||3()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||4()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||5()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||6()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||7()())))(0||Exceptions()((0||0(d|45658)())))))
+%R	101	7-Day 10hr Shift	CA_Project	10	70	N	(0||CalendarData()((0||DaysOfWeek()((0||1()((0||0(s|07:00|f|17:00)())))(0||2()((0||0(s|07:00|f|17:00)())))(0||3()((0||0(s|07:00|f|17:00)())))(0||4()((0||0(s|07:00|f|17:00)())))(0||5()((0||0(s|07:00|f|17:00)())))(0||6()((0||0(s|07:00|f|17:00)())))(0||7()((0||0(s|07:00|f|17:00)())))))))
+%T	PROJECT
+%F	proj_id	proj_short_name	plan_start_date	plan_end_date	scd_end_date	last_recalc_date
+%R	1	DEMO-PLANT	2025-01-06 08:00	2025-12-19 17:00	2025-12-05 17:00	2025-01-06 08:00
+%T	SCHEDOPTIONS
+%F	schedoptions_id	proj_id	sched_retained_logic	sched_progress_override	sched_open_critical_flag	sched_critical_float_hr_cnt	sched_use_expect_end_flag	sched_calendar_on_relationship_lag
+%R	1	1	Y	N	N	0	Y	rcal_Predecessor
+%T	PROJWBS
+%F	wbs_id	proj_id	parent_wbs_id	wbs_short_name	wbs_name	proj_node_flag
+%R	19	1		DEMO	Demo Plant Project	Y
+%R	20	1	19	GEN	General	N
+%R	21	1	19	CIV	Civil	N
+%R	22	1	19	MECH	Mechanical	N
+%R	23	1	19	PROC	Procurement	N
+%R	24	1	19	COMM	Completion	N
+%T	RSRC
+%F	rsrc_id	rsrc_short_name	rsrc_name	rsrc_type
+%R	1	CIV-CRW	Civil Crew	RT_Labor
+%R	2	MECH-CRW	Mech Crew	RT_Labor
+%T	TASK
+%F	task_id	proj_id	wbs_id	clndr_id	task_code	task_name	task_type	status_code	target_drtn_hr_cnt	remain_drtn_hr_cnt	act_start_date	act_end_date	early_start_date	early_end_date	late_start_date	late_end_date	target_start_date	target_end_date	total_float_hr_cnt	free_float_hr_cnt	cstr_type	cstr_date	cstr_type2	cstr_date2	phys_complete_pct	complete_pct_type	suspend_date	resume_date	expect_end_date
+%R	1000	1	20	100	MS-000	Notice to Proceed	TT_Mile	TK_NotStart	0	0.0			2025-01-06 08:00	2025-01-06 08:00	2025-01-06 08:00	2025-01-06 08:00	2025-01-06 08:00	2025-01-06 08:00	0.0	0.0					0	CP_Drtn			
+%R	1010	1	20	100	A1010	Mobilization	TT_Task	TK_NotStart	80	80.0			2025-01-06 08:00	2025-01-20 08:00	2025-01-06 08:00	2025-01-20 08:00	2025-01-06 08:00	2025-01-20 08:00	0.0	0.0					0	CP_Drtn			
+%R	1020	1	20	100	A1020	Site Clearing	TT_Task	TK_NotStart	120	120.0			2025-01-20 08:00	2025-02-10 08:00	2025-01-20 08:00	2025-02-10 08:00	2025-01-20 08:00	2025-02-10 08:00	0.0	0.0					0	CP_Drtn			
+%R	1030	1	21	100	A1030	Excavation	TT_Task	TK_NotStart	160	160.0			2025-02-10 08:00	2025-03-10 08:00	2025-02-10 08:00	2025-03-10 08:00	2025-02-10 08:00	2025-03-10 08:00	0.0	0.0					0	CP_Drtn			
+%R	1040	1	21	100	A1040	Foundations Area 1	TT_Task	TK_NotStart	200	200.0			2025-03-10 08:00	2025-04-14 08:00	2025-03-10 08:00	2025-04-14 08:00	2025-03-10 08:00	2025-04-14 08:00	0.0	0.0					0	CP_Drtn			
+%R	1050	1	21	100	A1050	Foundations Area 2	TT_Task	TK_NotStart	200	200.0			2025-02-15 08:00	2025-03-21 08:00	2025-02-17 00:00	2025-03-26 08:00	2025-02-15 08:00	2025-03-21 08:00	40.0	24.0					0	CP_Drtn			
+%R	1060	1	22	100	A1060	Structural Steel Area 1	TT_Task	TK_NotStart	240	240.0			2025-04-14 08:00	2025-05-26 08:00	2025-04-14 08:00	2025-05-26 08:00	2025-04-14 08:00	2025-05-26 08:00	0.0	0.0					0	CP_Drtn			
+%R	1070	1	22	100	A1070	Structural Steel Area 2	TT_Task	TK_NotStart	240	240.0			2025-03-19 08:00	2025-04-30 08:00	2025-03-21 00:00	2025-05-05 08:00	2025-03-19 08:00	2025-04-30 08:00	40.0	24.0					0	CP_Phys			
+%R	1080	1	23	100	A1080	Long-Lead Procurement	TT_Task	TK_NotStart	480	480.0			2025-01-06 08:00	2025-03-31 08:00	2025-01-24 16:00	2025-05-25 08:00	2025-01-06 08:00	2025-03-31 08:00	440	424	CS_MSOA	2025-02-03 08:00			0	CP_Drtn			
+%R	1090	1	22	101	A1090	Equipment Setting	TT_Task	TK_NotStart	150	150.0			2025-05-26 08:00	2025-06-16 08:00	2025-05-26 08:00	2025-06-16 08:00	2025-05-26 08:00	2025-06-16 08:00	0.0	0.0					0	CP_Drtn			
+%R	1100	1	22	100	A1100	Piping Install	TT_Task	TK_NotStart	280	280.0			2025-06-16 08:00	2025-08-04 08:00	2025-06-16 08:00	2025-08-04 08:00	2025-06-16 08:00	2025-08-04 08:00	0.0	0.0					0	CP_Drtn			
+%R	1110	1	22	100	A1110	Electrical Rough-In	TT_Task	TK_NotStart	200	200.0			2025-06-19 08:00	2025-07-24 08:00	2025-06-19 08:00	2025-07-24 08:00	2025-06-19 08:00	2025-07-24 08:00	0.0	0.0					0	CP_Drtn			
+%R	1120	1	22	100	A1120	Instrumentation	TT_Task	TK_NotStart	160	160.0			2025-07-24 08:00	2025-08-21 08:00	2025-07-24 08:00	2025-08-21 08:00	2025-07-24 08:00	2025-08-21 08:00	0.0	0.0					0	CP_Drtn			
+%R	1130	1	22	100	A1130	Insulation	TT_Task	TK_NotStart	120	120.0			2025-08-04 08:00	2025-08-25 08:00	2025-08-06 00:00	2025-08-30 08:00	2025-08-04 08:00	2025-08-25 08:00	40.0	24.0					0	CP_Drtn			
+%R	1140	1	24	100	A1140	Punchlist / Pre-Comm	TT_Task	TK_NotStart	80	80.0			2025-08-25 08:00	2025-09-08 08:00	2025-08-25 08:00	2025-09-08 08:00	2025-08-25 08:00	2025-09-08 08:00	0.0	0.0					0	CP_Drtn			
+%R	1150	1	24	100	A1150	Commissioning	TT_Task	TK_NotStart	120	120.0			2025-09-08 08:00	2025-09-29 08:00	2025-09-08 08:00	2025-09-29 08:00	2025-09-08 08:00	2025-09-29 08:00	0.0	0.0					0	CP_Drtn			
+%R	1160	1	24	100	MS-100	Substantial Completion	TT_FinMile	TK_NotStart	0	0.0			2025-09-29 08:00	2025-09-29 08:00	2025-09-29 08:00	2025-09-29 08:00	2025-09-29 08:00	2025-09-29 08:00	0.0	0.0					0	CP_Drtn			
+%R	1170	1	20	100	A1170	Project Management	TT_LOE	TK_NotStart	0	0.0			2025-01-06 08:00	2025-01-06 08:00	2025-01-08 00:00	2025-01-11 08:00	2025-01-06 08:00	2025-01-06 08:00	40.0	24.0					0	CP_Drtn			
+%R	1180	1	22	100	A1180	Dangling SS Activity	TT_Task	TK_NotStart	96	96.0			2025-01-06 08:00	2025-01-22 08:00	2025-01-08 00:00	2025-01-27 08:00	2025-01-06 08:00	2025-01-22 08:00	40.0	24.0					0	CP_Drtn			
+%R	1190	1	23	100	A1190	Orphan Activity	TT_Task	TK_NotStart	40	40.0			2025-01-06 08:00	2025-01-13 08:00	2025-02-05 08:00	2025-04-13 08:00	2025-01-06 08:00	2025-01-13 08:00	720	704					0	CP_Drtn			
+%R	1200	1	24	100	A1200	Constrained Milestone	TT_FinMile	TK_NotStart	0	0.0			2025-09-29 08:00	2025-09-29 08:00	2025-10-01 00:00	2025-10-04 08:00	2025-09-29 08:00	2025-09-29 08:00	40.0	24.0	CS_MANDFIN	2025-12-15 17:00			0	CP_Drtn			
+%T	TASKPRED
+%F	task_pred_id	task_id	pred_task_id	pred_type	lag_hr_cnt
+%R	1	1010	1000	PR_FS	0
+%R	2	1020	1010	PR_FS	0
+%R	3	1030	1020	PR_FS	0
+%R	4	1040	1030	PR_FS	0
+%R	5	1050	1030	PR_SS	40
+%R	6	1060	1040	PR_FS	0
+%R	7	1070	1050	PR_FS	-16
+%R	8	1090	1060	PR_FS	0
+%R	9	1090	1070	PR_FS	0
+%R	10	1090	1080	PR_FS	200
+%R	11	1100	1090	PR_FS	0
+%R	12	1110	1100	PR_SS	24
+%R	13	1130	1100	PR_FS	0
+%R	14	1120	1110	PR_FS	0
+%R	15	1140	1120	PR_FS	0
+%R	16	1140	1130	PR_FS	0
+%R	17	1150	1140	PR_FS	0
+%R	18	1160	1150	PR_FS	0
+%R	19	1160	1150	PR_FF	0
+%R	20	1080	1000	PR_FS	0
+%R	21	1180	1000	PR_SS	0
+%R	22	1200	1150	PR_FS	0
+%R	23	1140	1120	PR_SF	0
+%T	TASKRSRC
+%F	taskrsrc_id	task_id	rsrc_id	target_qty	remain_qty	act_reg_qty	target_cost	act_reg_cost	remain_cost
+%R	1	1030	1	800	400	400	80000	40000	40000
+%R	2	1040	1	1000	1000	0	100000	0	100000
+%R	3	1100	2	1400	1400	0	210000	0	210000
+%R	4	1160	2	40	40	0	0	0	0
+%E

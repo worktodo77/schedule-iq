@@ -1,0 +1,7 @@
+# Example analyst threshold-override profile.
+# Usage:  scheduleiq analyze files... --profile profiles/example_profile.yaml
+# Only listed checks are overridden; everything else keeps the published
+# standard default.  Overrides are stamped "analyst override" in all outputs.
+DCMA-03: 10        # accept up to 10% lagged relationships on this matter
+DCMA-06: 10        # high-float population tolerance
+DAT-04: 30         # tighter data-date currency expectation (days)

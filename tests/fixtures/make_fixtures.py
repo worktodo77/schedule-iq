@@ -1051,6 +1051,233 @@ def build_halfstep_fixtures() -> None:
         _write_hs_xer(os.path.join(HERE, f"demo_{name}.xer"), cfg, stored)
 
 
+# ==========================================================================
+# Editing-session forensics + as-built work-pattern fixture (N2 / S5).
+#
+# demo_edit.xer (update 0, DD 2025-05-05) and demo_edit_u1.xer (update 1,
+# DD 2025-07-07) are two updates of one compact project that emit the P6 TASK
+# audit columns create_date/create_user/update_date/update_user.  Every
+# mechanism the two forensic modules screen for is seeded with hand-computed
+# values (asserted in tests/test_editsessions.py and tests/test_workpatterns.py):
+#
+#   * BULK SESSION — 30 filler activities all carry update_user "s_bulk" at the
+#     same timestamp 2025-06-20 09:00 in update 1 (10 days before the seeded
+#     claim date 2025-06-30, and 11 days before the file's 2025-07-01 export).
+#   * UNUSUAL USER — "temp_contractor" edits exactly 2 activities in update 1
+#     only; every other user appears in BOTH updates.
+#   * LOGIC + ACTUALS SAME SESSION — X1 (EDIT-X1) has its actual start entered
+#     in update 1 (was not started in update 0) AND gains a new predecessor tie
+#     (F01 -> X1) in the same update, in session "s_logic" @ 2025-06-25 09:00.
+#   * WEEKEND WORK — 3 actual events on the 5-day calendar land on weekends:
+#     W1 AS Sat 2025-05-10, W2 AS Sun 2025-05-11, W3 AF Sat 2025-05-17.
+#   * DORMANT CRITICAL — D1 (EDIT-D1) is in progress across both updates with
+#     RD unchanged (80h -> 80h), TF 0, driving-path flagged, alone in its WBS
+#     node (no sibling actuals in the window) -> dormant span >= 15 wd.
+#   * 7-DAY TRADE, 5-DAY RECORD — 6 MECH activities on the 7-day calendar whose
+#     actual starts/finishes all fall Mon-Fri -> observed working days {Mon..Fri}
+#     against an assigned 7-day calendar.
+# ==========================================================================
+
+EDIT_CAL_5D = "300"
+EDIT_CAL_7D = "301"
+
+_EDIT_TASK_FIELDS = [
+    "task_id", "proj_id", "wbs_id", "clndr_id", "task_code", "task_name",
+    "task_type", "status_code", "target_drtn_hr_cnt", "remain_drtn_hr_cnt",
+    "act_start_date", "act_end_date", "early_start_date", "early_end_date",
+    "late_start_date", "late_end_date", "target_start_date", "target_end_date",
+    "total_float_hr_cnt", "free_float_hr_cnt", "cstr_type", "cstr_date",
+    "cstr_type2", "cstr_date2", "phys_complete_pct", "complete_pct_type",
+    "suspend_date", "resume_date", "expect_end_date", "driving_path_flag",
+    "create_date", "create_user", "update_date", "update_user",
+]
+
+# WBS: 90 root / 91 CIV (5-day trade) / 92 MECH (7-day trade) / 93 GEN /
+#      94 DORM (dormant activity alone) / 95 COMM
+_EDIT_WBS = [
+    [90, 1, "", "DEMO-EDIT", "Editing Forensics Demo", "Y"],
+    [91, 1, 90, "CIV", "Civil (5-day trade)", "N"],
+    [92, 1, 90, "MECH", "Mechanical (7-day trade)", "N"],
+    [93, 1, 90, "GEN", "General", "N"],
+    [94, 1, 90, "DORM", "Suspended Works", "N"],
+    [95, 1, 90, "COMM", "Completion", "N"],
+]
+
+_EDIT_CREATE = "2025-01-02 08:00"
+
+# master activity list: (uid, code, name, xer_type, dur_wd, cal, wbs, driving)
+def _edit_master():
+    acts = []
+    # 30 filler activities for the bulk session (GEN/COMM), not started
+    for i in range(30):
+        uid = 3001 + i
+        wbs = 93 if i % 2 == 0 else 95
+        acts.append((uid, f"F{i + 1:02d}", f"Filler {i + 1:02d}", "TT_Task",
+                     5, EDIT_CAL_5D, wbs, False))
+    # 6 MECH activities on the 7-day calendar (driving path), weekday actuals
+    for i in range(6):
+        uid = 3101 + i
+        acts.append((uid, f"T{i + 1}", f"Mech Package {i + 1}", "TT_Task",
+                     4, EDIT_CAL_7D, 92, True))
+    # 3 CIV activities on the 5-day calendar with weekend actuals
+    for i in range(3):
+        uid = 3201 + i
+        acts.append((uid, f"W{i + 1}", f"Civil Package {i + 1}", "TT_Task",
+                     3, EDIT_CAL_5D, 91, False))
+    # X1 — logic tie + actual start entered in the same update-1 session
+    acts.append((3300, "EDIT-X1", "Interface Handover", "TT_Task", 6,
+                 EDIT_CAL_5D, 93, True))
+    # D1 — dormant critical activity, alone in DORM
+    acts.append((3400, "EDIT-D1", "Suspended Excavation", "TT_Task", 10,
+                 EDIT_CAL_5D, 94, True))
+    # two activities edited by an unusual user in update 1
+    acts.append((3501, "EDIT-U1", "Late Scope A", "TT_Task", 5, EDIT_CAL_5D, 93, False))
+    acts.append((3502, "EDIT-U2", "Late Scope B", "TT_Task", 5, EDIT_CAL_5D, 93, False))
+    return acts
+
+
+def _edit_hpd(cal):
+    return 10 if cal == EDIT_CAL_7D else 8
+
+
+# per-update state: uid -> dict(status, AS, AF, remain_wd, tf_hr, user, upd)
+def _edit_state(update: int):
+    """Return {uid: (status, act_start, act_finish, remain_wd, tf_hr,
+    update_user, update_date)} for update 0 or 1."""
+    D = datetime
+    st = {}
+    # user "home" (recurring) scheduler per uid: (update-0 user, update-0 date,
+    # update-1 date).  Every home user appears in BOTH updates, so only the
+    # update-1-only "temp_contractor" (applied below) reads as an unusual user.
+    home = {}
+    for i in range(30):
+        home[3001 + i] = ("s_bulk", D(2025, 4, 15, 10, 0), D(2025, 6, 20, 9, 0))
+    for i in range(6):
+        home[3101 + i] = ("s_mech", D(2025, 4, 16, 9, 0), D(2025, 6, 22, 11, 0))
+    for i in range(3):
+        home[3201 + i] = ("s_civ", D(2025, 4, 17, 8, 0), D(2025, 6, 23, 14, 0))
+    home[3300] = ("s_logic", D(2025, 4, 18, 9, 0), D(2025, 6, 25, 9, 0))
+    home[3400] = ("s_civ", D(2025, 4, 10, 8, 0), D(2025, 6, 15, 8, 0))
+    # U1/U2: recurring s_civ in update 0, unusual temp_contractor in update 1
+    home[3501] = ("s_civ", D(2025, 4, 17, 8, 0), None)
+    home[3502] = ("s_civ", D(2025, 4, 17, 8, 0), None)
+
+    # update-1 actuals (weekday MECH, weekend CIV), and the dormant D1
+    mech_actuals = {
+        3101: (D(2025, 6, 2, 8, 0),  D(2025, 6, 3, 17, 0)),    # Mon -> Tue
+        3102: (D(2025, 6, 4, 8, 0),  D(2025, 6, 5, 17, 0)),    # Wed -> Thu
+        3103: (D(2025, 6, 6, 8, 0),  D(2025, 6, 9, 17, 0)),    # Fri -> Mon
+        3104: (D(2025, 6, 10, 8, 0), D(2025, 6, 11, 17, 0)),   # Tue -> Wed
+        3105: (D(2025, 6, 12, 8, 0), D(2025, 6, 13, 17, 0)),   # Thu -> Fri
+        3106: (D(2025, 6, 16, 8, 0), D(2025, 6, 17, 17, 0)),   # Mon -> Tue
+    }
+    civ_actuals = {
+        3201: (D(2025, 5, 10, 8, 0), D(2025, 5, 12, 17, 0)),   # Sat AS -> Mon AF
+        3202: (D(2025, 5, 11, 8, 0), D(2025, 5, 13, 17, 0)),   # Sun AS -> Tue AF
+        3203: (D(2025, 5, 16, 8, 0), D(2025, 5, 17, 17, 0)),   # Fri AS -> Sat AF
+    }
+
+    for uid, code, name, ttype, dur, cal, wbs, driving in _edit_master():
+        u0_user, u0_date, u1_date = home[uid]
+        if update == 0:
+            user, upd = u0_user, u0_date
+            if uid == 3400:            # dormant critical, already in progress
+                st[uid] = ("TK_Active", D(2025, 4, 1, 8, 0), None, 10, 0.0,
+                           user, upd)
+            else:                       # everything else not started at baseline
+                st[uid] = ("TK_NotStart", None, None, dur, 40.0, user, upd)
+        else:
+            user, upd = u0_user, u1_date
+            if uid in (3501, 3502):     # unusual user in update 1
+                user, upd = "temp_contractor", D(2025, 6, 28, 9, 0)
+            if uid in mech_actuals:
+                a_s, a_f = mech_actuals[uid]
+                st[uid] = ("TK_Complete", a_s, a_f, 0, 0.0, user, upd)
+            elif uid in civ_actuals:
+                a_s, a_f = civ_actuals[uid]
+                st[uid] = ("TK_Complete", a_s, a_f, 0, 40.0, user, upd)
+            elif uid == 3300:           # X1: actual start entered this update
+                st[uid] = ("TK_Active", D(2025, 6, 24, 8, 0), None, 4, 0.0,
+                           user, upd)
+            elif uid == 3400:           # D1: RD unchanged 80h -> dormant
+                st[uid] = ("TK_Active", D(2025, 4, 1, 8, 0), None, 10, 0.0,
+                           user, upd)
+            else:
+                st[uid] = ("TK_NotStart", None, None, dur, 40.0, user, upd)
+    return st
+
+
+# relationships: baseline set + one tie added in update 1 (F01 -> X1)
+_EDIT_RELS_0 = [
+    (3002, 3300, "PR_FS", 0),          # stable predecessor of X1
+    (3101, 3102, "PR_FS", 0),
+    (3201, 3202, "PR_FS", 0),
+]
+_EDIT_RELS_1 = _EDIT_RELS_0 + [(3001, 3300, "PR_FS", 0)]   # ADDED tie into X1
+
+
+def _write_edit_xer(path: str, update: int, dd: datetime, export_date: str) -> None:
+    x = Xer()
+    # override the header export date so the weak-proxy claim test is deterministic
+    x.lines = ["ERMHDR\t19.12\t" + export_date + "\tProject\tadmin\tAdmin User"
+               "\tdbxDatabaseNoName\tProject Management\tUSD"]
+    x.table("CALENDAR",
+            ["clndr_id", "clndr_name", "clndr_type", "day_hr_cnt", "week_hr_cnt",
+             "default_flag", "clndr_data"],
+            [[EDIT_CAL_5D, "Edit Standard 5-Day", "CA_Base", 8, 40, "Y", cal_blob_5d()],
+             [EDIT_CAL_7D, "Edit 7-Day 10hr", "CA_Project", 10, 70, "N", cal_blob_7d()]])
+    x.table("PROJECT",
+            ["proj_id", "proj_short_name", "plan_start_date", "plan_end_date",
+             "scd_end_date", "last_recalc_date", "create_date", "create_user",
+             "update_date", "update_user"],
+            [[1, "DEMO-EDIT", dt(datetime(2025, 5, 5, 8, 0)),
+              dt(datetime(2025, 12, 1, 17, 0)), dt(datetime(2025, 11, 3, 17, 0)),
+              dt(dd), _EDIT_CREATE, "planner", export_date, "s_bulk"]])
+    x.table("SCHEDOPTIONS",
+            ["schedoptions_id", "proj_id", "sched_retained_logic",
+             "sched_progress_override", "sched_open_critical_flag",
+             "sched_critical_float_hr_cnt", "sched_use_expect_end_flag",
+             "sched_calendar_on_relationship_lag"],
+            [[1, 1, "Y", "N", "N", "", "N", "rcal_Predecessor"]])
+    x.table("PROJWBS",
+            ["wbs_id", "proj_id", "parent_wbs_id", "wbs_short_name", "wbs_name",
+             "proj_node_flag"],
+            _EDIT_WBS)
+
+    state = _edit_state(update)
+    rows = []
+    for uid, code, name, ttype, dur, cal, wbs, driving in _edit_master():
+        hpd = _edit_hpd(cal)
+        od_h = dur * hpd
+        status, a_s, a_f, rem_wd, tf_hr, user, upd = state[uid]
+        rem_h = rem_wd * hpd
+        phys = 100 if status == "TK_Complete" else (
+            int(round(100 * (1 - rem_wd / dur))) if (status == "TK_Active" and dur) else 0)
+        rows.append([
+            uid, 1, wbs, cal, code, name, ttype, status, od_h, rem_h,
+            dt(a_s), dt(a_f), "", "", "", "", "", "",
+            (tf_hr if status != "TK_Complete" else ""),
+            "", "", "", "", "", phys, "CP_Drtn", "", "", "",
+            ("Y" if driving else ""),
+            _EDIT_CREATE, "planner", dt(upd), user,
+        ])
+    x.table("TASK", _EDIT_TASK_FIELDS, rows)
+    rels = _EDIT_RELS_0 if update == 0 else _EDIT_RELS_1
+    x.table("TASKPRED",
+            ["task_pred_id", "task_id", "pred_task_id", "pred_type", "lag_hr_cnt"],
+            [[i + 1, s, p, t, lag] for i, (p, s, t, lag) in enumerate(rels)])
+    x.write(path)
+
+
+def build_edit_fixtures() -> None:
+    """Write demo_edit.xer (update 0) and demo_edit_u1.xer (update 1) — the
+    N2 as-built work-pattern and S5 editing-session fixtures."""
+    _write_edit_xer(os.path.join(HERE, "demo_edit.xer"), 0,
+                    datetime(2025, 5, 5, 8, 0), "2025-05-06")
+    _write_edit_xer(os.path.join(HERE, "demo_edit_u1.xer"), 1,
+                    datetime(2025, 7, 7, 8, 0), "2025-07-01")
+
+
 def main():
     # Baseline: no progress, DD = project start
     build(os.path.join(HERE, "demo_baseline.xer"), dd=D0, pct={})
@@ -1103,6 +1330,8 @@ def main():
     build_impact_fixture()
     # MIP 3.4 half-step update pair (D9) — additive.
     build_halfstep_fixtures()
+    # Editing-session forensics + as-built work-pattern pair (N2/S5) — additive.
+    build_edit_fixtures()
     print("fixtures written:", sorted(f for f in os.listdir(HERE) if f.endswith(".xer")))
 
 

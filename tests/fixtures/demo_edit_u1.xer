@@ -1,0 +1,71 @@
+ERMHDR	19.12	2025-07-01	Project	admin	Admin User	dbxDatabaseNoName	Project Management	USD
+%T	CALENDAR
+%F	clndr_id	clndr_name	clndr_type	day_hr_cnt	week_hr_cnt	default_flag	clndr_data
+%R	300	Edit Standard 5-Day	CA_Base	8	40	Y	(0||CalendarData()((0||DaysOfWeek()((0||1()())(0||2()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||3()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||4()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||5()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||6()((0||0(s|08:00|f|12:00)())(0||1(s|13:00|f|17:00)())))(0||7()())))(0||Exceptions()((0||0(d|45658)())))))
+%R	301	Edit 7-Day 10hr	CA_Project	10	70	N	(0||CalendarData()((0||DaysOfWeek()((0||1()((0||0(s|07:00|f|17:00)())))(0||2()((0||0(s|07:00|f|17:00)())))(0||3()((0||0(s|07:00|f|17:00)())))(0||4()((0||0(s|07:00|f|17:00)())))(0||5()((0||0(s|07:00|f|17:00)())))(0||6()((0||0(s|07:00|f|17:00)())))(0||7()((0||0(s|07:00|f|17:00)())))))))
+%T	PROJECT
+%F	proj_id	proj_short_name	plan_start_date	plan_end_date	scd_end_date	last_recalc_date	create_date	create_user	update_date	update_user
+%R	1	DEMO-EDIT	2025-05-05 08:00	2025-12-01 17:00	2025-11-03 17:00	2025-07-07 08:00	2025-01-02 08:00	planner	2025-07-01	s_bulk
+%T	SCHEDOPTIONS
+%F	schedoptions_id	proj_id	sched_retained_logic	sched_progress_override	sched_open_critical_flag	sched_critical_float_hr_cnt	sched_use_expect_end_flag	sched_calendar_on_relationship_lag
+%R	1	1	Y	N	N		N	rcal_Predecessor
+%T	PROJWBS
+%F	wbs_id	proj_id	parent_wbs_id	wbs_short_name	wbs_name	proj_node_flag
+%R	90	1		DEMO-EDIT	Editing Forensics Demo	Y
+%R	91	1	90	CIV	Civil (5-day trade)	N
+%R	92	1	90	MECH	Mechanical (7-day trade)	N
+%R	93	1	90	GEN	General	N
+%R	94	1	90	DORM	Suspended Works	N
+%R	95	1	90	COMM	Completion	N
+%T	TASK
+%F	task_id	proj_id	wbs_id	clndr_id	task_code	task_name	task_type	status_code	target_drtn_hr_cnt	remain_drtn_hr_cnt	act_start_date	act_end_date	early_start_date	early_end_date	late_start_date	late_end_date	target_start_date	target_end_date	total_float_hr_cnt	free_float_hr_cnt	cstr_type	cstr_date	cstr_type2	cstr_date2	phys_complete_pct	complete_pct_type	suspend_date	resume_date	expect_end_date	driving_path_flag	create_date	create_user	update_date	update_user
+%R	3001	1	93	300	F01	Filler 01	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3002	1	95	300	F02	Filler 02	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3003	1	93	300	F03	Filler 03	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3004	1	95	300	F04	Filler 04	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3005	1	93	300	F05	Filler 05	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3006	1	95	300	F06	Filler 06	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3007	1	93	300	F07	Filler 07	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3008	1	95	300	F08	Filler 08	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3009	1	93	300	F09	Filler 09	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3010	1	95	300	F10	Filler 10	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3011	1	93	300	F11	Filler 11	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3012	1	95	300	F12	Filler 12	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3013	1	93	300	F13	Filler 13	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3014	1	95	300	F14	Filler 14	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3015	1	93	300	F15	Filler 15	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3016	1	95	300	F16	Filler 16	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3017	1	93	300	F17	Filler 17	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3018	1	95	300	F18	Filler 18	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3019	1	93	300	F19	Filler 19	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3020	1	95	300	F20	Filler 20	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3021	1	93	300	F21	Filler 21	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3022	1	95	300	F22	Filler 22	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3023	1	93	300	F23	Filler 23	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3024	1	95	300	F24	Filler 24	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3025	1	93	300	F25	Filler 25	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3026	1	95	300	F26	Filler 26	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3027	1	93	300	F27	Filler 27	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3028	1	95	300	F28	Filler 28	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3029	1	93	300	F29	Filler 29	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3030	1	95	300	F30	Filler 30	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-20 09:00	s_bulk
+%R	3101	1	92	301	T1	Mech Package 1	TT_Task	TK_Complete	40	0	2025-06-02 08:00	2025-06-03 17:00													100	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-22 11:00	s_mech
+%R	3102	1	92	301	T2	Mech Package 2	TT_Task	TK_Complete	40	0	2025-06-04 08:00	2025-06-05 17:00													100	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-22 11:00	s_mech
+%R	3103	1	92	301	T3	Mech Package 3	TT_Task	TK_Complete	40	0	2025-06-06 08:00	2025-06-09 17:00													100	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-22 11:00	s_mech
+%R	3104	1	92	301	T4	Mech Package 4	TT_Task	TK_Complete	40	0	2025-06-10 08:00	2025-06-11 17:00													100	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-22 11:00	s_mech
+%R	3105	1	92	301	T5	Mech Package 5	TT_Task	TK_Complete	40	0	2025-06-12 08:00	2025-06-13 17:00													100	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-22 11:00	s_mech
+%R	3106	1	92	301	T6	Mech Package 6	TT_Task	TK_Complete	40	0	2025-06-16 08:00	2025-06-17 17:00													100	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-22 11:00	s_mech
+%R	3201	1	91	300	W1	Civil Package 1	TT_Task	TK_Complete	24	0	2025-05-10 08:00	2025-05-12 17:00													100	CP_Drtn					2025-01-02 08:00	planner	2025-06-23 14:00	s_civ
+%R	3202	1	91	300	W2	Civil Package 2	TT_Task	TK_Complete	24	0	2025-05-11 08:00	2025-05-13 17:00													100	CP_Drtn					2025-01-02 08:00	planner	2025-06-23 14:00	s_civ
+%R	3203	1	91	300	W3	Civil Package 3	TT_Task	TK_Complete	24	0	2025-05-16 08:00	2025-05-17 17:00													100	CP_Drtn					2025-01-02 08:00	planner	2025-06-23 14:00	s_civ
+%R	3300	1	93	300	EDIT-X1	Interface Handover	TT_Task	TK_Active	48	32	2025-06-24 08:00								0.0						33	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-25 09:00	s_logic
+%R	3400	1	94	300	EDIT-D1	Suspended Excavation	TT_Task	TK_Active	80	80	2025-04-01 08:00								0.0						0	CP_Drtn				Y	2025-01-02 08:00	planner	2025-06-15 08:00	s_civ
+%R	3501	1	93	300	EDIT-U1	Late Scope A	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-28 09:00	temp_contractor
+%R	3502	1	93	300	EDIT-U2	Late Scope B	TT_Task	TK_NotStart	40	40									40.0						0	CP_Drtn					2025-01-02 08:00	planner	2025-06-28 09:00	temp_contractor
+%T	TASKPRED
+%F	task_pred_id	task_id	pred_task_id	pred_type	lag_hr_cnt
+%R	1	3300	3002	PR_FS	0
+%R	2	3102	3101	PR_FS	0
+%R	3	3202	3201	PR_FS	0
+%R	4	3300	3001	PR_FS	0
+%E

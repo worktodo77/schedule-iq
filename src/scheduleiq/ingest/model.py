@@ -202,6 +202,15 @@ class Activity:
     remaining_cost: float = 0.0
     notes: dict[str, str] = field(default_factory=dict)
 
+    # -- P6 audit-trail columns (create_date/create_user/update_date/
+    #    update_user on the TASK row).  Optional and absent from most sanitized
+    #    XERs; parsed when present, left None otherwise.  Consumed by the
+    #    editing-session forensics module (analytics.editsessions).
+    create_date: Optional[datetime] = None
+    create_user: Optional[str] = None
+    update_date: Optional[datetime] = None
+    update_user: Optional[str] = None
+
     # -- derived helpers -------------------------------------------------
     @property
     def is_milestone(self) -> bool:
@@ -292,6 +301,11 @@ class Schedule:
     source_tool: str = ""                          # e.g. "P6 Professional 20.12"
     export_user: str = ""
     export_date: Optional[datetime] = None
+    # PROJECT-row audit columns, when the export carries them (optional).
+    project_create_date: Optional[datetime] = None
+    project_create_user: str = ""
+    project_update_date: Optional[datetime] = None
+    project_update_user: str = ""
     parse_warnings: list[str] = field(default_factory=list)
 
     # -- convenience views -----------------------------------------------

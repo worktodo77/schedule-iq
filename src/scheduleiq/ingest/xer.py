@@ -213,6 +213,10 @@ def parse_xer(path: str, project_id: str | None = None) -> list[Schedule]:
             source_tool=f"P6 (XER {header[1] if len(header) > 1 else '?'})",
             export_user=header[4] if len(header) > 4 else "",
             export_date=_dt(header[2]) if len(header) > 2 else None,
+            project_create_date=_dt(proj.get("create_date")),
+            project_create_user=proj.get("create_user") or "",
+            project_update_date=_dt(proj.get("update_date")),
+            project_update_user=proj.get("update_user") or "",
         )
         so = schedopts.get(pid, {})
         logic_mode = so.get("sched_retained_logic")
@@ -276,6 +280,10 @@ def parse_xer(path: str, project_id: str | None = None) -> list[Schedule]:
                                   PercentCompleteType.DURATION),
                 is_longest_path=(row.get("driving_path_flag") == "Y")
                                  if row.get("driving_path_flag") else None,
+                create_date=_dt(row.get("create_date")),
+                create_user=row.get("create_user") or None,
+                update_date=_dt(row.get("update_date")),
+                update_user=row.get("update_user") or None,
             )
             if act.expected_finish and act.constraint == ConstraintType.NONE:
                 act.constraint = ConstraintType.EXPECTED_FINISH

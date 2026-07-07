@@ -147,3 +147,16 @@ matrix expanded to 79 checks (LI-11..LI-15, privileged/internal surfaces).
 - RC6: publication package built and verified (Apache-2.0, stamped spec
   SHA-256, reference scorer validated against a sample, internal variant
   stripped from the public copy).  Public push remains a human step.
+- N1 weather overlay: offline GHCN-Daily reader (ADR-0006 — no network),
+  calendar-realism test (embedded downtime vs 10-year weather norm),
+  per-window abnormal-weather exceedance with weather-sensitive slippage
+  overlay, exhibit rows presented both ways (better-than-norm windows
+  listed); thresholds analyst-overridable.
+- N2 work-pattern reconstruction: de facto calendars per trade/WBS
+  (planned-vs-observed divergence), weekend/overtime detection, dormancy
+  on near-critical spans, work-intensity heatmap data.
+- S5 editing-session forensics: XER create/update user+date capture (new
+  optional ingest fields), session clustering (30-min/day fallback), bulk-
+  before-claim / unusual-user / logic-with-actuals flags, driving-path edit
+  share, editing-timeline exhibit rows; innocent explanations + language
+  cap; degrades cleanly on sanitized exports.  New demo_edit fixture pair.

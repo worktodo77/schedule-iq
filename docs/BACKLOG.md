@@ -90,7 +90,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | S2 | §6.3 Pacing + constructive-acceleration screens | DONE (v0.2d) |
 | S3 | §6.4 Earned-schedule forecast credibility (ES(t), SPI(t), TSPI(t), IEAC(t)) | DONE (v0.2 wave 2) |
 | S4 | §6.8 Narrative reconciliation vs XER record | DONE (v0.2d) |
-| S5 | §6.1 Editing-session forensics (create/update user+date mining) | PARKED |
+| S5 | §6.1 Editing-session forensics (create/update user+date mining) | DONE (v0.4; approved RJL 2026-07-07) |
 | S6 | §6.5 Push-button TIA workbench (MIP 3.6/3.7; collapsed as-built 3.8/3.9) | DONE (v0.4; approved RJL 2026-07-07) |
 | S7 | §6.6 Damages/LD exposure overlay | DONE (v0.4; approved RJL 2026-07-07) |
 | S8 | §6.7 Interactive HTML cockpit + graphics-generator demonstratives | PARKED |
@@ -111,8 +111,8 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status |
 |---|---|---|
-| N1 | §8.1 Weather & external-conditions overlay | PARKED (proposed 2026-07-07) |
-| N2 | §8.2 As-built work-pattern reconstruction (de facto calendars, overtime/suspension detection) | PARKED (proposed) |
+| N1 | §8.1 Weather & external-conditions overlay | DONE (v0.4; approved RJL 2026-07-07) |
+| N2 | §8.2 As-built work-pattern reconstruction (de facto calendars, overtime/suspension detection) | DONE (v0.4) |
 | N3 | §8.3 Daily-resolution delay ledger ("continuous windows") | DONE (v0.3) |
 | N4 | §8.4 Methodology-robustness certificate | DONE (v0.3) |
 | N5 | §8.5 Reproducibility capsule & evidence sealing | DONE (v0.2 wave 2) |

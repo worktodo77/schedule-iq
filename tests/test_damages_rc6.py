@@ -180,14 +180,23 @@ DAMAGES_CFG = DamagesConfig(ld_rate_per_day=10000.0, contractual_completion="202
                             time_cost_per_day=5000.0)
 
 
+def _xlsx_members(path):
+    """Zip members except docProps/core.xml, whose created/modified stamps
+    are wall-clock (openpyxl) and flip when two writes cross a second
+    boundary -- everything content-bearing is compared byte-for-byte."""
+    import zipfile
+    with zipfile.ZipFile(path) as z:
+        return {n: z.read(n) for n in sorted(z.namelist())
+                if n != "docProps/core.xml"}
+
+
 def test_impact_workbook_none_config_byte_identical(impact_dict, asbuilt_dict, tmp_path):
-    """A None damages config must reproduce byte-identical output to the
+    """A None damages config must reproduce content-identical output to the
     pre-S7 workbook -- adding the parameter changes nothing by default."""
     p1 = write_impact_workbook(impact_dict, asbuilt_dict, str(tmp_path / "a.xlsx"))
     p2 = write_impact_workbook(impact_dict, asbuilt_dict, str(tmp_path / "b.xlsx"),
                                damages=None)
-    with open(p1, "rb") as f1, open(p2, "rb") as f2:
-        assert f1.read() == f2.read()
+    assert _xlsx_members(p1) == _xlsx_members(p2)
 
 
 def test_waterfall_figure_none_config_byte_identical(impact_dict, tmp_path):

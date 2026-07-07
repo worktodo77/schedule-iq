@@ -160,3 +160,17 @@ matrix expanded to 79 checks (LI-11..LI-15, privileged/internal surfaces).
   before-claim / unusual-user / logic-with-actuals flags, driving-path edit
   share, editing-timeline exhibit rows; innocent explanations + language
   cap; degrades cleanly on sanitized exports.  New demo_edit fixture pair.
+- F3 P6 XML (PMXML) native ingestion with .xml root-sniff dispatch (MSPDI
+  unchanged), version-agnostic namespace handling, full-fidelity mapping
+  (constraint slots, schedule options incl. lag calendar, calendars with
+  exceptions); F5 Asta/Phoenix routed through the MPXJ bridge (conditional).
+- F1 ribbon analyzer (per-WBS/group offender densities + severity-weighted
+  group scores), F2 phase analyzer (time-phased problem clustering),
+  F4 per-period start/finish compliance (0d/7d tolerances, commitment
+  reliability, named late offenders; distinct from cumulative Hit Task %).
+- S8 interactive HTML cockpit: one self-contained file (no external
+  requests; ADR-0006), time-scaled driving/near-critical network with
+  zoom/pan, update slider with churn annotations, findings click-through;
+  ~64 KB on the demo series.
+- Test hardening: xlsx byte-identity comparisons exclude the openpyxl
+  docProps timestamp member (flake fix).

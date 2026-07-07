@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SYNTHETIC, HAND-WRITTEN fixture for scheduleiq.ingest.p6xml (ADR-0002 F3).
+     Not exported from a real P6 database; written directly from PMXML schema
+     knowledge to exercise every field the parser maps.  Compact by design:
+     1 project, 8 activities, 2 calendars, 8 relationships (FS/SS/FF/SF, one
+     lag, one lead), 2-level WBS, ScheduleOptions, 1 resource assignment. -->
+<APIBusinessObjects xmlns="http://xmlns.oracle.com/Primavera/P6/V23.12/API/BusinessObjects"
+                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                     ExportVersion="23.12">
+
+  <Project>
+    <ObjectId>1</ObjectId>
+    <Id>P6-DEMO</Id>
+    <Name>Demo Plant Outage - P6 XML</Name>
+    <DataDate>2026-01-19T08:00:00</DataDate>
+    <PlannedStartDate>2026-01-05T08:00:00</PlannedStartDate>
+    <ScheduledFinishDate>2026-01-23T17:00:00</ScheduledFinishDate>
+    <MustFinishDate>2026-01-31T17:00:00</MustFinishDate>
+    <DefaultCalendarObjectId>CAL_5D</DefaultCalendarObjectId>
+    <CreateDate>2025-12-01T09:00:00</CreateDate>
+    <CreateUser>planner1</CreateUser>
+    <LastUpdateDate>2026-01-19T07:30:00</LastUpdateDate>
+    <LastUpdateUser>scheduler2</LastUpdateUser>
+  </Project>
+
+  <Calendar>
+    <ObjectId>CAL_5D</ObjectId>
+    <Name>5 Day Workweek</Name>
+    <Type>Project</Type>
+    <HoursPerDay>8</HoursPerDay>
+    <HoursPerWeek>40</HoursPerWeek>
+    <StandardWorkWeek>
+      <StandardWorkHours><DayOfWeek>Monday</DayOfWeek>
+        <WorkTime><Start>08:00:00</Start><Finish>12:00:00</Finish></WorkTime>
+        <WorkTime><Start>13:00:00</Start><Finish>17:00:00</Finish></WorkTime>
+      </StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Tuesday</DayOfWeek>
+        <WorkTime><Start>08:00:00</Start><Finish>12:00:00</Finish></WorkTime>
+        <WorkTime><Start>13:00:00</Start><Finish>17:00:00</Finish></WorkTime>
+      </StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Wednesday</DayOfWeek>
+        <WorkTime><Start>08:00:00</Start><Finish>12:00:00</Finish></WorkTime>
+        <WorkTime><Start>13:00:00</Start><Finish>17:00:00</Finish></WorkTime>
+      </StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Thursday</DayOfWeek>
+        <WorkTime><Start>08:00:00</Start><Finish>12:00:00</Finish></WorkTime>
+        <WorkTime><Start>13:00:00</Start><Finish>17:00:00</Finish></WorkTime>
+      </StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Friday</DayOfWeek>
+        <WorkTime><Start>08:00:00</Start><Finish>12:00:00</Finish></WorkTime>
+        <WorkTime><Start>13:00:00</Start><Finish>17:00:00</Finish></WorkTime>
+      </StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Saturday</DayOfWeek></StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Sunday</DayOfWeek></StandardWorkHours>
+    </StandardWorkWeek>
+    <HolidayOrExceptions>
+      <HolidayOrException>
+        <Date>2026-01-01T00:00:00</Date>
+      </HolidayOrException>
+      <HolidayOrException>
+        <Date>2026-01-17T00:00:00</Date>
+        <WorkTime><Start>08:00:00</Start><Finish>12:00:00</Finish></WorkTime>
+      </HolidayOrException>
+    </HolidayOrExceptions>
+  </Calendar>
+
+  <Calendar>
+    <ObjectId>CAL_7D</ObjectId>
+    <Name>7 Day Vendor Calendar</Name>
+    <Type>Global</Type>
+    <HoursPerDay>10</HoursPerDay>
+    <HoursPerWeek>70</HoursPerWeek>
+    <StandardWorkWeek>
+      <StandardWorkHours><DayOfWeek>Monday</DayOfWeek>
+        <WorkTime><Start>07:00:00</Start><Finish>17:00:00</Finish></WorkTime></StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Tuesday</DayOfWeek>
+        <WorkTime><Start>07:00:00</Start><Finish>17:00:00</Finish></WorkTime></StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Wednesday</DayOfWeek>
+        <WorkTime><Start>07:00:00</Start><Finish>17:00:00</Finish></WorkTime></StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Thursday</DayOfWeek>
+        <WorkTime><Start>07:00:00</Start><Finish>17:00:00</Finish></WorkTime></StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Friday</DayOfWeek>
+        <WorkTime><Start>07:00:00</Start><Finish>17:00:00</Finish></WorkTime></StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Saturday</DayOfWeek>
+        <WorkTime><Start>07:00:00</Start><Finish>17:00:00</Finish></WorkTime></StandardWorkHours>
+      <StandardWorkHours><DayOfWeek>Sunday</DayOfWeek>
+        <WorkTime><Start>07:00:00</Start><Finish>17:00:00</Finish></WorkTime></StandardWorkHours>
+    </StandardWorkWeek>
+  </Calendar>
+
+  <WBS>
+    <ObjectId>WBS_ROOT</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <ParentObjectId></ParentObjectId>
+    <Code>P6-DEMO</Code>
+    <Name>Demo Plant Outage</Name>
+  </WBS>
+  <WBS>
+    <ObjectId>WBS_L2</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <ParentObjectId>WBS_ROOT</ParentObjectId>
+    <Code>PH1</Code>
+    <Name>Phase 1 Outage Work</Name>
+  </WBS>
+
+  <Activity>
+    <ObjectId>A100</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>MS-START</Id>
+    <Name>Notice to Proceed</Name>
+    <Type>Start Milestone</Type>
+    <Status>Completed</Status>
+    <CalendarObjectId>CAL_5D</CalendarObjectId>
+    <WBSObjectId>WBS_ROOT</WBSObjectId>
+    <PlannedDuration>0</PlannedDuration>
+    <RemainingDuration>0</RemainingDuration>
+    <Start>2026-01-05T08:00:00</Start>
+    <Finish>2026-01-05T08:00:00</Finish>
+    <ActualStart>2026-01-05T08:00:00</ActualStart>
+    <ActualFinish>2026-01-05T08:00:00</ActualFinish>
+    <EarlyStart>2026-01-05T08:00:00</EarlyStart>
+    <EarlyFinish>2026-01-05T08:00:00</EarlyFinish>
+    <LateStart>2026-01-05T08:00:00</LateStart>
+    <LateFinish>2026-01-05T08:00:00</LateFinish>
+    <TotalFloat>0</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>100</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+    <DrivingPath>true</DrivingPath>
+    <CreateDate>2025-12-01T09:00:00</CreateDate>
+    <CreateUser>planner1</CreateUser>
+  </Activity>
+
+  <Activity>
+    <ObjectId>A101</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>A1010</Id>
+    <Name>Mobilize Site Team</Name>
+    <Type>Task Dependent</Type>
+    <Status>Not Started</Status>
+    <CalendarObjectId>CAL_5D</CalendarObjectId>
+    <WBSObjectId>WBS_ROOT</WBSObjectId>
+    <PlannedDuration>40</PlannedDuration>
+    <RemainingDuration>40</RemainingDuration>
+    <Start>2026-01-06T08:00:00</Start>
+    <Finish>2026-01-08T17:00:00</Finish>
+    <EarlyStart>2026-01-06T08:00:00</EarlyStart>
+    <EarlyFinish>2026-01-08T17:00:00</EarlyFinish>
+    <LateStart>2026-01-12T08:00:00</LateStart>
+    <LateFinish>2026-01-14T17:00:00</LateFinish>
+    <TotalFloat>32</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>0</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+    <DrivingPath>false</DrivingPath>
+  </Activity>
+
+  <Activity>
+    <ObjectId>A102</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>A1020</Id>
+    <Name>Demo Existing Piping</Name>
+    <Type>Task Dependent</Type>
+    <Status>Completed</Status>
+    <CalendarObjectId>CAL_5D</CalendarObjectId>
+    <WBSObjectId>WBS_ROOT</WBSObjectId>
+    <PlannedDuration>80</PlannedDuration>
+    <RemainingDuration>0</RemainingDuration>
+    <AtCompletionDuration>80</AtCompletionDuration>
+    <Start>2026-01-06T08:00:00</Start>
+    <Finish>2026-01-12T17:00:00</Finish>
+    <ActualStart>2026-01-06T08:00:00</ActualStart>
+    <ActualFinish>2026-01-12T17:00:00</ActualFinish>
+    <EarlyStart>2026-01-06T08:00:00</EarlyStart>
+    <EarlyFinish>2026-01-12T17:00:00</EarlyFinish>
+    <LateStart>2026-01-06T08:00:00</LateStart>
+    <LateFinish>2026-01-12T17:00:00</LateFinish>
+    <TotalFloat>0</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>100</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+    <DrivingPath>true</DrivingPath>
+    <CreateDate>2025-12-01T09:00:00</CreateDate>
+    <CreateUser>planner1</CreateUser>
+    <LastUpdateDate>2026-01-12T17:15:00</LastUpdateDate>
+    <LastUpdateUser>fieldeng3</LastUpdateUser>
+  </Activity>
+
+  <Activity>
+    <ObjectId>A103</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>A1030</Id>
+    <Name>Install New Piping</Name>
+    <Type>Resource Dependent</Type>
+    <Status>In Progress</Status>
+    <CalendarObjectId>CAL_5D</CalendarObjectId>
+    <WBSObjectId>WBS_L2</WBSObjectId>
+    <PlannedDuration>120</PlannedDuration>
+    <RemainingDuration>40</RemainingDuration>
+    <AtCompletionDuration>120</AtCompletionDuration>
+    <Start>2026-01-13T08:00:00</Start>
+    <Finish>2026-01-20T17:00:00</Finish>
+    <ActualStart>2026-01-13T08:00:00</ActualStart>
+    <EarlyStart>2026-01-13T08:00:00</EarlyStart>
+    <EarlyFinish>2026-01-20T17:00:00</EarlyFinish>
+    <LateStart>2026-01-13T08:00:00</LateStart>
+    <LateFinish>2026-01-20T17:00:00</LateFinish>
+    <TotalFloat>0</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>66.7</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+    <DrivingPath>true</DrivingPath>
+  </Activity>
+
+  <Activity>
+    <ObjectId>A104</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>A1040</Id>
+    <Name>Vendor-Supplied Valve Delivery</Name>
+    <Type>Task Dependent</Type>
+    <Status>Not Started</Status>
+    <CalendarObjectId>CAL_7D</CalendarObjectId>
+    <WBSObjectId>WBS_L2</WBSObjectId>
+    <PlannedDuration>16</PlannedDuration>
+    <RemainingDuration>16</RemainingDuration>
+    <Start>2026-01-20T00:00:00</Start>
+    <Finish>2026-01-22T17:00:00</Finish>
+    <EarlyStart>2026-01-20T00:00:00</EarlyStart>
+    <EarlyFinish>2026-01-22T17:00:00</EarlyFinish>
+    <LateStart>2026-01-20T00:00:00</LateStart>
+    <LateFinish>2026-01-22T17:00:00</LateFinish>
+    <TotalFloat>0</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>0</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+    <PrimaryConstraintType>Start On or After</PrimaryConstraintType>
+    <PrimaryConstraintDate>2026-01-20T00:00:00</PrimaryConstraintDate>
+    <SecondaryConstraintType>Mandatory Finish</SecondaryConstraintType>
+    <SecondaryConstraintDate>2026-01-22T17:00:00</SecondaryConstraintDate>
+    <DrivingPath>false</DrivingPath>
+  </Activity>
+
+  <Activity>
+    <ObjectId>A105</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>A1050</Id>
+    <Name>Hydrotest and Tie-In</Name>
+    <Type>Task Dependent</Type>
+    <Status>Not Started</Status>
+    <CalendarObjectId>CAL_5D</CalendarObjectId>
+    <WBSObjectId>WBS_L2</WBSObjectId>
+    <PlannedDuration>24</PlannedDuration>
+    <RemainingDuration>24</RemainingDuration>
+    <Start>2026-01-21T08:00:00</Start>
+    <Finish>2026-01-23T17:00:00</Finish>
+    <EarlyStart>2026-01-21T08:00:00</EarlyStart>
+    <EarlyFinish>2026-01-23T17:00:00</EarlyFinish>
+    <LateStart>2026-01-21T08:00:00</LateStart>
+    <LateFinish>2026-01-23T17:00:00</LateFinish>
+    <TotalFloat>0</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>0</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+    <DrivingPath>true</DrivingPath>
+  </Activity>
+
+  <Activity>
+    <ObjectId>A106</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>A1060</Id>
+    <Name>Outage Management LOE</Name>
+    <Type>Level of Effort</Type>
+    <Status>In Progress</Status>
+    <CalendarObjectId>CAL_5D</CalendarObjectId>
+    <WBSObjectId>WBS_ROOT</WBSObjectId>
+    <PlannedDuration>200</PlannedDuration>
+    <RemainingDuration>120</RemainingDuration>
+    <Start>2026-01-05T08:00:00</Start>
+    <Finish>2026-01-23T17:00:00</Finish>
+    <ActualStart>2026-01-05T08:00:00</ActualStart>
+    <EarlyStart>2026-01-05T08:00:00</EarlyStart>
+    <EarlyFinish>2026-01-23T17:00:00</EarlyFinish>
+    <LateStart>2026-01-05T08:00:00</LateStart>
+    <LateFinish>2026-01-23T17:00:00</LateFinish>
+    <TotalFloat>0</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>40</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+  </Activity>
+
+  <Activity>
+    <ObjectId>A107</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <Id>MS-FINISH</Id>
+    <Name>Outage Complete</Name>
+    <Type>Finish Milestone</Type>
+    <Status>Not Started</Status>
+    <CalendarObjectId>CAL_5D</CalendarObjectId>
+    <WBSObjectId>WBS_ROOT</WBSObjectId>
+    <PlannedDuration>0</PlannedDuration>
+    <RemainingDuration>0</RemainingDuration>
+    <Start>2026-01-23T17:00:00</Start>
+    <Finish>2026-01-23T17:00:00</Finish>
+    <EarlyStart>2026-01-23T17:00:00</EarlyStart>
+    <EarlyFinish>2026-01-23T17:00:00</EarlyFinish>
+    <LateStart>2026-01-23T17:00:00</LateStart>
+    <LateFinish>2026-01-23T17:00:00</LateFinish>
+    <ExpectedFinishDate>2026-01-24T17:00:00</ExpectedFinishDate>
+    <TotalFloat>0</TotalFloat>
+    <FreeFloat>0</FreeFloat>
+    <PercentComplete>0</PercentComplete>
+    <PercentCompleteType>Duration</PercentCompleteType>
+    <DrivingPath>true</DrivingPath>
+  </Activity>
+
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A100</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A102</SuccessorActivityObjectId>
+    <Type>Finish to Start</Type>
+    <Lag>0</Lag>
+  </ActivityRelationship>
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A100</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A101</SuccessorActivityObjectId>
+    <Type>Finish to Start</Type>
+    <Lag>0</Lag>
+  </ActivityRelationship>
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A102</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A103</SuccessorActivityObjectId>
+    <Type>Finish to Start</Type>
+    <Lag>8</Lag>
+  </ActivityRelationship>
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A101</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A104</SuccessorActivityObjectId>
+    <Type>Start to Start</Type>
+    <Lag>0</Lag>
+  </ActivityRelationship>
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A103</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A105</SuccessorActivityObjectId>
+    <Type>Finish to Finish</Type>
+    <Lag>-8</Lag>
+  </ActivityRelationship>
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A104</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A105</SuccessorActivityObjectId>
+    <Type>Start to Finish</Type>
+    <Lag>0</Lag>
+  </ActivityRelationship>
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A105</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A107</SuccessorActivityObjectId>
+    <Type>Finish to Start</Type>
+    <Lag>0</Lag>
+  </ActivityRelationship>
+  <ActivityRelationship>
+    <PredecessorActivityObjectId>A102</PredecessorActivityObjectId>
+    <SuccessorActivityObjectId>A106</SuccessorActivityObjectId>
+    <Type>Start to Start</Type>
+    <Lag>0</Lag>
+  </ActivityRelationship>
+
+  <ScheduleOptions>
+    <ObjectId>SO1</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <SchedulingProgressedActivities>Retained Logic</SchedulingProgressedActivities>
+    <RelationshipLagCalendar>Predecessor Activity Calendar</RelationshipLagCalendar>
+    <MakeOpenEndedActivitiesCritical>false</MakeOpenEndedActivitiesCritical>
+    <UseExpectedFinishDates>false</UseExpectedFinishDates>
+    <DefineCriticalActivities>Total Float</DefineCriticalActivities>
+    <CriticalFloatThreshold>0</CriticalFloatThreshold>
+  </ScheduleOptions>
+
+  <Resource>
+    <ObjectId>R1</ObjectId>
+    <Name>Piping Crew</Name>
+    <ResourceType>Labor</ResourceType>
+  </Resource>
+
+  <ResourceAssignment>
+    <ObjectId>RA1</ObjectId>
+    <ProjectObjectId>1</ProjectObjectId>
+    <ActivityObjectId>A103</ActivityObjectId>
+    <ResourceObjectId>R1</ResourceObjectId>
+    <BudgetedUnits>120</BudgetedUnits>
+    <ActualUnits>80</ActualUnits>
+    <RemainingUnits>40</RemainingUnits>
+    <BudgetedCost>9600</BudgetedCost>
+    <ActualCost>6400</ActualCost>
+    <RemainingCost>3200</RemainingCost>
+  </ResourceAssignment>
+
+</APIBusinessObjects>

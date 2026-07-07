@@ -93,7 +93,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | S5 | §6.1 Editing-session forensics (create/update user+date mining) | DONE (v0.4; approved RJL 2026-07-07) |
 | S6 | §6.5 Push-button TIA workbench (MIP 3.6/3.7; collapsed as-built 3.8/3.9) | DONE (v0.4; approved RJL 2026-07-07) |
 | S7 | §6.6 Damages/LD exposure overlay | DONE (v0.4; approved RJL 2026-07-07) |
-| S8 | §6.7 Interactive HTML cockpit + graphics-generator demonstratives | PARKED |
+| S8 | §6.7 Interactive HTML cockpit + graphics-generator demonstratives | DONE (v0.4; cockpit — demonstratives are expert-assist-side) |
 | S9 | §6.9 Internal benchmark corpus | PARKED |
 | S10 | §6.10 Research track (ML duration priors; gated LLM narratives) | PARKED |
 
@@ -101,11 +101,11 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status |
 |---|---|---|
-| F1 | Ribbon analyzer (metrics grouped by WBS/field) | PARKED |
-| F2 | Phase analyzer (time-phased slicing within one schedule) | PARKED |
-| F3 | P6 XML (.xml) ingestion (ADR-0002 slot) | PARKED |
-| F4 | Per-period start/finish compliance metrics (baseline-compliance variants) | PARKED |
-| F5 | Asta/Phoenix ingestion via MPXJ (enable on demand) | PARKED |
+| F1 | Ribbon analyzer (metrics grouped by WBS/field) | DONE (v0.4; approved RJL 2026-07-07) |
+| F2 | Phase analyzer (time-phased slicing within one schedule) | DONE (v0.4) |
+| F3 | P6 XML (.xml) ingestion (ADR-0002 slot) | DONE (v0.4) |
+| F4 | Per-period start/finish compliance metrics (baseline-compliance variants) | DONE (v0.4) |
+| F5 | Asta/Phoenix ingestion via MPXJ (enable on demand) | DONE (v0.4; conditional on MPXJ/Java presence) |
 
 ## 9. Third-brainstorm items (§8 of ANALYTICS_PROPOSAL.md) — awaiting review
 

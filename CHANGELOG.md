@@ -174,3 +174,11 @@ matrix expanded to 79 checks (LI-11..LI-15, privileged/internal surfaces).
   ~64 KB on the demo series.
 - Test hardening: xlsx byte-identity comparisons exclude the openpyxl
   docProps timestamp member (flake fix).
+- S9 internal benchmark corpus: local append-only JSONL of anonymized
+  per-project outcomes (blocklist-asserted before write), percentile
+  context lines with small-n refusal; S10 offline duration priors:
+  empirical quantiles + lognormal MLE with KS statistic + Kaplan-Meier
+  right-censoring adjustment, exposed only as Monte Carlo empirical-tier
+  inputs and internal diagnostics behind the governance wall (provenance
+  threads into simulation disclosures; LLM narratives expressly out of
+  scope).

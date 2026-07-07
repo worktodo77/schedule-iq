@@ -94,8 +94,8 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | S6 | §6.5 Push-button TIA workbench (MIP 3.6/3.7; collapsed as-built 3.8/3.9) | DONE (v0.4; approved RJL 2026-07-07) |
 | S7 | §6.6 Damages/LD exposure overlay | DONE (v0.4; approved RJL 2026-07-07) |
 | S8 | §6.7 Interactive HTML cockpit + graphics-generator demonstratives | DONE (v0.4; cockpit — demonstratives are expert-assist-side) |
-| S9 | §6.9 Internal benchmark corpus | PARKED |
-| S10 | §6.10 Research track (ML duration priors; gated LLM narratives) | PARKED |
+| S9 | §6.9 Internal benchmark corpus | DONE (v0.4; approved RJL 2026-07-07) |
+| S10 | §6.10 Research track (ML duration priors; gated LLM narratives) | DONE (v0.4: offline duration priors only; LLM narratives remain out of scope — expert-assist gates + API decision) |
 
 ## 8. Fuse-parity remainder (FUSE_PARITY.md)
 

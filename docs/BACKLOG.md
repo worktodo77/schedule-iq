@@ -79,7 +79,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 |---|---|---|
 | M1 | Distributions, correlation, risk-event register, Latin Hypercube on `scheduleiq.cpm` | DONE (v0.3) |
 | M2 | Empirical calibration from the project's own update history (actual÷planned ratio distributions) | DONE (v0.3) |
-| M3 | Outputs: S-curves, tornado, criticality/cruciality, merge-bias exhibit (LI style) | APPROVED |
+| M3 | Outputs: S-curves, tornado, criticality/cruciality, merge-bias exhibit (LI style) | DONE (v0.3) |
 | M4 | SRA-readiness gate (refuse/brand DIAGNOSTIC on failing schedules) | DONE (v0.3) |
 
 ## 7. Second-brainstorm items (§6) — per review of 2026-07-07
@@ -164,6 +164,6 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 1b. **v0.2b** (no engine): bespoke LI metrics N6–N10 (FCBI, LHL, FRB, PCI, RDI)
 1c. **v0.2c** (no engine): bespoke LI metrics N11–N15 (BDI, CDI, IL, BWI, MML)
 1d. **v0.2d** (no engine): Report Card RC1–RC5 (+RC6 publication package prepared, publication itself on RJL go); S2 pacing/acceleration; S4 narrative reconciliation
-2. **v0.3**: E1–E5, C2, A2–A4, P5–P6, S2 (needs path/engine outputs)
-3. **v0.4**: D9 (MIP 3.4 half-step), windows outputs, N3 (daily delay ledger), S4
-4. **v0.5**: M1–M4, N4 (robustness certificate — sweeps the D9/N3 machinery)
+2. **v0.3**: E1–E5, C2, A2–A4, P5–P6 — DONE (2026-07-07)
+3. **v0.3 (pulled forward from v0.4/v0.5)**: D9, N3, N4, M1–M4 + all outputs — DONE (2026-07-07)
+4. Remaining approved-but-open: L3/L4 (RJL), scorecard anchor recalibration (needs L3 files)

@@ -115,3 +115,11 @@ matrix expanded to 74 checks (SET-02 added).
   dates, TF≤0 criticality index, Spearman cruciality/tornado, merge-bias
   gap; SRA-readiness gate (leads/hard-constraints/open-ends screens →
   READY / DIAGNOSTIC ONLY branding / REFUSED via the SET-02 handshake).
+- M3 + forensic outputs: LI-style S-curve and tornado figures, SRA workbook
+  (gate verdict, percentiles, criticality/cruciality, provenance, sample);
+  half-step bridge figure with per-class attribution inset (hatched
+  residual), daily-ledger cumulative curve, robustness range plot;
+  forensic workbook (half-step, attribution, MIP 3.3, ledger,
+  responsibility subtotals, certificate, disclosures); all wired into the
+  run and the Word report with per-block refusal messages.  Suite: 1839
+  tests + 1 skip.

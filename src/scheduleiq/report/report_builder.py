@@ -334,6 +334,144 @@ def _impact_section(sa: SeriesAnalysis, fig_dir: str) -> list[dict]:
         return []
 
 
+def _forensic_section(sa: SeriesAnalysis, fig_dir: str) -> list[dict]:
+    """FORENSIC DELAY DIAGNOSTICS (PRELIMINARY) — backlog D9/N3/N4, ADR-0007.
+
+    Computes its own engine analytics (same pattern as ``_impact_section``):
+    the D9 half-step decomposition over the latest consecutive update pair,
+    plus the N4 methodology-robustness certificate over the whole series.
+    Degrades to no section at all on any failure, including a below-
+    threshold validation handshake or fewer than two schedules in the
+    series — the analytics themselves never raise for a per-pair refusal
+    (``run_halfstep_series`` records a stub), so this only needs to guard
+    the certificate's primary-variant :class:`HandshakeRefusal`."""
+    try:
+        if len(sa.schedules) < 2:
+            return []
+        from ..analytics.halfstep import run_halfstep_series
+        from ..analytics.robustness import run_robustness_certificate
+        from ..cpm.handshake import HandshakeRefusal
+        from .forensic_figures import halfstep_figure
+
+        schedules = sa.schedules
+        hs_results = run_halfstep_series(schedules, handshake="require")
+        computable = [r for r in hs_results if not r.refused]
+        if not computable:
+            return []
+        latest = computable[-1]
+        hs_dict = latest.to_dict()
+        decomp = hs_dict["decomposition"]
+        pair = hs_dict["pair"]
+        tgt = decomp["target"]
+
+        png = os.path.join(fig_dir, "fig_halfstep.png")
+        halfstep_figure(hs_dict, png)
+
+        blocks: list[dict] = [
+            {"type": "h2", "text": "FORENSIC DELAY DIAGNOSTICS (PRELIMINARY)"},
+            {"type": "np",
+             "text": "The MIP 3.4 half-step decomposition (AACE 29R-03) below "
+                     f"bifurcates the movement of target {tgt.get('code')} "
+                     f"between {pair.get('earlier')} and {pair.get('later')} "
+                     "into a progress component (performance recorded between "
+                     "the updates) and a revision component (logic, duration, "
+                     "calendar, and constraint edits).  Every figure is a "
+                     "diagnostic delta in workdays of the target's own "
+                     "calendar (ADR-0007 §4); causation, entitlement, "
+                     "concurrency, and quantum remain reserved to the expert."},
+            {"type": "figure", "image": png},
+            {"type": "caption",
+             "text": f"Figure: MIP 3.4 half-step decomposition — {tgt.get('code')} "
+                     f"({pair.get('earlier')} → {pair.get('later')})"},
+        ]
+        prog = decomp.get("progress_effect_workdays")
+        rev = decomp.get("revision_effect_workdays")
+        tot = decomp.get("total_movement_workdays")
+        if None not in (prog, rev, tot):
+            blocks.append({"type": "np", "text":
+                           f"Over this window the target moved {tot:+d} workday"
+                           f"{'s' if abs(tot) != 1 else ''}, of which "
+                           f"{prog:+d} wd is attributed to progress and "
+                           f"{rev:+d} wd to revisions "
+                           f"(identity: {prog:+d} + {rev:+d} = {tot:+d})."})
+
+        try:
+            cert = run_robustness_certificate(schedules, handshake="require")
+            if cert.sentences:
+                blocks.append({"type": "np",
+                               "text": "N4 methodology-robustness certificate — "
+                                       "stability of the measurement across "
+                                       "defensible method variants.  "
+                                       + "  ".join(cert.sentences)})
+        except HandshakeRefusal:
+            pass
+        return blocks
+    except Exception:
+        return []
+
+
+def _sra_section(sa: SeriesAnalysis, fig_dir: str) -> list[dict]:
+    """SCHEDULE RISK ANALYSIS (PRELIMINARY) — backlog M1-M4, ADR-0007.
+
+    Runs the Monte Carlo simulation on the last schedule in the series with a
+    default ±10% triangular template spec (matching the runner's SRA block)
+    and degrades to no section at all on any failure, including a REFUSED
+    SRA-readiness verdict (below-threshold validation handshake)."""
+    try:
+        from ..analytics.montecarlo import TemplateRule, UncertaintySpec, run_simulation
+        from ..cpm.handshake import HandshakeRefusal
+        from .sra_figures import scurve_figure
+
+        target_sched = sa.schedules[-1]
+        spec = UncertaintySpec(
+            templates=[TemplateRule(match="", low_pct=-10.0, high_pct=10.0)])
+        try:
+            sim = run_simulation(target_sched, spec=spec, iterations=500, seed=42,
+                                 handshake="require")
+        except HandshakeRefusal:
+            return []
+        sim_dict = sim.to_dict()
+        if not sim_dict.get("target_sample", {}).get("dates"):
+            return []
+        tgt = sim_dict["target"]
+
+        png = os.path.join(fig_dir, "fig_sra_scurve.png")
+        scurve_figure(sim_dict, png)
+
+        blocks: list[dict] = [
+            {"type": "h2", "text": "SCHEDULE RISK ANALYSIS (PRELIMINARY)"},
+            {"type": "np",
+             "text": "The Monte Carlo completion distribution below "
+                     f"re-schedules target {tgt.get('code')}"
+                     f"{' (' + tgt['name'] + ')' if tgt.get('name') else ''} "
+                     f"{sim_dict.get('iterations')} times under sampled "
+                     "remaining-duration uncertainty (seed "
+                     f"{sim_dict.get('seed')}, disclosed for reproducibility).  "
+                     "Every probabilistic date is a diagnostic delta; the "
+                     "deterministic engine date and the tool-of-record record "
+                     "date are carried alongside, never merged (ADR-0007 §4)."},
+            {"type": "figure", "image": png},
+            {"type": "caption",
+             "text": f"Figure: SRA completion distribution — {tgt.get('code')}"},
+        ]
+        pct = sim_dict.get("percentiles") or {}
+        p10, p50, p90 = pct.get("P10") or {}, pct.get("P50") or {}, pct.get("P90") or {}
+        if p10.get("date") and p50.get("date") and p90.get("date"):
+            blocks.append({"type": "np", "text":
+                           f"The P10-P90 completion range for the target is "
+                           f"{_dt_str(p10.get('date'))} to "
+                           f"{_dt_str(p90.get('date'))}, with a P50 of "
+                           f"{_dt_str(p50.get('date'))} against a "
+                           f"deterministic engine finish of "
+                           f"{_dt_str(sim_dict.get('deterministic_engine_finish'))}."})
+        branding = sim_dict.get("branding")
+        if branding:
+            blocks.append({"type": "np", "text": branding})
+        return blocks
+    except Exception:
+        return []
+
+
 def _dt_str(iso) -> str:
     if not iso:
         return "—"
@@ -366,6 +504,8 @@ def build_series_report(sa: SeriesAnalysis, out_docx: str,
         pass
     blocks += _assessment_tables(sa.assessments[-1])
     blocks += _impact_section(sa, fig_dir)          # A3: never sinks a run
+    blocks += _forensic_section(sa, fig_dir)        # D9/N3/N4: never sinks a run
+    blocks += _sra_section(sa, fig_dir)             # M3: never sinks a run
     if sa.is_series:
         blocks += _trend_blocks(sa, fig_dir)
         try:                                    # path analysis can never sink a run
@@ -398,5 +538,7 @@ def build_single_report(a: ScheduleAssessment, out_docx: str,
     blocks.append({"type": "caption",
                    "text": "Figure 1: Total float distribution"})
     blocks += _impact_section(sa, fig_dir)          # A3: never sinks a run
+    blocks += _forensic_section(sa, fig_dir)        # D9/N3/N4: never sinks a run
+    blocks += _sra_section(sa, fig_dir)             # M3: never sinks a run
     blocks += _basis_blocks()
     return build_docx(blocks, out_docx, footnotes=FOOTNOTES, paper=paper)

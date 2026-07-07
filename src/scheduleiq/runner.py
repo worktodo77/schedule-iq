@@ -13,6 +13,14 @@ from .report.pdf import PdfConversionUnavailable, docx_to_pdf
 from .report.report_builder import build_series_report, build_single_report
 from .trend.series import SeriesAnalysis, analyze_series
 
+# SRA block (M3): iteration count and seed are module-level constants (not
+# CLI/config plumbing) so tests can monkeypatch a smaller iteration count for
+# a fast end-to-end run.  The seed is fixed for reproducibility and disclosed
+# in the SRA workbook summary (SimulationResult.seed).
+_SRA_ITERATIONS = 500
+_SRA_SEED = 42
+_SRA_MAX_INCOMPLETE = 2000
+
 
 @dataclass
 class RunResult:
@@ -121,6 +129,7 @@ def run(paths: list[str], out_dir: str, profile: str | None = None,
         rr.messages.append(f"engine impact analytics skipped: {e}")
 
     # intake-accelerator workbook (additive; never sinks a run — backlog D1-D8)
+    forensic_responsibility = None
     try:
         from .intake import run_intake
         from .report.excel_intake import write_intake_workbook
@@ -129,8 +138,136 @@ def run(paths: list[str], out_dir: str, profile: str | None = None,
         progress("Writing intake-review workbook…")
         write_intake_workbook(sa, ir, xlsx)
         rr.outputs.append(xlsx)
+        forensic_responsibility = ir.responsibility
     except Exception as e:                       # pragma: no cover - defensive
         rr.messages.append(f"intake review skipped: {e}")
+
+    # forensic delay diagnostics: half-step (D9), daily ledger (N3), and the
+    # methodology-robustness certificate (N4) — additive; never sinks a run.
+    # Runs over the full series when there are >= 2 schedules; silently no-ops
+    # (no message) on a single-file run, matching how the trend workbook is
+    # gated.  Reuses the D7 responsibility overlay captured above when the
+    # intake block produced one, else the sweep runs on totals only.
+    if len(sa.schedules) >= 2:
+        try:
+            from .analytics.halfstep import run_halfstep_series
+            from .analytics.dailyledger import run_daily_ledger
+            from .analytics.robustness import run_robustness_certificate
+            from .cpm.handshake import HandshakeRefusal, run_handshake
+            from .report.excel_forensic import write_forensic_workbook
+            from .report.forensic_figures import (dailyledger_figure,
+                                                   halfstep_figure,
+                                                   robustness_figure)
+
+            schedules = sa.schedules
+            hs_results = run_halfstep_series(schedules, handshake="require")
+            hs_dicts = [r.to_dict() for r in hs_results]
+            computable_hs = [d for d in hs_dicts if not d.get("refused")]
+
+            ledger_dicts: list = []
+            for earlier, later in zip(schedules, schedules[1:]):
+                d0 = earlier.data_date.date() if earlier.data_date else None
+                dn = later.data_date.date() if later.data_date else None
+                if d0 is None or dn is None or (dn - d0).days > 120:
+                    rr.messages.append(
+                        "daily ledger skipped for "
+                        f"{earlier.label()} -> {later.label()}: window exceeds "
+                        "120 calendar days or a data date is missing")
+                    continue
+                try:
+                    dl = run_daily_ledger(earlier, later, handshake="require",
+                                          responsibility=forensic_responsibility)
+                    ledger_dicts.append(dl.to_dict())
+                except HandshakeRefusal as exc:
+                    rr.messages.append(
+                        "SET-02 handshake below threshold — daily ledger "
+                        f"refused for {earlier.label()} -> {later.label()}: {exc}")
+
+            cert_dict = None
+            try:
+                cert = run_robustness_certificate(
+                    schedules, handshake="require",
+                    responsibility=forensic_responsibility)
+                cert_dict = cert.to_dict()
+            except HandshakeRefusal as exc:
+                rr.messages.append(
+                    "SET-02 handshake below threshold — robustness certificate "
+                    f"refused: {exc}")
+
+            if computable_hs or ledger_dicts or cert_dict is not None:
+                xlsx = os.path.join(out_dir, "forensic_diagnostics.xlsx")
+                progress("Writing forensic delay diagnostics workbook…")
+                write_forensic_workbook(hs_dicts, ledger_dicts, cert_dict, xlsx)
+                rr.outputs.append(xlsx)
+
+                progress("Writing forensic delay diagnostics figures…")
+                if computable_hs:
+                    hs_png = os.path.join(out_dir, "fig_halfstep.png")
+                    halfstep_figure(computable_hs[-1], hs_png)
+                    rr.outputs.append(hs_png)
+                if ledger_dicts:
+                    dl_png = os.path.join(out_dir, "fig_daily_ledger.png")
+                    dailyledger_figure(ledger_dicts[-1], dl_png)
+                    rr.outputs.append(dl_png)
+                if cert_dict is not None:
+                    rb_png = os.path.join(out_dir, "fig_robustness.png")
+                    robustness_figure(cert_dict, rb_png)
+                    rr.outputs.append(rb_png)
+            else:
+                hs = run_handshake(schedules[-1], threshold_pct=99.0)
+                rr.messages.append(
+                    "SET-02 handshake below threshold — forensic delay "
+                    f"diagnostics refused ({hs.match_rate_pct:.1f}%)")
+        except Exception as e:                   # pragma: no cover - defensive
+            rr.messages.append(f"forensic delay diagnostics skipped: {e}")
+
+    # schedule risk analysis / Monte Carlo (M3) — additive; never sinks a run.
+    # Runs on the LAST schedule in the series (the current update), matching
+    # how the milestone-impact block selects its file.  A default ±10%
+    # triangular template spec at a fixed seed keeps the run reproducible;
+    # _SRA_ITERATIONS is a module-level constant so tests can monkeypatch a
+    # smaller iteration count without adding config plumbing.
+    try:
+        from .analytics.montecarlo import (TemplateRule, UncertaintySpec,
+                                           run_simulation)
+        from .cpm.handshake import HandshakeRefusal
+        from .report.excel_sra import write_sra_workbook
+        from .report.sra_figures import scurve_figure, tornado_figure
+
+        sra_sched = sa.schedules[-1]
+        n_incomplete = sum(1 for a in sra_sched.real_activities if not a.completed)
+        if n_incomplete > _SRA_MAX_INCOMPLETE:
+            rr.messages.append(
+                f"schedule risk analysis skipped: {n_incomplete} incomplete "
+                f"activities exceeds the {_SRA_MAX_INCOMPLETE}-activity "
+                "runtime cap")
+        else:
+            spec = UncertaintySpec(
+                templates=[TemplateRule(match="", low_pct=-10.0, high_pct=10.0)])
+            try:
+                sim = run_simulation(sra_sched, spec=spec,
+                                     iterations=_SRA_ITERATIONS, seed=_SRA_SEED,
+                                     handshake="require")
+            except HandshakeRefusal as exc:
+                rr.messages.append(
+                    "SET-02 handshake below threshold — schedule risk "
+                    f"analysis refused: {exc}")
+            else:
+                sim_dict = sim.to_dict()
+                xlsx = os.path.join(out_dir, "sra_diagnostics.xlsx")
+                progress("Writing schedule risk analysis workbook…")
+                write_sra_workbook(sim_dict, xlsx)
+                rr.outputs.append(xlsx)
+
+                progress("Writing schedule risk analysis figures…")
+                sc_png = os.path.join(out_dir, "fig_sra_scurve.png")
+                scurve_figure(sim_dict, sc_png)
+                rr.outputs.append(sc_png)
+                td_png = os.path.join(out_dir, "fig_sra_tornado.png")
+                tornado_figure(sim_dict, td_png)
+                rr.outputs.append(td_png)
+    except Exception as e:                       # pragma: no cover - defensive
+        rr.messages.append(f"schedule risk analysis skipped: {e}")
 
     # statistical screens + earned schedule workbook (additive; S1/S3)
     try:

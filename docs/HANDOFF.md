@@ -1,140 +1,100 @@
-# ScheduleIQ — Session Handoff (2026-07-07)
+# ScheduleIQ — Session Handoff (2026-07-07, evening)
 
-For the next Claude session picking up this project.  Read this file, then
-`docs/BACKLOG.md` (the to-do list of record) before doing anything.
+For the next Claude session.  Read this file, then `docs/BACKLOG.md` (the
+to-do list of record).
 
 ## 1. What this project is
 
 ScheduleIQ: Long International's Acumen Fuse replacement — schedule quality,
-health, trend, and change analysis for P6 (.xer) and Microsoft Project
-(.mpp/MSPDI), with LI house-style Word/PDF reports, Excel workbooks, a
-PySide6 GUI, and CI that builds a shareable Windows installer.  Principal:
-RJL (worktodo77), an expert schedule delay analyst.  Perspective and
-guardrails follow the firm's expert-witness discipline: observations, not
-opinions; causation/entitlement/quantum reserved to the expert; every number
-reproducible and cited.
+health, trend, change, forensic-delay, and risk analysis for P6 (.xer) and
+Microsoft Project (.mpp/MSPDI), with LI house-style Word/PDF reports, Excel
+workbooks, a PySide6 GUI, and CI that builds a shareable Windows installer.
+Principal: RJL (worktodo77), expert schedule delay analyst.  Observations,
+not opinions; causation/entitlement/quantum reserved to the expert; every
+number reproducible and cited.
 
-## 2. Where the code lives (IMPORTANT)
+## 2. Where the code lives
 
-- **Canonical, pushed, current**: repo `worktodo77/expert-assist`, branch
-  `claude/acumen-fuse-replacement-ler9kq`, subdirectory **`schedule-iq/`**.
-  This mirror is complete at v0.2.0 and is the source of truth.
-- **`worktodo77/schedule-iq`** exists but contains only its initial README:
-  every push from the prior session returned 403 (session repo-scope was
-  stamped before the repo existed; the mid-session `add_repo` approval flow
-  never delivered).  A fully identity-clean (`Claude
-  <noreply@anthropic.com>`) local history was prepared but died with the
-  container — do not look for it.
-- **First task of the new session — migrate**: with `worktodo77/schedule-iq`
-  in the session's sources, copy the `schedule-iq/` subtree from the mirror
-  branch into the schedule-iq repo root and push to `main` as a single
-  import commit ("Import v0.2.0 from expert-assist mirror — development
-  history preserved on expert-assist branch
-  claude/acumen-fuse-replacement-ler9kq").  Prefer creating the import
-  commit through the GitHub API (`mcp__github__push_files`) rather than a
-  local git push: API-created commits are signed by GitHub and show as
-  Verified, satisfying the repo's verified-commit hook; thereafter commit
-  locally as `Claude <noreply@anthropic.com>` as usual.  Then treat schedule-iq as
-  canonical; keep syncing the mirror only until RJL confirms, then remove
-  the subtree from the expert-assist branch in a final commit.
+- **Canonical**: repo `worktodo77/schedule-iq`.  v0.2.0 imported to `main`
+  at commit c0a64bf (2026-07-07); all v0.3 work is on branch
+  `claude/scheduleiq-v0.3-engine-port-rx96cl` (pushed, current).  Merging
+  that branch to main is RJL's call.
+- **Mirror**: expert-assist branch `claude/scheduleiq-v0.3-engine-port-rx96cl`
+  carries a synced `schedule-iq/` subtree (per the migration plan: keep
+  syncing until RJL confirms the new repo, then remove the subtree from
+  expert-assist in a final commit).  Development history through v0.2.0 is
+  preserved on expert-assist branch `claude/acumen-fuse-replacement-ler9kq`.
+- Engine port source: `worktodo77/mip39-schedule-analysis-tool` (read-only
+  reference; keep it in session scope for provenance questions).
 
-## 3. State at handoff — v0.2.0 complete
+## 3. State at handoff — v0.3.0 complete (engine release)
 
-- **73-check matrix** (`src/scheduleiq/metrics/matrix.yaml`, rendered to
-  `docs/METRIC_MATRIX.md`): DCMA 14-point, logic/constraint/float/duration/
-  status/calendar/resource/structure checks, series (TRD/EVM/SET/CAL) checks,
-  and the ten LI proprietary indices LI-01..LI-10 (FCBI, LHL, FRB, PCI, RDI,
-  BDI, CDI, IL, BWI, MML — formulas in `analytics/li_indices.py` and
-  `analytics/li_record.py`, concepts in `docs/ANALYTICS_PROPOSAL.md` §9-§10).
-- **Analytics**: path analytics (driving path float-first, float paths,
-  merge ranking, stability attribution), intake accelerators D1-D8 (incl.
-  RFI generator, windows auto-segmentation, event mapper, responsibility
-  overlay), statistical screens, earned schedule, pacing/acceleration
-  screens, narrative reconciliation (CONSISTENT/DISCREPANT/RECORD-REWRITTEN/
-  UNMATCHED).
-- **LI Schedule Report Card** (spec `src/scheduleiq/scorecard.yaml`,
-  LI-RC v1.0; engine `scorecard.py`; design `docs/REPORT_CARD_DESIGN.md`):
-  per-file + series cards, integrity gates, top-factors decomposition,
-  score_trace.json; card leads the Word report.  Public-spec package in
-  `docs/public_spec/` is prepared but **NOT published** (RC6 decision with
-  RJL).
-- **Outputs per run**: 9+ artifacts (per-file workbooks, trend, paths,
-  intake, statistical, report card workbooks; Word report; score trace;
-  figures) + JSONL audit log + reproducibility capsule (hash manifest +
-  rerun script).  PDF converts via Word on analyst PCs (LibreOffice
-  fallback; both broken in the dev container — expected).
-- **Tests**: 161 passed + 1 conditional skip (`python3 -m pytest tests/ -q`
-  with PYTHONPATH=src; fixtures regenerate via
-  `python3 tests/fixtures/make_fixtures.py`).
-- Demo-series Report Card grades (regression reference): baseline C+ 74.85,
-  update1 C 61.37, update2 D 57.95, series D 52.21 (record-discipline gate).
+Everything below is DONE, tested (1,839 passed + 1 conditional skip;
+`PYTHONPATH=src python3 -m pytest tests/ -q` after
+`python3 tests/fixtures/make_fixtures.py`), committed, and pushed:
 
-## 4. Next build work, in order (details in BACKLOG.md)
+- **`scheduleiq.cpm`** (ADR-0007, amends ADR-0004): the MIP 3.9 tool's CPM
+  core ported port-and-validate (~1,500 ported tests) — PDM passes,
+  multi-calendar, per-relationship lag calendars, pinning, AACE 49R-06
+  longest path, ABCS destatusing, comparison + benchmark frameworks
+  (PHASE7 12/12; MULTI_CALENDAR 3/7 in BOTH source and port — pre-existing
+  source baseline, flagged, not a port defect).  Added during the port:
+  date-constraint scheduling (closes source LIM-028; all P6 types,
+  disclosed applications, negative float) and Progress Override statusing
+  (net-new).  LIM-044 carried (calendar-day tolerance).
+- **Validation handshake + SET-02** (74-check matrix): engine re-schedules
+  the file as imported, match rate vs tool-of-record reported; below 99%
+  every engine-dependent feature refuses (`HandshakeRefusal`).  Engine
+  numbers are always labelled diagnostic deltas; record dates remain the
+  schedule.
+- **Engine-dependent analytics**, all handshake-gated, PRELIMINARY-labelled:
+  A2 issue-impact overlay (+ per-constraint waterfall attribution, float
+  absorbed), A3 waterfall one-pager, A4 retained-vs-override delta, P5
+  constraint-free criticality (manufactured/masked), P6 as-built path
+  reconstruction (tightness-ranked actualized links, contradicted logic as
+  evidence), D9 MIP 3.4 half-step (exact progress+revision identity, NAMED
+  revision attribution with honest interaction residual, MIP 3.3 as-is),
+  N3 daily delay ledger (telescoping sum check, D6/D7 annotation), N4
+  methodology-robustness certificate (framing × statusing × boundary ×
+  contested-revision grid, stability sentences + banding), M1/M2/M4 Monte
+  Carlo (LHS, PERT/triangular/uniform, correlation rank-blend, risk
+  events, empirical calibration from the update history, SRA-readiness
+  gate READY/DIAGNOSTIC-ONLY/REFUSED), M3 outputs (S-curve, tornado,
+  criticality/cruciality, merge-bias note; forensic + SRA workbooks and
+  figures wired into runner + Word report).
+- **Fixtures**: legacy demo series (deliberately defective; engine refuses
+  it by design — that's asserted) + engine-consistent demo_cpm /
+  demo_cpm_divergent (handshake 100% / exactly 75%) + demo_impact +
+  demo_hs1/demo_hs2.  All regenerate byte-identically.
 
-1. **Migration** (§2 above).
-2. **v0.3 — CPM engine port (E1-E5)**: PORT, don't build.  Source repo
-   `worktodo77/mip39-schedule-analysis-tool` (must be in session sources) —
-   ~2,500-SLOC production core: PDM forward/backward pass, multi-calendar,
-   ABCS destatusing, AACE 49R-06 longest path, OOS rectification, P6
-   CPW-equivalence validation framework.  Port as `scheduleiq.cpm`; close
-   LIM-028 (constraint scheduling — REQUIRED), LIM-045 (per-relationship lag
-   calendars), carry LIM-044 tolerance.  Gate everything behind the
-   validation handshake (ADR-0007 in `docs/ANALYTICS_PROPOSAL.md` §0) and
-   the SET-02 check.  Plan of record also recorded in expert-assist
-   `PARKING_LOT.md` item B1.
-3. **Engine-dependent features** (all specified in ANALYTICS_PROPOSAL.md):
-   A2-A4 impact waterfall, P5-P6 constraint-free criticality + as-built
-   path, D9 MIP 3.4 half-step, N3 daily delay ledger, N4 methodology-
-   robustness certificate, M1-M4 Monte Carlo (empirical calibration via the
-   existing FRB/statistical modules), C2/SET-02.
-4. **Recalibrate** FCBI/RDI absolute-day anchors in scorecard.yaml against
-   real files (flagged in spec rationales) once RJL supplies a real .xer
-   series (his task L3).
+## 4. Next work (in rough order)
 
-## 5. Decisions waiting on RJL (do not build without approval)
+1. **RJL decisions** (do NOT build without approval): N16–N20 provocative
+   metrics; RC6 public spec publication; PARKED items (S5–S10, F1–F5,
+   N1–N2).  L3 (real-file validation) and L4 (release/installer) are RJL's.
+2. After L3: recalibrate FCBI/RDI absolute-day anchors in scorecard.yaml;
+   run the handshake + engine analytics against the real matter series and
+   review SET-02 rates (real P6 files will surface convention gaps the
+   synthetic fixtures cannot).
+3. Candidates worth proposing (add to BACKLOG as PARKED first): workday-
+   aware handshake tolerance (close LIM-044 properly); investigate the
+   MULTI_CALENDAR_SUITE 3/7 source baseline; contested-revision exclusion
+   in N4 as a true re-run instead of the disclosed arithmetic adjustment;
+   merge-bias exhibit at the top merge nodes (currently target-only,
+   disclosed); GUI surfacing of the new v0.3 artifacts.
 
-- N16-N20 provocative metrics (SMI, DDI, ARR, PPS, RSA) — proposed §11.
-- RC6: publish the Report Card spec publicly (recommendation: yes).
-- Parked: N1 weather overlay, N2 work-pattern reconstruction, S5-S10
-  (editing-session forensics, TIA workbench, damages overlay, HTML cockpit,
-  benchmark corpus, ML research), F1-F5 Fuse-parity remainder.
-- L3 real-file validation and L4 first release/installer circulation are
-  RJL's own tasks.
+## 5. Working conventions (unchanged; follow them)
 
-## 6. Working conventions (RJL-directed; follow them)
-
-- **Delegate builds to subagents — Sonnet for well-specified/mechanical
-  work, Opus for algorithmically subtle work — and the lead (Fable) audits
-  every deliverable substantively before acceptance**: run the tests
-  yourself, hand-verify representative numbers against the fixtures, read
-  the key diffs.  Audits have caught real defects in every wave (float-
-  priority pathing, DUR-04 self-reference, evergreen over-flagging, a
-  fixture bug); do not rubber-stamp.
-- Subagent rules that worked: strict file-ownership lists per agent, pure
-  new modules where possible (lead does shared-file integration), agents
-  NEVER run git, final message = deliverable report + full pytest output.
-- **Governance** (docs/GOVERNANCE.md): a check changes only when matrix row
-  + implementation + seeded fixture defect + tests change together.  The
-  scoring spec (scorecard.yaml) has the same rule.  Never silently expand
-  scope; new ideas go to BACKLOG.md as PARKED for RJL review.
-- Git: user.email `noreply@anthropic.com`, user.name `Claude`; end commit
-  messages with the Co-Authored-By + Claude-Session trailers; push early
-  and often — **containers restart without warning and un-pushed work has
-  been lost once already**.
-- House style for all report output: LI template conventions (ALL-CAPS H1-2,
-  Numbered Paragraph, two spaces between sentences, American spelling,
-  serial comma, teal #1F6F7B tables) — see docs/adr/ADR-0005 and
-  `report/docx_li.py`.
-
-## 7. Key documents map
-
-| Doc | Role |
-|---|---|
-| docs/BACKLOG.md | To-do list of record (statuses: DONE/APPROVED/PARKED/BLOCKED) |
-| docs/ANALYTICS_PROPOSAL.md | Full design detail for every analytic + the three bespoke-metric sets |
-| docs/REPORT_CARD_DESIGN.md | Report Card design (authoritative for scorecard.yaml) |
-| docs/METRIC_MATRIX.md / REFERENCES.md | Rendered check inventory + citations |
-| docs/GOVERNANCE.md / METHODOLOGY.md / ARCHITECTURE.md | Rules, math conventions, module map |
-| docs/FUSE_PARITY.md | Feature status vs Acumen Fuse |
-| docs/adr/ | Decision records (ADR-0007 = engine port, in ANALYTICS_PROPOSAL §0) |
-| CHANGELOG.md | Check-affecting changes per version |
+- Delegate builds to subagents (Sonnet mechanical / Opus subtle) with
+  strict file-ownership lists; agents never run git; lead audits every
+  deliverable substantively (run the tests yourself, hand-verify numbers,
+  read key diffs) — audits caught real defects again this session.
+- Governance: matrix row + implementation + seeded fixture defect + tests
+  change together; CHANGELOG note for check-affecting changes; never
+  silently expand scope.
+- Git: `user.email noreply@anthropic.com`, `user.name Claude`; Co-Authored-By
+  + Claude-Session trailers; push early and often (a monthly API spend
+  limit interrupted two subagents mid-build this session — resumed cleanly
+  because everything else was already pushed).
+- House style: ADR-0005 (LI template), ADR-0007 presentation rule (engine
+  = diagnostic deltas only).

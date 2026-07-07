@@ -264,6 +264,94 @@ def _card_section(sa: SeriesAnalysis) -> list[dict]:
         return []
 
 
+def _impact_section(sa: SeriesAnalysis, fig_dir: str) -> list[dict]:
+    """MILESTONE IMPACT DIAGNOSTIC (PRELIMINARY) — backlog A3, ADR-0007.
+
+    Computes its own engine analytics (same pattern as ``_card_section`` /
+    ``path_blocks``: never coupled to what the runner already wrote to
+    ``out_dir``) against the last schedule in the series, and degrades to no
+    section at all — never an error — on any failure, including a
+    below-threshold validation handshake (ADR-0007's refusal gate)."""
+    try:
+        from ..analytics.impact import run_impact_analysis
+        from ..cpm.handshake import HandshakeRefusal
+        from .impact_figures import waterfall_figure
+
+        target_sched = sa.schedules[-1]
+        try:
+            ia = run_impact_analysis(target_sched, handshake="require")
+        except HandshakeRefusal:
+            return []
+
+        impact = ia.to_dict()
+        impact["data_date"] = (target_sched.data_date.isoformat()
+                               if target_sched.data_date else None)
+        tgt = impact["target"]
+        baseline = impact["baseline"]
+        hs = impact["handshake"] or {}
+
+        png = os.path.join(fig_dir, "fig_impact_waterfall.png")
+        waterfall_figure(impact, png)
+
+        deltas = [d for d in impact["waterfall"]
+                 if d.get("computable") and d.get("delta_workdays") not in (None, 0)]
+        deltas.sort(key=lambda d: abs(d["delta_workdays"]), reverse=True)
+        top = deltas[:3]
+
+        blocks: list[dict] = [
+            {"type": "h2", "text": "MILESTONE IMPACT DIAGNOSTIC (PRELIMINARY)"},
+            {"type": "np",
+             "text": "The following engine-computed diagnostic deltas (ADR-0007) "
+                     f"quantify what is moving the target milestone {tgt.get('code')}"
+                     f"{' (' + tgt['name'] + ')' if tgt.get('name') else ''}.  "
+                     "The tool-of-record finish of "
+                     f"{_dt_str(baseline.get('record_early_finish'))} remains the "
+                     "schedule; the ported engine's own reproduction of that date "
+                     f"validated at a {hs.get('match_rate_pct', 0):.1f}% match rate "
+                     f"against a {hs.get('threshold_pct', 99):.0f}% threshold "
+                     "(SET-02).  Every number in this section is a labelled "
+                     "diagnostic delta, never a competing schedule; causation and "
+                     "entitlement are reserved to the expert."},
+            {"type": "figure", "image": png},
+            {"type": "caption",
+             "text": f"Figure: Milestone {tgt.get('code')} diagnostic waterfall"},
+        ]
+        if top:
+            stmts = "  ".join(
+                f"{_scenario_prose(d['scenario'])} moves the target "
+                f"{'earlier' if d['delta_workdays'] < 0 else 'later'} by "
+                f"{abs(d['delta_workdays'])} workday"
+                f"{'s' if abs(d['delta_workdays']) != 1 else ''}."
+                for d in top)
+            blocks.append({"type": "np", "text": "Largest diagnostic deltas.  " + stmts})
+        notes = list(impact.get("disclosures") or []) + list(impact.get("deferred") or [])
+        if notes:
+            blocks.append({"type": "np",
+                           "text": "Disclosures and deferred items:  "
+                                   + "  ".join(notes)})
+        return blocks
+    except Exception:
+        return []
+
+
+def _dt_str(iso) -> str:
+    if not iso:
+        return "—"
+    try:
+        return datetime.fromisoformat(str(iso).split("T")[0]).strftime("%d %B %Y")
+    except ValueError:
+        return str(iso)
+
+
+def _scenario_prose(scenario: str) -> str:
+    return {
+        "constraints_released_all": "Releasing all date constraints",
+        "expected_finish_released": "Releasing expected-finish constraints",
+        "leads_zeroed": "Zeroing leads (negative lags)",
+        "oos_statusing_delta": "Retained logic vs. progress override (OOS)",
+    }.get(scenario, scenario.replace("_", " ").capitalize())
+
+
 def build_series_report(sa: SeriesAnalysis, out_docx: str,
                         paper: str = "letter") -> str:
     fig_dir = os.path.join(os.path.dirname(os.path.abspath(out_docx)), "figures")
@@ -277,6 +365,7 @@ def build_series_report(sa: SeriesAnalysis, out_docx: str,
     except Exception:
         pass
     blocks += _assessment_tables(sa.assessments[-1])
+    blocks += _impact_section(sa, fig_dir)          # A3: never sinks a run
     if sa.is_series:
         blocks += _trend_blocks(sa, fig_dir)
         try:                                    # path analysis can never sink a run
@@ -308,5 +397,6 @@ def build_single_report(a: ScheduleAssessment, out_docx: str,
     blocks.append({"type": "figure", "image": png})
     blocks.append({"type": "caption",
                    "text": "Figure 1: Total float distribution"})
+    blocks += _impact_section(sa, fig_dir)          # A3: never sinks a run
     blocks += _basis_blocks()
     return build_docx(blocks, out_docx, footnotes=FOOTNOTES, paper=paper)

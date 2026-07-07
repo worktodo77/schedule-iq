@@ -29,9 +29,9 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | # | Item | Status |
 |---|---|---|
 | A1 | Driving-path extraction + path fingerprint table (no engine) | DONE (v0.2 wave 1) |
-| A2 | Issue-impact overlay: constraint-free delta, calendar-neutral float restatement, leads/lags deltas, expected-finish release | APPROVED |
-| A3 | Milestone diagnostic waterfall (one-page exhibit, selectable target) | APPROVED |
-| A4 | OOS retained-logic vs progress-override milestone delta | APPROVED |
+| A2 | Issue-impact overlay: constraint-free delta, calendar-neutral float restatement, leads/lags deltas, expected-finish release | DONE (v0.3) |
+| A3 | Milestone diagnostic waterfall (one-page exhibit, selectable target) | DONE (v0.3) |
+| A4 | OOS retained-logic vs progress-override milestone delta | DONE (v0.3) |
 
 ## 3. Multi-path analytics (§2)
 
@@ -41,8 +41,8 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | P2 | Path proximity profile (near-critical band distribution) | DONE (v0.2 wave 1) |
 | P3 | True merge-point ranking (converging near-critical paths) | DONE (v0.2 wave 1) |
 | P4 | Path stability across updates with progress-vs-revision attribution + path-timeline chart | DONE (v0.2 wave 1) |
-| P5 | Constraint-free criticality (manufactured-criticality exposure) | APPROVED (needs E1) |
-| P6 | As-built path reconstruction (ABCS core from ported engine) | APPROVED (needs E1) |
+| P5 | Constraint-free criticality (manufactured-criticality exposure) | DONE (v0.3) |
+| P6 | As-built path reconstruction (ABCS core from ported engine) | DONE (v0.3) |
 
 ## 4. Delay-analysis accelerators (§3)
 

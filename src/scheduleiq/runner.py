@@ -76,6 +76,50 @@ def run(paths: list[str], out_dir: str, profile: str | None = None,
     except Exception as e:                       # pragma: no cover - defensive
         rr.messages.append(f"path analysis skipped: {e}")
 
+    # engine milestone-impact diagnostic + as-built reconstruction (additive;
+    # never sinks a run — ADR-0007 / backlog A2-A4, P5-P6).  Runs against the
+    # LAST schedule in the series (the current update), matching how path
+    # analytics selects its file (analytics.paths.run_path_analytics uses
+    # scheds[-1]).  The handshake gate means this degrades gracefully on any
+    # file whose engine-vs-record match rate is below threshold; that refusal
+    # is reported distinctly from an unexpected error.
+    try:
+        from .analytics.impact import run_impact_analysis
+        from .analytics.asbuilt import reconstruct_asbuilt_paths
+        from .cpm.handshake import HandshakeRefusal, run_handshake
+        from .report.excel_impact import write_impact_workbook
+        from .report.impact_figures import asbuilt_figure, waterfall_figure
+
+        target_sched = sa.schedules[-1]
+        try:
+            ia = run_impact_analysis(target_sched, handshake="require")
+        except HandshakeRefusal:
+            hs = run_handshake(target_sched, threshold_pct=99.0)
+            rr.messages.append(
+                "SET-02 handshake below threshold — engine impact analytics "
+                f"refused ({hs.match_rate_pct:.1f}%)")
+        else:
+            ab = reconstruct_asbuilt_paths(target_sched)
+            impact_dict = ia.to_dict()
+            impact_dict["data_date"] = (target_sched.data_date.isoformat()
+                                        if target_sched.data_date else None)
+            asbuilt_dict = ab.to_dict()
+
+            progress("Writing milestone impact diagnostic workbook…")
+            xlsx = os.path.join(out_dir, "impact_diagnostic.xlsx")
+            write_impact_workbook(impact_dict, asbuilt_dict, xlsx)
+            rr.outputs.append(xlsx)
+
+            progress("Writing milestone impact diagnostic figures…")
+            wf_png = os.path.join(out_dir, "fig_impact_waterfall.png")
+            waterfall_figure(impact_dict, wf_png)
+            rr.outputs.append(wf_png)
+            ab_png = os.path.join(out_dir, "fig_asbuilt_paths.png")
+            asbuilt_figure(asbuilt_dict, ab_png)
+            rr.outputs.append(ab_png)
+    except Exception as e:                       # pragma: no cover - defensive
+        rr.messages.append(f"engine impact analytics skipped: {e}")
+
     # intake-accelerator workbook (additive; never sinks a run — backlog D1-D8)
     try:
         from .intake import run_intake

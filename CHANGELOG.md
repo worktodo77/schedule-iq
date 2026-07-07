@@ -80,3 +80,11 @@ matrix expanded to 74 checks (SET-02 added).
   (exactly 75.0%, three seeded +5wd shifts).  Suite: 1683 tests + 1 skip.
 - Tool-of-record dates remain the only dates reported as the schedule;
   engine output is always a labelled diagnostic delta (GOVERNANCE §7).
+- Engine-dependent analytics (A2-A4, P5, P6): issue-impact overlay with
+  per-constraint waterfall attribution and float-absorbed accounting;
+  retained-logic vs progress-override milestone delta; constraint-free
+  criticality (manufactured/masked sets); as-built path reconstruction with
+  actual-lag traceability and contradicted-logic evidence; milestone
+  diagnostic waterfall one-pager + impact workbook + as-built figure, wired
+  into the run (handshake-gated; refusal reported, never an error) and the
+  Word report.  All engine numbers labelled diagnostic deltas (ADR-0007).

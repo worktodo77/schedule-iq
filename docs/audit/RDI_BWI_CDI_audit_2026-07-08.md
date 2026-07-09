@@ -1,10 +1,43 @@
 # RDI / BWI / CDI (LI-05 / LI-09 / LI-07) implementation audit
 
-**Date:** 2026-07-08 · **Auditor:** Claude (lead) · **Status:** AUDIT ONLY —
-findings and current-behavior spec; no code or spec changed. The methodology
-owner makes the rulings. Batch audit of the three indices that share FCBI's
-criticality kernel / RF machinery, applying the reusable template from the FCBI
-audit (docs/audit/FCBI_audit_2026-07-08.md).
+**Date:** 2026-07-08 · **Auditor:** Claude (lead) · Batch audit of the three
+indices that share FCBI's criticality kernel / RF machinery, applying the
+reusable template from the FCBI audit (docs/audit/FCBI_audit_2026-07-08.md).
+
+> **PARTIALLY RESOLVED in v0.4.2 (2026-07-08).** The methodology owner approved
+> **C1, C2, B2, X1**; all implemented with the governance quartet.
+> **DEFERRED (open methodology decisions, NOT implemented):** B1 (fixed BWI
+> denominator), R1 (actual-vs-planned demonstrated pace), R2 (P50 comparator).
+>
+> **Shared-kernel family audit (Part 2 of the ruling) — metric by metric:**
+> | LI | Metric | Kernel/RF-map consumer? | LOE status in v0.4.2 |
+> |---|---|---|---|
+> | LI-01 | FCBI | yes (RF/weight) | **MODIFIED** — kernel exclusion + explicit burn/recovery/denominator guard |
+> | LI-04 | PCI | yes (path set) | **MODIFIED** — `_build_kernel` drops paths with no discrete-work member |
+> | LI-07 | CDI | yes (RF map) | **MODIFIED** — inherits kernel exclusion; retrospective-completed documented |
+> | LI-05 | RDI | reads `k.rf` after its own guard | already excluded LOE (unchanged); disclosures added |
+> | LI-09 | BWI | reads `k.rf` after its own guard | already excluded LOE (unchanged); UID target + disclosures added |
+> | LI-10 | MML | no (resource productivity) | already excluded LOE at its own loop |
+> | N17 DDI | provocative | consumes RDI/BWI/FCBI + own loop | already guards LOE (`is_loe_or_summary`) |
+> | LI-06 | BDI | **no** (uses `driving_path`, tool-of-record) | immune from the kernel issue* |
+> | LI-08 | IL | **no** (reads raw `total_float`) | immune from the kernel issue* |
+> | LI-02 | LHL | no (relationship survival) | immune |
+> | LI-03 | FRB | no (forecast error) | immune |
+> | N16/18/19/20 | SMI/ARR/PPS/RSA | consume check findings / certificate / pacing | inherit fixed outputs |
+>
+> *Future consideration (flagged, NOT implemented per the ruling): BDI counts
+> LOE steps that appear on the tool-of-record driving path, and IL would count
+> an LOE turning negative-float as an emergence chain — both read paths/floats
+> outside the shared kernel, so they are untouched here and warrant a separate
+> methodology ruling if desired. A residual PCI note: a KEPT (mixed) path's
+> `rel_float` is still computed by `float_paths` over all its members, so an
+> LOE that is the single lowest-float member of a real path could still
+> influence that path's weight; fully neutralizing it would require changing
+> `float_paths` (shared with the driving-path analytics) — out of scope.*
+>
+> The sections below are retained as the as-audited (pre-0.4.2) record.
+
+**Original status (pre-implementation):** AUDIT ONLY — no code or spec changed.
 
 ## Finding categories (same taxonomy as the FCBI audit; kept distinct)
 

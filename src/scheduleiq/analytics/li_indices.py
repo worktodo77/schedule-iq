@@ -61,6 +61,27 @@ def kernel_weight(rf_days: float, lam: float = DEFAULT_LAMBDA) -> float:
     return 2.0 ** (-rf_days / lam)
 
 
+# --------------------------------------------------------------------------
+# Methodology rule (approved 2026-07-08; RDI/BWI/CDI audit, ruling C1/X1):
+# LOE, WBS-summary, hammock, and other summary activities are not discrete
+# executable work and therefore SHALL NOT contribute to the proprietary LI
+# indices that measure criticality, float consumption, recovery, or
+# criticality-time.  They are excluded here, at the shared criticality kernel,
+# so every kernel/RF-map consumer (FCBI, CDI) inherits the exclusion; PCI
+# additionally drops paths with no discrete-work member (see _build_kernel).
+# RDI and BWI already exclude summary activities at their own loops.
+# Milestones are NOT summary activities and are retained (a finish milestone
+# is a legitimate criticality reference); they are excluded only from PCI's
+# discrete-work path test below, where they are markers rather than work.
+# --------------------------------------------------------------------------
+def _is_discrete_work(a) -> bool:
+    """A discrete executable activity: not LOE/summary/hammock and not a
+    zero-duration milestone marker.  Used to decide whether a float path
+    carries real work for PCI (a pure LOE/milestone path is not a genuine
+    near-critical path)."""
+    return not a.is_loe_or_summary and not a.is_milestone
+
+
 def relative_float_map(schedule: Schedule,
                        paths: list[FloatPath]) -> dict[str, float]:
     """Per-activity relative float RF, keyed by activity code.
@@ -72,17 +93,21 @@ def relative_float_map(schedule: Schedule,
         activities on no extracted path fall back to their own total float in
         working days on their own calendar.
 
-    Activities with neither a path membership nor a stored total float are
-    omitted (their weight is undefined).
+    LOE/summary activities are excluded (methodology rule above): they receive
+    no relative float and therefore no criticality weight.  Activities with
+    neither a path membership nor a stored total float are omitted (their
+    weight is undefined).
     """
     rf: dict[str, float] = {}
     for p in paths:
         for a in p.activities:
+            if a.is_loe_or_summary:          # summary work carries no criticality
+                continue
             cur = rf.get(a.code)
             if cur is None or p.rel_float_days < cur:
                 rf[a.code] = p.rel_float_days
     for a in schedule.activities.values():
-        if a.code in rf:
+        if a.is_loe_or_summary or a.code in rf:
             continue
         own = a.total_float_days(schedule.cal_for(a))
         if own is not None:
@@ -108,7 +133,13 @@ class _Kernel:
 
 
 def _build_kernel(schedule: Schedule, lam: float) -> _Kernel:
-    paths = float_paths(schedule, n=KERNEL_PATHS_N, band_days=None)
+    # float_paths() itself is unchanged (it feeds the tool-of-record driving-path
+    # analytics and must not shift).  For the LI-index kernel we drop paths with
+    # no discrete-work member — a path that exists only because logic routes
+    # through an LOE/summary (or is a bare milestone chain) is not a genuine
+    # near-critical path and would otherwise inflate PCI's path count.
+    all_paths = float_paths(schedule, n=KERNEL_PATHS_N, band_days=None)
+    paths = [p for p in all_paths if any(_is_discrete_work(a) for a in p.activities)]
     rf = relative_float_map(schedule, paths)
     return _Kernel(paths=paths, rf=rf,
                    weight={c: kernel_weight(v, lam) for c, v in rf.items()})
@@ -197,6 +228,54 @@ def _fcbi_disclosures(lam: float) -> list[str]:
     ]
 
 
+_LOE_EXCLUSION_NOTE = (
+    "LOE, WBS-summary, hammock, and other summary activities are excluded: "
+    "they are not discrete executable work and carry no project criticality "
+    "(approved methodology, 2026-07-08)."
+)
+
+
+def _rdi_disclosures(scheds) -> list[str]:
+    notes = [
+        _LOE_EXCLUSION_NOTE,
+        "Completed activities are excluded from the required-pace side and "
+        "counted on the demonstrated-pace side (they are the achievement).",
+        "RDI depends on each update's remaining durations and project finish "
+        "date; if the project finish is absent, required pace is not computed "
+        "for that update, and if remaining duration is left unmaintained (0) on "
+        "incomplete near-critical work, required pace is understated.",
+    ]
+    missing = [s.label() for s in scheds if getattr(s, "finish_date", None) is None]
+    if missing:
+        notes.append("DATA QUALITY: no project finish date on update(s): "
+                     + ", ".join(missing) + " — required pace omitted there.")
+    return notes
+
+
+def _bwi_disclosures(target_code, densities, labels) -> list[str]:
+    notes = [
+        _LOE_EXCLUSION_NOTE,
+        "BWI depends on remaining durations of near-critical work and the "
+        "target milestone's finish; where the target has no usable finish in an "
+        "update, that update's density is omitted.",
+    ]
+    missing = [labels[i] for i, d in enumerate(densities) if d is None]
+    if missing:
+        notes.append(f"DATA QUALITY: target {target_code} had no usable forecast "
+                     "finish / near-critical density on update(s): "
+                     + ", ".join(missing) + ".")
+    return notes
+
+
+def _cdi_disclosures() -> list[str]:
+    return [
+        _LOE_EXCLUSION_NOTE,
+        "Completed activities are RETAINED in CDI: it measures retrospective "
+        "criticality-time (where risk dwelt over the project's life, including "
+        "on now-finished work), unlike the forward-looking FCBI/RDI/BWI.",
+    ]
+
+
 @dataclass
 class PciResult:
     labels: list[str] = field(default_factory=list)
@@ -220,6 +299,7 @@ class CdiResult:
     allocations: int = 0             # number of updates that allocated a unit
     interpretation: str = ""
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -237,6 +317,7 @@ class RdiResult:
     rdi_days: float = 0.0              # final cumulative recovery debt, days
     interpretation: str = ""
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -253,6 +334,7 @@ class BwiResult:
     projected_break_label: Optional[str] = None
     interpretation: str = ""
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -300,6 +382,14 @@ def _fcbi(sa, kernels: dict[int, _Kernel], lam: float) -> FcbiResult:
         recov = 0.0
         burners: list[Burner] = []
         for code, delta in cs.float_deltas.items():
+            # methodology rule (C1): LOE/summary activities are not discrete work
+            # and never contribute burn or recovery.  (The shared kernel already
+            # denies them a weight; this explicit guard is the visible contract
+            # at FCBI and is robust to any future kernel refactor.)
+            ea0, la0 = e_by_code.get(code), l_by_code.get(code)
+            if (la0 is not None and la0.is_loe_or_summary) or \
+               (ea0 is not None and ea0.is_loe_or_summary):
+                continue
             # item 1 — completed activities are out of scope for BOTH burn and
             # recovery: an activity's float ending at completion is not a burn.
             la = l_by_code.get(code)
@@ -332,11 +422,12 @@ def _fcbi(sa, kernels: dict[int, _Kernel], lam: float) -> FcbiResult:
                 a.constraint_flagged = a.constraint_flagged or flagged
 
         # normalized: share of the criticality-weighted *live* float stock burned.
-        # Completed activities are excluded (item 1) and the same min(RF) weight
-        # is used, so numerator and denominator share one basis.
+        # Completed and LOE/summary activities are excluded (item 1 / rule C1) and
+        # the same min(RF) weight is used, so numerator and denominator share one
+        # basis.
         denom = 0.0
         for a in earlier.activities.values():
-            if a.completed:
+            if a.completed or a.is_loe_or_summary:
                 continue
             tf = a.total_float_days(earlier.cal_for(a))
             if tf is not None and tf > 0:
@@ -433,6 +524,9 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
     allocated = 0
     for s in scheds:
         k = kernels[id(s)]
+        # LOE/summary activities were already excluded from the kernel RF map
+        # (rule C1), so ``k.rf`` contains only discrete work; the band selection
+        # below therefore never allocates dwell to a summary activity.
         near = {code: k.weight[code] for code, rf in k.rf.items()
                 if rf <= band_days and code in k.weight}
         wsum = sum(near.values())
@@ -448,7 +542,8 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
                     names[code] = a.name
     if allocated == 0:
         return CdiResult(reason="no update had activities inside the near-critical "
-                                f"band (RF <= {band_days:g}d)")
+                                f"band (RF <= {band_days:g}d)",
+                         disclosures=_cdi_disclosures())
 
     board = [CdiEntry(code=c, name=names.get(c, ""),
                       dwell_share=v / allocated,
@@ -463,7 +558,8 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
               f"({lead.dwell_share:.0%} of the Project's dwell); the top decile "
               f"({k_top} of {n} activities) holds {top_decile:.0%}.")
     return CdiResult(leaderboard=board, top_decile_share=top_decile,
-                     allocations=allocated, interpretation=interp)
+                     allocations=allocated, interpretation=interp,
+                     disclosures=_cdi_disclosures())
 
 
 # ==========================================================================
@@ -553,14 +649,16 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
     if all(r is None for r in required):
         return RdiResult(rows=rows, rdi_days=0.0,
                          reason="no update had a usable data date -> forecast "
-                                "finish span to compute a required pace")
+                                "finish span to compute a required pace",
+                         disclosures=_rdi_disclosures(scheds))
     interp = (f"Recovery debt stands at {cumulative:.1f} working days — the "
               "portion of the current completion forecast resting on a pace the "
               "Project has not demonstrated"
               + (" (debt has accrued: the forecast requires acceleration beyond "
                  "the best window achieved)." if cumulative > 0
                  else "; no window required more than the best pace demonstrated."))
-    return RdiResult(rows=rows, rdi_days=cumulative, interpretation=interp)
+    return RdiResult(rows=rows, rdi_days=cumulative, interpretation=interp,
+                     disclosures=_rdi_disclosures(scheds))
 
 
 # ==========================================================================
@@ -600,9 +698,19 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
     if target is None:
         return BwiResult(reason="no target milestone could be resolved")
 
+    # B2 target-resolution robustness (audit ruling): pin the target's PERSISTENT
+    # UID from the first update (matching by code, then by uid if the caller
+    # passed a uid), then locate it in each later update by UID first and fall
+    # back to code.  This survives an activity being re-coded/renamed between
+    # updates.  BWI mathematics are unchanged.
+    anchor = _find_by_code(scheds[0], target) or scheds[0].activities.get(target)
+    anchor_uid = anchor.uid if anchor is not None else None
+    target_code = anchor.code if anchor is not None else target
+
     densities: list[Optional[float]] = []
     for s in scheds:
-        tgt = _find_by_code(s, target)
+        tgt = (s.activities.get(anchor_uid) if anchor_uid else None) \
+            or _find_by_code(s, target_code)
         if tgt is None or tgt.finish is None:
             densities.append(None)
             continue
@@ -624,19 +732,23 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
             vol += a.remaining_days(s.cal_for(a))
         densities.append(vol / wd)
 
+    labels = [s.label() for s in scheds]
     base = densities[0]
     if base is None:
-        return BwiResult(target_code=target,
-                         rows=[BwiRow(scheds[i].label(), densities[i], None)
+        return BwiResult(target_code=target_code,
+                         rows=[BwiRow(labels[i], densities[i], None)
                                for i in range(len(scheds))],
-                         reason=f"target {target} has no usable forecast finish / "
-                                "near-critical work at the first update")
+                         reason=f"target {target_code} has no usable forecast finish "
+                                "/ near-critical work at the first update",
+                         disclosures=_bwi_disclosures(target_code, densities, labels))
     if base == 0:
-        return BwiResult(target_code=target,
-                         rows=[BwiRow(scheds[i].label(), densities[i], None)
+        return BwiResult(target_code=target_code,
+                         rows=[BwiRow(labels[i], densities[i], None)
                                for i in range(len(scheds))],
-                         reason=f"baseline near-critical density ahead of {target} "
-                                "is zero — BWI is undefined (nothing to normalize)")
+                         reason=f"baseline near-critical density ahead of "
+                                f"{target_code} is zero — BWI is undefined "
+                                "(nothing to normalize)",
+                         disclosures=_bwi_disclosures(target_code, densities, labels))
 
     rows = [BwiRow(label=scheds[i].label(), density=densities[i],
                    bwi=(densities[i] / base if densities[i] is not None else None))
@@ -657,17 +769,18 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
             break
 
     last_bwi = next((r.bwi for r in reversed(rows) if r.bwi is not None), None)
-    interp = (f"Work packed ahead of {target} is "
+    interp = (f"Work packed ahead of {target_code} is "
               f"{last_bwi:.2f}x the baseline density"
               if last_bwi is not None else
-              f"Bow-wave density ahead of {target} could not be tracked")
+              f"Bow-wave density ahead of {target_code} could not be tracked")
     if break_label:
         interp += (f"; required density first outruns the demonstrated pace at "
                    f"{break_label} (projected break).")
     else:
         interp += "; required density stays within the demonstrated pace."
-    return BwiResult(target_code=target, rows=rows,
-                     projected_break_label=break_label, interpretation=interp)
+    return BwiResult(target_code=target_code, rows=rows,
+                     projected_break_label=break_label, interpretation=interp,
+                     disclosures=_bwi_disclosures(target_code, densities, labels))
 
 
 # ==========================================================================

@@ -426,7 +426,13 @@ index cannot be gamed by constraint placement.  The cumulative FCBI curve is
 "the float story of the project in one line."
 
 **Implementation conventions (v0.4.1; per the FCBI audit rulings —
-docs/audit/FCBI_audit_2026-07-08.md).**
+docs/audit/FCBI_audit_2026-07-08.md.  v0.4.2 adds the LOE rule below, per the
+RDI/BWI/CDI audit — docs/audit/RDI_BWI_CDI_audit_2026-07-08.md).**
+- *LOE, WBS-summary, hammock, and other summary activities are excluded* from
+  both burn and FCBI⁻: they are not discrete executable work and carry no
+  project criticality.  This rule applies uniformly to every LI index that
+  measures criticality, float consumption, recovery, or criticality-time
+  (FCBI, PCI, CDI, RDI, BWI); it is enforced at the shared criticality kernel.
 - *Completed activities are excluded* from both burn and FCBI⁻: FCBI measures
   float consumed by **in-flight** work, so an activity's float ending at
   completion is not scored as burn (which also removes the exporter-dependent
@@ -484,6 +490,9 @@ instability BEFORE the flip happens (TRD-02 sees it only after); a sudden
 PCI rise coinciding with logic churn suggests engineered path consolidation.
 Directly informs method selection (low-PCI projects need daily-resolution or
 split methods, not snapshot TIA) and where SRA effort matters.
+*Convention (v0.4.2):* paths with no discrete-work member — pure LOE/summary
+or bare-milestone chains — are excluded so summary activities cannot
+manufacture a spurious near-critical path and dilute the concentration.
 
 ### 9.5 RDI — Recovery Debt Index
 Cumulative gap between promised and demonstrated pace.  Each update implies
@@ -534,6 +543,11 @@ concentration of dwell (top-decile share).  Sharp forensic corollary: an
 activity with near-zero dwell that suddenly hosts a major claimed delay is a
 red flag; a high-dwell activity that never appears in the claim narrative is
 a gap in the other side's story.
+*Conventions (v0.4.2):* LOE/summary activities are excluded (not discrete
+work).  **Completed activities are retained** — CDI is a *retrospective*
+criticality-time measure (where risk dwelt over the project's life, including
+now-finished work), which is why, unlike the forward-looking FCBI/RDI/BWI, it
+does not drop completed activities.
 
 ### 10.3 IL — Intervention Latency
 How long problems stayed visible before the schedule shows a response.  For

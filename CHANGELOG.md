@@ -212,3 +212,42 @@ held stable across the change, so the suite stays green.
 - matrix.yaml LI-01 wording + §9.1 conventions updated; 7 new governance tests
   (completed-invariance, min-RF timing, RF basis fallback, windowing
   non-additivity, sentinel, cross-index, disclosures).  Suite: 2069 passed.
+
+## 0.4.2 — 2026-07-08
+
+Correctness / consistency / governance update per the RDI/BWI/CDI audit
+(docs/audit/RDI_BWI_CDI_audit_2026-07-08.md).  Approved rulings C1, C2, B2, X1
+implemented; B1, R1, R2 remain open methodology decisions and are NOT included.
+
+Check-affecting: **LOE/summary exclusion across the LI criticality kernel.**
+LOE, WBS-summary, hammock, and other summary activities are not discrete work
+and no longer contribute to the proprietary indices that measure criticality,
+float consumption, recovery, or criticality-time.
+
+- **C1 — LOE exclusion.** Enforced at the shared kernel (`relative_float_map`
+  drops summary activities from the RF/weight map; `_build_kernel` drops float
+  paths with no discrete-work member).  FCBI additionally carries an explicit
+  LOE guard on burn/recovery/denominator; CDI inherits the kernel exclusion.
+  PCI no longer counts LOE-only / bare-milestone paths (a single-threaded
+  schedule with an LOE feeder now reads 1.0, not 0.5).  FCBI/PCI/CDI numbers
+  shift on any series containing near-critical LOE; the pinned demo letter
+  grades (C+/C/D) held.  RDI and BWI already excluded LOE (unchanged).
+- **C2 — CDI documentation.** No behavioral change: §10.2, the LI-07 matrix
+  row, and a new CDI disclosure state that completed activities are retained
+  because CDI measures retrospective criticality-time.
+- **B2 — BWI target robustness.** The target milestone is pinned by persistent
+  UID (resolved from the first update) and located by UID-then-code in each
+  later update, so it survives re-coding/renaming.  BWI mathematics unchanged.
+- **X1 — data-quality disclosures.** RDI, BWI, and CDI now carry standing
+  disclosures (LOE exclusion, dependence on remaining durations / project
+  finish / target finish) and emit a DATA-QUALITY note when those inputs are
+  absent; numerical behavior preserved.
+- Full shared-kernel family audit (metric-by-metric) in the audit doc's
+  resolution note: MML already excluded LOE; DDI already guards it;
+  BDI/IL/LHL/FRB do not consume the kernel/RF map (BDI/IL flagged for a future
+  LOE ruling, not implemented here).
+- 7 new regression tests (kernel/CDI/FCBI/PCI LOE exclusion, BWI rename
+  survival, disclosures).  Suite: 2069 passed, 2 skipped.
+- NOT changed: BWI/RDI mathematics, kernel equations, RF calculations, the
+  deferred B1 (fixed BWI denominator), R1 (actual-vs-planned demonstrated
+  pace), R2 (P50 comparator).

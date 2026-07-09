@@ -928,7 +928,7 @@ checks:
   - id: LI-01
     name: "FCBI — Float Criticality Burn Index"
     category: "LI Proprietary Indices"
-    description: "Float consumed by IN-FLIGHT work, weighted by path criticality (kernel 2^(-RF/lambda), lambda 5 wd).  Completed activities are excluded from both burn and recovery (aligns with RDI/BWI; CDI intentionally retains them as retrospective dwell).  Burn and recovery tracked separately; normalized burn above 100% means erosion beyond available float; normalized burn is reported UNDEFINED (not 0) when the weighted live float stock is <= 0.  LI concept."
+    description: "Float consumed by IN-FLIGHT DISCRETE work, weighted by path criticality (kernel 2^(-RF/lambda), lambda 5 wd).  Completed activities AND LOE/summary activities are excluded from both burn and recovery (completed: aligns with RDI/BWI, CDI retains as retrospective dwell; LOE/summary: not discrete work).  Burn and recovery tracked separately; normalized burn above 100% means erosion beyond available float; normalized burn is reported UNDEFINED (not 0) when the weighted live float stock is <= 0.  LI concept."
     formula: "sum over INCOMPLETE activities of max(0, -dTF days) x 2^(-RF/5); RF = min(RF at u-1, RF at u), each = min relative float of the top-10 containing float paths (own total float when on no path); FCBI+ is windowing-dependent (not additive across merged windows)"
     unit: days
     threshold: null
@@ -967,8 +967,8 @@ checks:
   - id: LI-04
     name: "PCI — Path Concentration Index"
     category: "LI Proprietary Indices"
-    description: "Herfindahl concentration of criticality across the top float paths (same kernel as FCBI).  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
-    formula: "sum of squared kernel-weight shares over top-10 float paths, per update"
+    description: "Herfindahl concentration of criticality across the top float paths (same kernel as FCBI).  Paths with no discrete-work member (pure LOE/summary or bare-milestone chains) are excluded so summary activities cannot inflate the path count.  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
+    formula: "sum of squared kernel-weight shares over the top-10 discrete-work float paths, per update (LOE/summary-only paths dropped)"
     unit: ratio
     threshold: null
     direction: info
@@ -980,7 +980,7 @@ checks:
   - id: LI-05
     name: "RDI — Recovery Debt Index"
     category: "LI Proprietary Indices"
-    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the maximum demonstrated pace."
+    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the maximum demonstrated pace.  LOE/summary activities are excluded (not discrete work); depends on maintained remaining durations and a project finish date (data-quality disclosures emitted when absent)."
     formula: "sum over windows of max(0, required pace - max demonstrated pace) x window working days"
     unit: days
     threshold: null
@@ -1006,8 +1006,8 @@ checks:
   - id: LI-07
     name: "CDI — Criticality Dwell Index"
     category: "LI Proprietary Indices"
-    description: "Each activity's share of total project criticality-time (one unit allocated per update across the near-critical band by kernel weight).  The leaderboard is the delay analysis's cast of characters."
-    formula: "accumulated kernel-weighted allocation per activity / windows allocated; scalar = top-decile share"
+    description: "Each discrete-work activity's share of total project criticality-time (one unit allocated per update across the near-critical band by kernel weight).  LOE/summary activities are excluded (not discrete work).  Completed activities are RETAINED: CDI is retrospective criticality-time (where risk dwelt over the project's life, including now-finished work), unlike the forward-looking FCBI/RDI/BWI.  The leaderboard is the delay analysis's cast of characters."
+    formula: "accumulated kernel-weighted allocation per discrete-work activity / windows allocated; scalar = top-decile share"
     unit: ratio
     threshold: null
     direction: info
@@ -1032,7 +1032,7 @@ checks:
   - id: LI-09
     name: "BWI — Bow-Wave Index"
     category: "LI Proprietary Indices"
-    description: "Remaining near-critical work per remaining working period ahead of a held milestone, normalized to the first update.  Rising BWI while the date holds = compression that must eventually break; projected break reported against demonstrated pace."
+    description: "Remaining near-critical work per remaining working period ahead of a held milestone, normalized to the first update.  LOE/summary activities are excluded (not discrete work); the target is pinned by persistent UID so it survives re-coding/renaming.  Rising BWI while the date holds = compression that must eventually break; projected break reported against demonstrated pace."
     formula: "density_u / density_first, density = near-critical remaining days / working days to target"
     unit: ratio
     threshold: null

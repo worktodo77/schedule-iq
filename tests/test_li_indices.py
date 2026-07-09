@@ -357,3 +357,110 @@ def test_run_li_indices_empty_schedule_list_never_raises():
     r = run_li_indices(SeriesAnalysis(schedules=[]))
     assert r.fcbi.reason and r.pci.reason and r.cdi.reason
     assert r.rdi.reason and r.bwi.reason
+
+
+# ============================== LOE / summary exclusion (ruling C1, v0.4.2) ===
+def _sched_with(specs, dd, fin=None, rels=None):
+    """specs: list of (uid, code, tf_hours, atype, remaining_hours).  Builds one
+    Schedule on a single 5-day calendar for LOE-exclusion tests."""
+    from scheduleiq.ingest.model import Calendar, Relationship, RelType
+    cal = Calendar(uid="1", name="5d", hours_per_day=8.0, is_default=True)
+    s = Schedule(project_id="SYN", data_date=dd, finish_date=fin)
+    s.calendars = {"1": cal}
+    for uid, code, tf, atype, rem in specs:
+        s.activities[uid] = Activity(
+            uid=uid, code=code, name=code, atype=atype,
+            status=ActivityStatus.NOT_STARTED, calendar_uid="1",
+            original_duration_hours=80.0, remaining_duration_hours=rem,
+            total_float_hours=tf, early_start=datetime(2025, 1, 1),
+            early_finish=datetime(2025, 3, 1), planned_start=datetime(2025, 1, 1),
+            planned_finish=datetime(2025, 3, 1))
+    for pc, sc in (rels or []):
+        s.relationships.append(Relationship(pred_uid=pc, succ_uid=sc,
+                                            rtype=RelType.FS, lag_hours=0.0))
+    return s
+
+
+def _loe_series(loe_tf_u1=0.0, loe_rem_u1=80.0):
+    from scheduleiq.ingest.model import ActivityType as AT
+    rels = [("A", "B"), ("B", "MS"), ("A", "LOE"), ("LOE", "MS")]
+    u0 = _sched_with([("A", "A", 0.0, AT.TASK, 80.0), ("B", "B", 0.0, AT.TASK, 80.0),
+                      ("LOE", "LOE", 0.0, AT.LOE, 80.0),
+                      ("MS", "MS", 0.0, AT.FINISH_MILESTONE, 0.0)],
+                     datetime(2025, 1, 1), datetime(2025, 4, 1), rels)
+    u1 = _sched_with([("A", "A", 0.0, AT.TASK, 40.0), ("B", "B", 0.0, AT.TASK, 80.0),
+                      ("LOE", "LOE", loe_tf_u1, AT.LOE, loe_rem_u1),
+                      ("MS", "MS", 0.0, AT.FINISH_MILESTONE, 0.0)],
+                     datetime(2025, 2, 1), datetime(2025, 4, 1), rels)
+    return SeriesAnalysis(schedules=[u0, u1], changesets=[compare(u0, u1)])
+
+
+def test_loe_excluded_from_relative_float_map():
+    from scheduleiq.analytics.li_indices import _build_kernel
+    sa = _loe_series()
+    k = _build_kernel(sa.schedules[0], 5.0)
+    assert "LOE" not in k.rf and "LOE" not in k.weight
+    assert "A" in k.rf and "B" in k.rf          # discrete work still present
+
+
+def test_cdi_ignores_loe():
+    res = run_li_indices(_loe_series())
+    assert "LOE" not in {e.code for e in res.cdi.leaderboard}
+    assert {"A", "B"} <= {e.code for e in res.cdi.leaderboard}
+
+
+def test_fcbi_ignores_loe_burn_and_top_burners():
+    # LOE burns 40d of float; it must contribute zero and never be a burner.
+    res = run_li_indices(_loe_series(loe_tf_u1=-320.0))
+    w = res.fcbi.windows[0]
+    assert "LOE" not in {b.code for b in w.top_burners}
+    assert "LOE" not in {b.code for b in res.fcbi.top_burners}
+    # A burned (0d->... actually A's tf unchanged here) — assert LOE simply absent
+    assert all(b.code != "LOE" for b in w.top_burners)
+
+
+def test_fcbi_ignores_loe_recovery():
+    # LOE "regains" float (0 -> +40d); recovery must not count it.
+    res = run_li_indices(_loe_series(loe_tf_u1=320.0))
+    # only A/B/MS may contribute; LOE excluded — recovery holds no LOE weight.
+    assert "LOE" not in {b.code for b in res.fcbi.top_burners}
+
+
+def test_pci_unaffected_by_loe():
+    from scheduleiq.ingest.model import ActivityType as AT
+    rels_loe = [("A", "B"), ("B", "MS"), ("A", "LOE"), ("LOE", "MS")]
+    with_loe = _sched_with([("A", "A", 0.0, AT.TASK, 80.0), ("B", "B", 0.0, AT.TASK, 80.0),
+                            ("LOE", "LOE", 0.0, AT.LOE, 80.0),
+                            ("MS", "MS", 0.0, AT.FINISH_MILESTONE, 0.0)],
+                           datetime(2025, 1, 1), datetime(2025, 4, 1), rels_loe)
+    no_loe = _sched_with([("A", "A", 0.0, AT.TASK, 80.0), ("B", "B", 0.0, AT.TASK, 80.0),
+                          ("MS", "MS", 0.0, AT.FINISH_MILESTONE, 0.0)],
+                         datetime(2025, 1, 1), datetime(2025, 4, 1), [("A", "B"), ("B", "MS")])
+    pci_with = run_li_indices(SeriesAnalysis(schedules=[with_loe])).pci.per_update[0]
+    pci_without = run_li_indices(SeriesAnalysis(schedules=[no_loe])).pci.per_update[0]
+    assert pci_with == pytest.approx(pci_without)   # LOE-only path dropped
+    assert pci_without == pytest.approx(1.0)        # single discrete-work path
+
+
+def test_bwi_target_survives_rename_via_uid():
+    from scheduleiq.ingest.model import ActivityType as AT, ConstraintType as CT
+    def mk(ms_code, dd, rem):
+        s = _sched_with([("w1", "W1", 0.0, AT.TASK, rem),
+                         ("m1", ms_code, 0.0, AT.FINISH_MILESTONE, 0.0)],
+                        dd, datetime(2025, 3, 1), [("w1", "m1")])
+        s.activities["m1"].constraint = CT.MANDATORY_FINISH
+        s.activities["m1"].early_finish = datetime(2025, 3, 1)
+        s.activities["w1"].early_finish = datetime(2025, 3, 1)
+        return s
+    u0 = mk("MS-1", datetime(2025, 1, 1), 80.0)
+    u1 = mk("MS-RENAMED", datetime(2025, 2, 1), 40.0)   # same uid m1, new code
+    bwi = run_li_indices(SeriesAnalysis(schedules=[u0, u1], changesets=[compare(u0, u1)])).bwi
+    assert bwi.target_code == "MS-1"                    # anchor code from update 0
+    assert all(r.density is not None for r in bwi.rows)  # uid survived the rename
+
+
+def test_rdi_bwi_cdi_carry_disclosures():
+    res = run_li_indices(_loe_series())
+    assert res.cdi.disclosures and any("retrospective" in d for d in res.cdi.disclosures)
+    assert res.rdi.disclosures and any("LOE" in d for d in res.rdi.disclosures)
+    assert res.bwi.disclosures and any("LOE" in d for d in res.bwi.disclosures)

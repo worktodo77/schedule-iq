@@ -511,8 +511,8 @@ asserting `float_paths()` itself is unchanged.
 ### 9.5 RDI — Recovery Debt Index
 Cumulative gap between promised and demonstrated pace.  Each update implies
 a required future pace to hold its forecast finish (remaining driving/near-
-critical work per remaining working time); compare against the pace actually
-demonstrated over trailing windows.  Debt accrues each window the required
+critical work per remaining working time); compare against the pace the
+Project has actually delivered.  Debt accrues each window the required
 pace exceeds the **P50 (median) demonstrated pace** — the pace the Project
 has *sustainably* shown, not the single best window it ever hit:
 **RDI = Σ max(0, required − demonstrated_P50) × window length**, in days.
@@ -525,9 +525,22 @@ that holds steady while RDI climbs is being defended by paper productivity
 (pairs with DUR-04 and the evergreen detector); at project end, realized
 slip ≈ RDI is a self-validating exhibit of sustained forecast unrealism.
 
-*Open item (R1, pending ruling):* whether "demonstrated pace" is measured as
-planned scope retired per window (current) or actual-elapsed throughput is a
-separate methodology decision, not yet resolved.
+*Convention (v0.4.4, R1 ruling):* **Demonstrated pace = planned near-critical
+scope actually retired (completions, at original duration) per calendar
+working-day of the window** — the same units as required pace, which is the
+only basis under which required − demonstrated is meaningful (the forecast
+holds iff planned scope is retired at the required rate).  "Actually" attaches
+to the completion *dates*; overruns are captured as calendar time consumed per
+planned day retired, and as zero-completion windows that depress the P50
+accrual anchor.  An elapsed-time basis was considered and rejected: elapsed
+spans are concurrency-non-additive (parallel work double-counts calendar time
+— five parallel 10-day activities completing on pace would read as massive
+debt) or reward overruns outright (a longer span reads as a faster pace).  The
+overrun signal ships instead as the **companion duration-overrun ratio** —
+Σ actual elapsed working days ÷ Σ planned duration of the same completions,
+reported per window and for the series — a standing efficiency diagnostic and
+disclosure, **never an accrual input**.  Completions with no usable actual
+start are omitted from the ratio and surfaced as a DATA QUALITY note.
 
 *Backlog: N6-N10 (PARKED pending review).  Dependencies: all five compute
 from existing modules (float paths, change register, actuals, resources);

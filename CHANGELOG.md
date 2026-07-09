@@ -3,6 +3,35 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## 0.4.4 — 2026-07-09
+
+**R1 resolution (LI-05, RDI): planned-scope basis affirmed; companion
+duration-overrun ratio added.**  Ruled by the methodology owner on the
+recommendation of one independent reviewer and the concurrence (with
+modifications) of a second.  The RDI accrual mathematics are UNCHANGED — no
+scored number moves; the release adds a disclosed diagnostic output and
+resolves the spec ambiguity.
+
+- **Demonstrated pace** is affirmed as planned near-critical scope actually
+  retired (completions, at original duration) per calendar working-day — the
+  only basis commensurable with required pace.  The earlier "actual elapsed"
+  direction was reconsidered and reversed on dimensional grounds: an
+  elapsed-time denominator is concurrency-non-additive (five parallel
+  on-pace activities would read as phantom recovery debt) and an elapsed-time
+  numerator rewards overruns.  §9.5 reworded; the reversal is recorded in the
+  audit doc.
+- **Companion duration-overrun ratio** (Σ actual elapsed working days ÷
+  Σ planned duration of the same completions) added to `RdiResult` per window
+  (`RdiRow.overrun_ratio`) and for the series (`RdiResult.overrun_ratio`),
+  with a standing disclosure that it is an efficiency diagnostic and never an
+  accrual input.  Completions lacking an actual start are omitted from the
+  ratio and surfaced as a DATA QUALITY disclosure.
+- 2 new regression tests: the five-parallel concurrency case (demonstrated
+  pace 2.5 with companion ratio 2.0 — the case where an elapsed basis would
+  have manufactured debt) and a 3-window overrun case (zero-completion windows
+  depress the P50 anchor; window ratio 3.0; missing-actual-start degrades to
+  None + disclosure, never a guess).
+
 ## 0.4.3 — 2026-07-09
 
 Check-affecting: **three bespoke-metric methodology rulings** from the
@@ -32,9 +61,10 @@ ruled by the methodology owner.  Each ships with the full governance quartet
   neutralization test).
 - 3 new/updated regression tests (BWI fixed-horizon slip, RDI P50-vs-max accrual,
   kernel LOE neutralization).  Full suite: 2080 passed, 2 skipped.
-- **STILL OPEN (not implemented):** R1 (RDI demonstrated-pace basis) — direction
-  ruled (actual elapsed) but the exact aggregation is a further sub-decision
-  returned to the methodology owner; B-side items B1 done, R-side R2 done.
+- R1 (RDI demonstrated-pace basis) remained open at 0.4.3 and was resolved in
+  0.4.4 (see below): the earlier "actual elapsed" direction was reconsidered on
+  dimensional grounds and the planned-scope basis affirmed, with the overrun
+  signal shipped as a companion disclosure ratio.
 
 ## 0.1.0 — 2026-07-06
 

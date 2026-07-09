@@ -22,10 +22,20 @@ reusable template from the FCBI audit (docs/audit/FCBI_audit_2026-07-08.md).
 >   mixed path no longer drives a discrete activity's RF.  Implemented as an
 >   LI-specific layer on top of `float_paths()` (which is unchanged; the kernel
 >   reads only its additive `unique_uids`).
-> - **R1 — RDI demonstrated-pace basis (planned vs actual elapsed): STILL OPEN.**
->   The direction was ruled (actual), but the exact aggregation is a further
->   methodology sub-decision (the two readings move RDI in opposite directions);
->   returned to the owner for a precise ruling before implementation.
+> - **R1 — RDI demonstrated-pace basis: RESOLVED in v0.4.4 (2026-07-09) —
+>   planned-scope basis AFFIRMED, with a companion overrun disclosure.**  The
+>   earlier "actual elapsed" direction was reconsidered and reversed on
+>   dimensional grounds (independent reviewer recommendation; second reviewer
+>   concurred with modifications): an elapsed-time denominator is
+>   concurrency-non-additive — parallel on-pace work would read as phantom
+>   debt — and an elapsed-time numerator rewards overruns.  Demonstrated pace
+>   remains planned near-critical scope actually retired per calendar
+>   working-day (the only basis commensurable with required pace; "actually"
+>   attaches to the completion dates).  The audit's legitimate concern — the
+>   overrun signal must be visible — ships as the companion duration-overrun
+>   ratio (Σ actual elapsed ÷ Σ planned of the same completions), per window
+>   and per series, disclosed as a diagnostic and never an accrual input.
+>   RDI accrual mathematics unchanged; §9.5 reworded.
 >
 > **Shared-kernel family audit (Part 2 of the ruling) — metric by metric:**
 > | LI | Metric | Kernel/RF-map consumer? | LOE status in v0.4.2 |

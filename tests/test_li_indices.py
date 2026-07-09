@@ -529,6 +529,98 @@ def test_rdi_accrues_against_p50_not_max():
     assert not max_only_would_accrue  # ... but never exceeded the running max
 
 
+def _rdi_case_sched(acts, dd, fin):
+    """One schedule on the shared 5d calendar for the R1 tests."""
+    from scheduleiq.ingest.model import Calendar
+    cal = Calendar(uid="1", name="5d", hours_per_day=8.0, is_default=True)
+    s = Schedule(project_id="SYN", data_date=dd, finish_date=fin)
+    s.calendars = {"1": cal}
+    for a in acts:
+        s.activities[a.uid] = a
+    return s
+
+
+def _rdi_case_act(uid, code, rem_h, status=None, as_=None, af=None, od_h=80.0):
+    from scheduleiq.ingest.model import ActivityStatus as ST
+    return Activity(uid=uid, code=code, name=code, atype=ActivityType.TASK,
+                    status=status or ST.NOT_STARTED, calendar_uid="1",
+                    original_duration_hours=od_h, remaining_duration_hours=rem_h,
+                    total_float_hours=0.0, early_start=datetime(2025, 1, 6),
+                    early_finish=datetime(2025, 6, 2), actual_start=as_,
+                    actual_finish=af, planned_start=datetime(2025, 1, 6),
+                    planned_finish=datetime(2025, 6, 2))
+
+
+def test_rdi_planned_basis_concurrency_no_phantom_debt():
+    """R1 ruling (v0.4.4): demonstrated pace stays planned-scope-per-calendar-
+    working-day.  Five parallel near-critical activities, each planned 10wd,
+    each actually taking the full 20wd window, all completing in it: the
+    project retired 50 planned days in 20 working days, so demonstrated pace
+    must be 2.5 (an elapsed-denominator basis would read 50/100 = 0.5 and
+    manufacture phantom debt from mere parallelism).  The overrun signal lands
+    in the companion ratio instead: 100 elapsed / 50 planned = 2.0."""
+    from scheduleiq.ingest.model import ActivityStatus as ST
+    dd0, dd1 = datetime(2025, 1, 6), datetime(2025, 2, 3)   # 20 working days
+    fin = datetime(2025, 6, 2)
+    u0 = _rdi_case_sched([_rdi_case_act(f"p{i}", f"P{i}", 80.0)
+                          for i in range(5)], dd0, fin)
+    u1 = _rdi_case_sched([_rdi_case_act(f"p{i}", f"P{i}", 0.0, ST.COMPLETED,
+                                        as_=dd0, af=dd1)
+                          for i in range(5)], dd1, fin)
+    rdi = run_li_indices(SeriesAnalysis(schedules=[u0, u1],
+                                        changesets=[compare(u0, u1)])).rdi
+    row = rdi.rows[1]
+    assert row.demonstrated_pace == pytest.approx(2.5)     # 50 planned / 20 wd
+    assert row.overrun_ratio == pytest.approx(2.0)         # 100 elapsed / 50 planned
+    assert rdi.overrun_ratio == pytest.approx(2.0)         # series-level
+    assert any("never an accrual input" in d for d in rdi.disclosures)
+
+
+def test_rdi_overrun_spread_and_missing_start_data_quality():
+    """R1 companion, 3-window shape: an activity planned 10wd spanning three
+    10wd windows completes in the last — demonstrated pace is 0 in the first
+    two windows (the overrun's calendar cost, which the P50 anchor punishes)
+    and 1.0 in the third, with the window overrun ratio 30/10 = 3.0.  A second
+    case drops the actual start: the ratio degrades to None with a DATA
+    QUALITY disclosure, never a guess."""
+    from scheduleiq.ingest.model import ActivityStatus as ST
+    dds = [datetime(2025, 1, 6), datetime(2025, 1, 20),
+           datetime(2025, 2, 3), datetime(2025, 2, 17)]    # 3 x 10-wd windows
+    fin = datetime(2025, 6, 2)
+
+    def upd(i, done, as_):
+        acts = [_rdi_case_act("f", "F", 400.0)]            # filler keeps series alive
+        acts.append(_rdi_case_act("x", "X", 0.0 if done else 80.0,
+                                  ST.COMPLETED if done else ST.NOT_STARTED,
+                                  as_=as_ if done else None,
+                                  af=dds[3] if done else None))
+        return _rdi_case_sched(acts, dds[i], fin)
+    scheds = [upd(0, False, None), upd(1, False, None), upd(2, False, None),
+              upd(3, True, dds[0])]
+    sa = SeriesAnalysis(schedules=scheds,
+                        changesets=[compare(scheds[i], scheds[i + 1])
+                                    for i in range(3)])
+    rdi = run_li_indices(sa).rdi
+    demo = [r.demonstrated_pace for r in rdi.rows[1:]]
+    assert demo[0] == pytest.approx(0.0) and demo[1] == pytest.approx(0.0)
+    assert demo[2] == pytest.approx(1.0)                   # 10 planned / 10 wd
+    assert rdi.rows[3].overrun_ratio == pytest.approx(3.0)  # 30 elapsed / 10 planned
+
+    # same series, actual start missing -> ratio None + DATA QUALITY note
+    scheds2 = [upd(0, False, None), upd(1, False, None), upd(2, False, None),
+               upd(3, True, None)]
+    scheds2[3].activities["x"].actual_start = None
+    sa2 = SeriesAnalysis(schedules=scheds2,
+                         changesets=[compare(scheds2[i], scheds2[i + 1])
+                                     for i in range(3)])
+    rdi2 = run_li_indices(sa2).rdi
+    assert rdi2.rows[3].overrun_ratio is None
+    assert rdi2.overrun_ratio is None
+    assert any("no actual start" in d for d in rdi2.disclosures)
+    # the accrual itself is untouched by the missing start (diagnostic only)
+    assert rdi2.rows[3].demonstrated_pace == pytest.approx(1.0)
+
+
 def test_bwi_slipping_milestone_holds_at_one_fixed_horizon():
     """B1 ruling (v0.4.3): BWI normalizes against a FIXED reference horizon.  A
     milestone that SLIPS with unchanged near-critical work must read BWI == 1.0

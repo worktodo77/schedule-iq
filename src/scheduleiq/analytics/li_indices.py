@@ -278,11 +278,18 @@ _LOE_EXCLUSION_NOTE = (
 )
 
 
-def _rdi_disclosures(scheds) -> list[str]:
+def _rdi_disclosures(scheds, missing_starts: int = 0) -> list[str]:
     notes = [
         _LOE_EXCLUSION_NOTE,
         "Completed activities are excluded from the required-pace side and "
         "counted on the demonstrated-pace side (they are the achievement).",
+        "Demonstrated pace = planned near-critical scope actually retired "
+        "(completions, at original duration) per calendar working-day — the same "
+        "units as required pace.  Overruns are captured as calendar time consumed "
+        "per planned day retired; the companion duration-overrun ratio (actual "
+        "elapsed / planned of the same completions) is reported per window and "
+        "for the series as an efficiency diagnostic, never an accrual input "
+        "(R1 ruling, 2026-07-09).",
         "Debt accrues against the running P50 (median) of the demonstrated pace "
         "— the sustainable pace — with the running max reported as the optimistic "
         "bound; required pace is sampled at the window start and demonstrated pace "
@@ -296,6 +303,10 @@ def _rdi_disclosures(scheds) -> list[str]:
     if missing:
         notes.append("DATA QUALITY: no project finish date on update(s): "
                      + ", ".join(missing) + " — required pace omitted there.")
+    if missing_starts:
+        notes.append(f"DATA QUALITY: {missing_starts} near-critical completion(s) "
+                     "carried no actual start — omitted from the duration-overrun "
+                     "ratio (the ratio may under-represent the retired work).")
     return notes
 
 
@@ -362,12 +373,19 @@ class RdiRow:
     demonstrated_pace: Optional[float]  # D_w for the window ending at this update
     accrual_days: float
     cumulative_days: float
+    # R1 companion disclosure (v0.4.4): near-critical duration-overrun ratio of
+    # the window's completions — sum(actual elapsed working days) / sum(planned
+    # duration days).  > 1 = the retired work ran long.  Efficiency diagnostic
+    # only, NEVER an accrual input.  None when the window retired nothing or no
+    # completion carried a usable actual start.
+    overrun_ratio: Optional[float] = None
 
 
 @dataclass
 class RdiResult:
     rows: list[RdiRow] = field(default_factory=list)
     rdi_days: float = 0.0              # final cumulative recovery debt, days
+    overrun_ratio: Optional[float] = None  # series-level companion ratio (R1)
     interpretation: str = ""
     reason: str = ""
     disclosures: list[str] = field(default_factory=list)
@@ -620,10 +638,22 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
 # ==========================================================================
 def _demonstrated_series(sa, kernels: dict[int, _Kernel],
                          band_days: float) -> list[Optional[float]]:
-    """Per window (n-1), the pace actually demonstrated: total duration (days,
-    own calendar) of near-critical activities *completed within the window*
-    divided by the window's standard working days.  ``None`` when the window
-    length is non-positive."""
+    """Per window (n-1), the planned scope actually retired: total PLANNED
+    duration (days, own calendar) of near-critical activities *completed within
+    the window* divided by the window's standard working days.  ``None`` when
+    the window length is non-positive.
+
+    R1 ruling (v0.4.4): the planned-duration numerator is affirmed — it is the
+    only basis commensurable with required pace (the forecast holds iff planned
+    scope is retired at rate R, both per calendar working-day).  "Actually"
+    attaches to the completion DATES; overruns are captured as calendar time
+    consumed per planned day retired (zero-completion windows depress the P50
+    accrual anchor).  An elapsed-time numerator/denominator was rejected:
+    elapsed spans are concurrency-non-additive (parallel work double-counts
+    calendar time, accruing phantom debt on any concurrent schedule) or reward
+    overruns outright.  The overrun signal ships separately as the companion
+    duration-overrun ratio (:func:`_overrun_series`), a disclosure — never an
+    accrual input."""
     scheds = getattr(sa, "schedules", [])
     out: list[Optional[float]] = []
     for i in range(len(scheds) - 1):
@@ -648,6 +678,50 @@ def _demonstrated_series(sa, kernels: dict[int, _Kernel],
                 done += a.duration_days(l.cal_for(a))
         out.append(done / wd)
     return out
+
+
+def _overrun_series(sa, kernels: dict[int, _Kernel],
+                    band_days: float
+                    ) -> tuple[list[Optional[float]], int, Optional[float]]:
+    """R1 companion disclosure (v0.4.4): per window (n-1), the near-critical
+    duration-overrun ratio of the window's completions —
+    sum(actual elapsed working days, actual_start -> actual_finish) /
+    sum(planned duration days) over the same completions used by
+    :func:`_demonstrated_series`.  > 1 = the retired work ran long.  ``None``
+    when the window retired nothing or no completion carried a usable actual
+    start.  Returns (per-window ratios, count of completions skipped for a
+    missing actual start — surfaced as a DATA QUALITY disclosure, series-level
+    ratio over the summed windows).  Diagnostic only — never an accrual input.
+    """
+    scheds = getattr(sa, "schedules", [])
+    out: list[Optional[float]] = []
+    missing_starts = 0
+    tot_planned = 0.0
+    tot_elapsed = 0.0
+    for i in range(len(scheds) - 1):
+        e, l = scheds[i], scheds[i + 1]
+        planned = 0.0
+        elapsed = 0.0
+        for a in l.activities.values():
+            if a.is_loe_or_summary or not a.completed:
+                continue
+            rf = kernels[id(l)].rf.get(a.code)
+            if rf is None or rf > band_days:
+                continue
+            af = a.actual_finish
+            if af is None or e.data_date is None or l.data_date is None \
+                    or not (e.data_date < af <= l.data_date):
+                continue
+            if a.actual_start is None:
+                missing_starts += 1
+                continue
+            planned += a.duration_days(l.cal_for(a))
+            elapsed += _working_days_5d(a.actual_start, af)
+        tot_planned += planned
+        tot_elapsed += elapsed
+        out.append(elapsed / planned if planned > 0 else None)
+    series = (tot_elapsed / tot_planned) if tot_planned > 0 else None
+    return out, missing_starts, series
 
 
 # ==========================================================================
@@ -677,6 +751,8 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
         required.append(rem / wd)
 
     demonstrated = _demonstrated_series(sa, kernels, band_days)
+    overrun, missing_starts, series_overrun = _overrun_series(sa, kernels,
+                                                              band_days)
 
     # R2 ruling (v0.4.3): accrue debt against the running P50 (median) of the
     # demonstrated series — the sustainable pace — not the single best window
@@ -704,13 +780,14 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
         rows.append(RdiRow(label=scheds[i + 1].label(),
                            required_pace=required[i + 1],
                            demonstrated_pace=d, accrual_days=accrual,
-                           cumulative_days=cumulative))
+                           cumulative_days=cumulative,
+                           overrun_ratio=overrun[i]))
 
     if all(r is None for r in required):
-        return RdiResult(rows=rows, rdi_days=0.0,
+        return RdiResult(rows=rows, rdi_days=0.0, overrun_ratio=series_overrun,
                          reason="no update had a usable data date -> forecast "
                                 "finish span to compute a required pace",
-                         disclosures=_rdi_disclosures(scheds))
+                         disclosures=_rdi_disclosures(scheds, missing_starts))
     interp = (f"Recovery debt stands at {cumulative:.1f} working days — the "
               "portion of the current completion forecast resting on a pace the "
               "Project has not sustainably demonstrated (accrued against the P50 "
@@ -719,8 +796,12 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
               + (": the forecast requires acceleration beyond the median window "
                  "achieved." if cumulative > 0
                  else "; no window required more than the median pace demonstrated."))
-    return RdiResult(rows=rows, rdi_days=cumulative, interpretation=interp,
-                     disclosures=_rdi_disclosures(scheds))
+    if series_overrun is not None:
+        interp += (f"  Companion duration-overrun ratio of retired near-critical "
+                   f"work: {series_overrun:.2f}x planned (diagnostic only).")
+    return RdiResult(rows=rows, rdi_days=cumulative, overrun_ratio=series_overrun,
+                     interpretation=interp,
+                     disclosures=_rdi_disclosures(scheds, missing_starts))
 
 
 # ==========================================================================

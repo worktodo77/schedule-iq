@@ -928,7 +928,7 @@ checks:
   - id: LI-01
     name: "FCBI — Float Criticality Burn Index"
     category: "LI Proprietary Indices"
-    description: "Float consumption weighted by path criticality (kernel 2^(-RF/lambda), lambda 5 wd).  Burn and recovery tracked separately; normalized burn above 100% means erosion beyond available float (paths driven deeper negative).  RJL concept."
+    description: "Float consumption weighted by path criticality (kernel 2^(-RF/lambda), lambda 5 wd).  Burn and recovery tracked separately; normalized burn above 100% means erosion beyond available float (paths driven deeper negative).  LI concept."
     formula: "sum over activities of max(0, -dTF days) x 2^(-RF/5); RF = min relative float of containing float paths"
     unit: days
     threshold: null

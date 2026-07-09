@@ -152,7 +152,7 @@ arrow, and its own top factors.
 - Scoring engine reads ONLY matrix results + spec — no hidden inputs — and
   emits a `score_trace.json` with every intermediate number, so a third
   party can verify the grade from the workbook alone.
-- **Publication decision (for RJL):** publish the spec + a minimal reference
+- **Publication decision (for the principal):** publish the spec + a minimal reference
   scorer as a public repository under an open license (Apache-2.0), while
   ScheduleIQ remains proprietary.  Precedent: DCMA's 14-point is public and
   tools compete on implementation.  Upside: "the LI Schedule Grade" becomes

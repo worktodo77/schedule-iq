@@ -9,7 +9,7 @@ ScheduleIQ: Long International's Acumen Fuse replacement — schedule quality,
 health, trend, change, forensic-delay, and risk analysis for P6 (.xer) and
 Microsoft Project (.mpp/MSPDI), with LI house-style Word/PDF reports, Excel
 workbooks, a PySide6 GUI, and CI that builds a shareable Windows installer.
-Principal: RJL (worktodo77), expert schedule delay analyst.  Observations,
+Principal: worktodo77 (expert schedule delay analyst).  Observations,
 not opinions; causation/entitlement/quantum reserved to the expert; every
 number reproducible and cited.
 
@@ -18,10 +18,10 @@ number reproducible and cited.
 - **Canonical**: repo `worktodo77/schedule-iq`.  v0.2.0 imported to `main`
   at commit c0a64bf (2026-07-07); all v0.3 work is on branch
   `claude/scheduleiq-v0.3-engine-port-rx96cl` (pushed, current).  Merging
-  that branch to main is RJL's call.
+  that branch to main is the principal's call.
 - **Mirror**: expert-assist branch `claude/scheduleiq-v0.3-engine-port-rx96cl`
   carries a synced `schedule-iq/` subtree (per the migration plan: keep
-  syncing until RJL confirms the new repo, then remove the subtree from
+  syncing until the principal confirms the new repo, then remove the subtree from
   expert-assist in a final commit).  Development history through v0.2.0 is
   preserved on expert-assist branch `claude/acumen-fuse-replacement-ler9kq`.
 - Engine port source: `worktodo77/mip39-schedule-analysis-tool` (read-only
@@ -29,7 +29,7 @@ number reproducible and cited.
 
 ## 3. State at handoff — v0.3.0 AND v0.4.0 complete
 
-v0.4.0 (RJL's blanket approval of 2026-07-07, "build all items awaiting my
+v0.4.0 (the principal's blanket approval of 2026-07-07, "build all items awaiting my
 call") added on top of v0.3.0: N16-N20 provocative indices LI-11..15
 (79-check matrix; privileged/internal surfaces only), S6 TIA workbench +
 ported collapse engine (MIP 3.6-3.9), S7 damages overlay, RC6 publication
@@ -84,7 +84,7 @@ v0.3.0 state (engine release; all still true, tested at 1,839 + 1 then;
 
 ## 4. Next work (in rough order)
 
-1. **RJL's own steps**: L3 real-file validation; L4 release/installer;
+1. **The principal's own steps**: L3 real-file validation; L4 release/installer;
    the RC6 public push (docs/public_spec is built and stamped READY).
    Nothing remains PARKED except ideas not yet proposed.
 2. After L3: recalibrate FCBI/RDI absolute-day anchors in scorecard.yaml;

@@ -126,7 +126,7 @@ matrix expanded to 74 checks (SET-02 added).
 
 ## 0.4.0 — 2026-07-07
 
-RJL approval of 2026-07-07 ("build all items awaiting my call") green-lit
+The principal's approval of 2026-07-07 ("build all items awaiting my call") green-lit
 N16-N20, RC6 publication, and all PARKED items.  Check-affecting change:
 matrix expanded to 79 checks (LI-11..LI-15, privileged/internal surfaces).
 

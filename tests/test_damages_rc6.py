@@ -318,8 +318,8 @@ def test_build_public_spec_stamps_readme_and_spec_banners(built_public_spec_dir)
     spec = (pub_dir / "LI-RC-spec.md").read_text(encoding="utf-8")
     assert "NOT YET PUBLISHED" not in readme
     assert "NOT YET PUBLISHED" not in spec
-    assert "READY TO PUBLISH" in readme and "approved by RJL 2026-07-07" in readme
-    assert "READY TO PUBLISH" in spec and "approved by RJL 2026-07-07" in spec
+    assert "READY TO PUBLISH" in readme and "approved 2026-07-07" in readme
+    assert "READY TO PUBLISH" in spec and "approved 2026-07-07" in spec
     assert "SHA-256" in spec
     assert "internal_variant" in readme  # the exclusion is documented, not silent
     # human-push instruction survives the rewrite -- this is a build, not a publish

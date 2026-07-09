@@ -595,7 +595,7 @@ internal_variant:
     instruments (matrix rows LI-11..LI-15).  They are surfaced only on this
     internal-variant card and the internal forensic workbook — never on the
     standard report/card — and carry weight 0 so they NEVER move a grade today:
-    RJL has approved the build, not their promotion into the scored spec (that
+    The principal has approved the build, not their promotion into the scored spec (that
     would be a spec revision, bumping spec_version, per GOVERNANCE.md §1).
     scorecard.py attaches each member's computed value + full decomposition to
     the internal card at run time (variant='internal'); the standard card omits

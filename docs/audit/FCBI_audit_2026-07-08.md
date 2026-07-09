@@ -4,7 +4,7 @@
 incorporating Codex peer review — all five primary findings independently
 confirmed; wording tightened, one cross-index issue added, severities on
 item 4 softened) · **Status:** AUDIT ONLY — findings and current-behavior
-spec; no code or spec changed. RJL to make the methodology rulings; a proposed
+spec; no code or spec changed. The methodology owner makes the rulings; a proposed
 test list and a minimum governance package follow.
 
 ## Finding categories (kept distinct throughout — do not conflate)
@@ -192,7 +192,7 @@ that was critical at *either* end of the interval, so a chain that raced from
 weight rather than the start-of-window 0.0625. Alternatives: end-of-window
 RF(u) (rewards "became critical" but ignores work already critical that
 de-criticalised), or the current RF(u-1). Recommend `min` over the window, but
-this is RJL's ruling; whichever is chosen must be stated in §9.1 and the
+this is the methodology owner's ruling; whichever is chosen must be stated in §9.1 and the
 matrix formula.
 
 ---

@@ -55,5 +55,5 @@ Amend ADR-0004, do not repeal it — and **port, do not build**:
 - The mirror of the source engine's own P6-equivalence validation (its
   MNFV/iiCON benchmark) cannot be re-run here — those XER inputs are
   case data and stay off-repo.  Its synthetic benchmark suites are ported
-  and run in CI; re-validation against a real matter series is RJL's task
+  and run in CI; re-validation against a real matter series is the principal's task
   L3 before first release.

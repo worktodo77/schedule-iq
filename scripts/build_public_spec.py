@@ -3,7 +3,7 @@
 
 Backlog RC6 (docs/REPORT_CARD_DESIGN.md §6): publish the LI Schedule Report
 Card spec + a minimal reference scorer under Apache-2.0 while ScheduleIQ
-itself stays proprietary.  RJL approved publication 2026-07-07; this script
+itself stays proprietary.  Publication was approved 2026-07-07; this script
 performs the mechanical build step docs/public_spec/README.md documents —
 it does NOT itself push anything externally (see "still to do" in its
 printed summary and in the rewritten README banner).
@@ -34,7 +34,7 @@ What it does, in order
    stdout is written to sample_results_expected_output.txt as the package's
    "expected output" fixture.
 5. Rewrites README.md's front-matter banner from NOT YET PUBLISHED to READY
-   TO PUBLISH (approved by RJL 2026-07-07) — still instructing a human to
+   TO PUBLISH (approved 2026-07-07) — still instructing a human to
    actually stand up the public repository and push; ticks the checklist
    items this script itself completes; and documents the internal_variant
    exclusion.  LI-RC-spec.md's matching top banner is rewritten the same way.
@@ -66,7 +66,7 @@ SAMPLE_CSV = os.path.join(PUBLIC_DIR, "sample_results.csv")
 EXPECTED_OUTPUT = os.path.join(PUBLIC_DIR, "sample_results_expected_output.txt")
 REFERENCE_SCORER = os.path.join(PUBLIC_DIR, "reference_scorer.py")
 
-APPROVAL_NOTE = "approved by RJL 2026-07-07"
+APPROVAL_NOTE = "approved 2026-07-07"
 SAMPLE_CATEGORY = "duration_estimating"
 SAMPLE_MEMBER_VALUES = {
     # id -> (measured value, status) — everything else (unit/threshold/

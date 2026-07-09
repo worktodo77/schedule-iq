@@ -409,7 +409,7 @@ liability), and trackable as a curve across the project.  These are
 candidates for LI-proprietary branding, as Deltek brands Logic Density™ and
 Merge Hotspot™.
 
-### 9.1 FCBI — Float Criticality Burn Index  (RJL concept, formalized)
+### 9.1 FCBI — Float Criticality Burn Index  (LI concept, formalized)
 Float consumption weighted by how critical the float was.  Per window, for
 each activity in both updates: consumption c = max(0, −ΔTF) in working days
 (calendar-neutralized); weight w = 2^(−RF/λ), where RF = relative float of

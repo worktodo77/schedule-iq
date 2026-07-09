@@ -1,6 +1,6 @@
 # ScheduleIQ Backlog — the to-do list of record
 
-Single authoritative to-do list.  Status: **APPROVED** = green-lit by RJL for
+Single authoritative to-do list.  Status: **APPROVED** = green-lit by the principal for
 build; **PARKED** = proposed, awaiting decision; **BLOCKED** = needs an
 external action.  Sources: v0.1 build, ANALYTICS_PROPOSAL.md (§ refs),
 FUSE_PARITY.md, and review decisions of 2026-07-06/07.
@@ -9,9 +9,9 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L1 | Migrate repo: push full history to worktodo77/schedule-iq | DONE (v0.3) | Imported at commit c0a64bf on main (2026-07-07); development history preserved on expert-assist branch `claude/acumen-fuse-replacement-ler9kq`; mirror synced until RJL confirms |
+| L1 | Migrate repo: push full history to worktodo77/schedule-iq | DONE (v0.3) | Imported at commit c0a64bf on main (2026-07-07); development history preserved on expert-assist branch `claude/acumen-fuse-replacement-ler9kq`; mirror synced until the principal confirms |
 | L2 | Add `mip39-schedule-analysis-tool` to session scope | DONE (v0.3) | In session scope 2026-07-07; engine port complete |
-| L3 | Validate against a real matter .xer series; review sample outputs | APPROVED | RJL, on return from vacation |
+| L3 | Validate against a real matter .xer series; review sample outputs | APPROVED | the principal, on return from vacation |
 | L4 | First tagged release → CI Windows bundle; circulate installer to firm experts | APPROVED | After L3 sign-off |
 
 ## 1. Core engine (v0.3 centerpiece)
@@ -90,18 +90,18 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | S2 | §6.3 Pacing + constructive-acceleration screens | DONE (v0.2d) |
 | S3 | §6.4 Earned-schedule forecast credibility (ES(t), SPI(t), TSPI(t), IEAC(t)) | DONE (v0.2 wave 2) |
 | S4 | §6.8 Narrative reconciliation vs XER record | DONE (v0.2d) |
-| S5 | §6.1 Editing-session forensics (create/update user+date mining) | DONE (v0.4; approved RJL 2026-07-07) |
-| S6 | §6.5 Push-button TIA workbench (MIP 3.6/3.7; collapsed as-built 3.8/3.9) | DONE (v0.4; approved RJL 2026-07-07) |
-| S7 | §6.6 Damages/LD exposure overlay | DONE (v0.4; approved RJL 2026-07-07) |
+| S5 | §6.1 Editing-session forensics (create/update user+date mining) | DONE (v0.4; approved 2026-07-07) |
+| S6 | §6.5 Push-button TIA workbench (MIP 3.6/3.7; collapsed as-built 3.8/3.9) | DONE (v0.4; approved 2026-07-07) |
+| S7 | §6.6 Damages/LD exposure overlay | DONE (v0.4; approved 2026-07-07) |
 | S8 | §6.7 Interactive HTML cockpit + graphics-generator demonstratives | DONE (v0.4; cockpit — demonstratives are expert-assist-side) |
-| S9 | §6.9 Internal benchmark corpus | DONE (v0.4; approved RJL 2026-07-07) |
+| S9 | §6.9 Internal benchmark corpus | DONE (v0.4; approved 2026-07-07) |
 | S10 | §6.10 Research track (ML duration priors; gated LLM narratives) | DONE (v0.4: offline duration priors only; LLM narratives remain out of scope — expert-assist gates + API decision) |
 
 ## 8. Fuse-parity remainder (FUSE_PARITY.md)
 
 | # | Item | Status |
 |---|---|---|
-| F1 | Ribbon analyzer (metrics grouped by WBS/field) | DONE (v0.4; approved RJL 2026-07-07) |
+| F1 | Ribbon analyzer (metrics grouped by WBS/field) | DONE (v0.4; approved 2026-07-07) |
 | F2 | Phase analyzer (time-phased slicing within one schedule) | DONE (v0.4) |
 | F3 | P6 XML (.xml) ingestion (ADR-0002 slot) | DONE (v0.4) |
 | F4 | Per-period start/finish compliance metrics (baseline-compliance variants) | DONE (v0.4) |
@@ -111,7 +111,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status |
 |---|---|---|
-| N1 | §8.1 Weather & external-conditions overlay | DONE (v0.4; approved RJL 2026-07-07) |
+| N1 | §8.1 Weather & external-conditions overlay | DONE (v0.4; approved 2026-07-07) |
 | N2 | §8.2 As-built work-pattern reconstruction (de facto calendars, overtime/suspension detection) | DONE (v0.4) |
 | N3 | §8.3 Daily-resolution delay ledger ("continuous windows") | DONE (v0.3) |
 | N4 | §8.4 Methodology-robustness certificate | DONE (v0.3) |
@@ -121,7 +121,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status |
 |---|---|---|
-| N6 | §9.1 FCBI — Float Criticality Burn Index (RJL concept) | DONE (v0.2b/c) |
+| N6 | §9.1 FCBI — Float Criticality Burn Index (LI concept) | DONE (v0.2b/c) |
 | N7 | §9.2 LHL — Logic Half-Life | DONE (v0.2b/c) |
 | N8 | §9.3 FRB — Forecast Reliability Band | DONE (v0.2b/c) |
 | N9 | §9.4 PCI — Path Concentration Index | DONE (v0.2b/c) |
@@ -141,7 +141,7 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 
 | # | Item | Status |
 |---|---|---|
-| N16 | §11.1 SMI — Schedule Manipulation Indicator (composite curation signals; guarded framing) | DONE (v0.4; approved RJL 2026-07-07) |
+| N16 | §11.1 SMI — Schedule Manipulation Indicator (composite curation signals; guarded framing) | DONE (v0.4; approved 2026-07-07) |
 | N17 | §11.2 DDI — Directed Date Index (dictated-completion signature) | DONE (v0.4) |
 | N18 | §11.3 ARR — Attribution Robustness Ratio (case-strength across method variants) | DONE (v0.4) |
 | N19 | §11.4 PPS — Pacing Plausibility Score (scored pacing-defense credibility) | DONE (v0.4) |
@@ -156,14 +156,14 @@ FUSE_PARITY.md, and review decisions of 2026-07-06/07.
 | RC3 | Per-schedule card outputs (report first page, exhibit, Excel, GUI) | DONE (v0.2d) |
 | RC4 | Series report card (series categories, trajectory, gates) | DONE (v0.2d) |
 | RC5 | Internal-variant card (provocative indices; privileged flag) | DONE (v0.2d) |
-| RC6 | Open-source publication of spec + reference scorer (decision) | DONE (v0.4: approved RJL 2026-07-07; package built/licensed/verified, internal variant stripped — public push is a human step) |
+| RC6 | Open-source publication of spec + reference scorer (decision) | DONE (v0.4: approved 2026-07-07; package built/licensed/verified, internal variant stripped — public push is a human step) |
 
 ## Build order (approved scope)
 
 1. **v0.2** (no engine): D1–D8, A1, P1–P4, C1/C3–C10, S1, S3, N5 — DONE
 1b. **v0.2b** (no engine): bespoke LI metrics N6–N10 (FCBI, LHL, FRB, PCI, RDI)
 1c. **v0.2c** (no engine): bespoke LI metrics N11–N15 (BDI, CDI, IL, BWI, MML)
-1d. **v0.2d** (no engine): Report Card RC1–RC5 (+RC6 publication package prepared, publication itself on RJL go); S2 pacing/acceleration; S4 narrative reconciliation
+1d. **v0.2d** (no engine): Report Card RC1–RC5 (+RC6 publication package prepared, publication itself on the principal's go); S2 pacing/acceleration; S4 narrative reconciliation
 2. **v0.3**: E1–E5, C2, A2–A4, P5–P6 — DONE (2026-07-07)
 3. **v0.3 (pulled forward from v0.4/v0.5)**: D9, N3, N4, M1–M4 + all outputs — DONE (2026-07-07)
-4. Remaining approved-but-open: L3/L4 (RJL), scorecard anchor recalibration (needs L3 files)
+4. Remaining approved-but-open: L3/L4 (principal), scorecard anchor recalibration (needs L3 files)

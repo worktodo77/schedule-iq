@@ -1,11 +1,12 @@
 # FCBI (LI-01) implementation audit — peer-review response
 
-**Date:** 2026-07-08 · **Auditor:** Claude (lead) · **Rev 2** (2026-07-08,
-incorporating Codex peer review — all five primary findings independently
-confirmed; wording tightened, one cross-index issue added, severities on
-item 4 softened) · **Status:** AUDIT ONLY — findings and current-behavior
-spec; no code or spec changed. The methodology owner makes the rulings; a proposed
-test list and a minimum governance package follow.
+**Date:** 2026-07-08 · **Auditor:** Claude (lead) · **Rev 3** (2026-07-08,
+Codex sign-off; strengthened the severity rationale for item 1) · **Rev 2**
+incorporated Codex peer review — all five primary findings independently
+confirmed; wording tightened, one cross-index issue added, item 4 softened ·
+**Status:** AUDIT ONLY — findings and current-behavior spec; no code or spec
+changed. The methodology owner makes the rulings; a proposed test list and a
+minimum governance package follow.
 
 ## Finding categories (kept distinct throughout — do not conflate)
 
@@ -23,6 +24,19 @@ None of the five primary findings is an outright implementation *defect*; the
 one behavior that yields a wrong-looking number (item 1) does so because of an
 undocumented methodology choice interacting with exporter variance, not a
 coding error. That distinction is carried below.
+
+**"Not an implementation defect" is not "not serious."** Category (root cause)
+and severity (operational consequence) are independent axes. An implementation
+defect means the code violates its own specification; a specification gap with
+severe operational consequences means the code behaves *consistently* but the
+missing methodology rule causes materially different reported results.
+**Item 1 is the latter, and it is rated HIGH on that basis:** although the root
+cause is a missing rule rather than a coding error, the observable consequence
+is that two identical projects can produce different FCBI values solely because
+different scheduling tools/exporters represent completed-activity float
+differently (`0` versus `null`). A bespoke index whose headline number depends
+on the exporter, not the schedule, is operationally severe regardless of how it
+is classified — hence HIGH, and hence the recommended first ruling.
 
 **Scope reviewed**
 
@@ -77,13 +91,16 @@ green (10 passed) but covers none of the areas below.
 - The XER parser preserves the raw `total_float_hr_cnt` exactly as exported
   (`xer.py` L272).
 
-**Category.** Specification gap (behavior undocumented in §9.1 / matrix)
-compounded by a **methodology decision** that has never been made: the index
-produces a *data-dependent, non-reproducible* number — the same project scores
-differently depending only on whether the source tool nulls or zeroes the
-float of a completed activity. That is the sense in which it behaves like a
-defect, but the code is doing exactly what it was written to do; what is
-missing is a rule.
+**Category — spec gap + methodology decision; severity HIGH.** The gap
+(undocumented in §9.1 / matrix) is compounded by a **methodology decision**
+that has never been made: the index produces a *data-dependent,
+non-reproducible* number — the same project scores differently depending only
+on whether the source tool nulls or zeroes the float of a completed activity.
+The code is doing exactly what it was written to do, so this is not an
+implementation defect — but the operational consequence (a headline index that
+moves with the exporter, not the schedule) is severe, which is why it is rated
+HIGH and recommended as the first ruling. Root cause and severity are separate
+axes (see the taxonomy note above).
 
 **Probe — an activity that burns 15d then completes in the window.** Earlier:
 A has TF=120h (15d). Later: A `COMPLETED`.

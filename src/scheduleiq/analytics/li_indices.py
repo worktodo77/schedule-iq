@@ -157,6 +157,9 @@ class FcbiWindow:
     fcbi_recovery: float
     fcbi_pct: Optional[float]
     top_burners: list[Burner] = field(default_factory=list)
+    # item 2: when the criticality-weighted float stock is <= 0 the normalized
+    # form is undefined; carry the labelled reason rather than a bare None.
+    pct_undefined_reason: Optional[str] = None
 
 
 @dataclass
@@ -166,6 +169,32 @@ class FcbiResult:
     top_burners: list[Burner] = field(default_factory=list)  # aggregated across series
     interpretation: str = ""
     reason: str = ""
+    # items 1/1b/3/4/5: standing methodology disclosures for every output.
+    disclosures: list[str] = field(default_factory=list)
+
+
+def _fcbi_disclosures(lam: float) -> list[str]:
+    """The standing FCBI methodology disclosures (§9.1; audit rev 3 rulings)."""
+    return [
+        "Completed activities are excluded from both burn (FCBI+) and recovery "
+        "(FCBI-): the index measures float consumed by *in-flight* work, so an "
+        "activity's float ending at completion is not counted as burn.  This "
+        "aligns FCBI with RDI and BWI (live-work indices); CDI intentionally "
+        "retains completed activities as retrospective criticality dwell.",
+        f"Criticality weight = 2^(-RF/{lam:g}) with RF sampled as "
+        "min(RF_(u-1), RF_u) across the window, so float that was near-critical "
+        "at *either* end of the interval is weighted at that criticality.",
+        f"RF = the minimum relative float over the top-{KERNEL_PATHS_N} float "
+        "paths containing the activity (its own total float when it is on no "
+        "enumerated path); the driving path is chosen by minimum total float "
+        "from the tool-of-record, not a CPM pass, so RF is independent of the "
+        "diagnostic engine's statusing mode.",
+        "FCBI+ is windowing-dependent and not additive across merged windows "
+        "(max(0, -dTF) is a total-variation measure); compare only like-for-"
+        "like update cadences.",
+        "Normalized FCBI% is undefined (reported as such, not 0) when the "
+        "criticality-weighted live float stock at the window start is <= 0.",
+    ]
 
 
 @dataclass
@@ -251,14 +280,32 @@ def _fcbi(sa, kernels: dict[int, _Kernel], lam: float) -> FcbiResult:
 
     for cs in changesets:
         earlier = cs.earlier
+        later = cs.later
         ek = kernels[id(earlier)]
+        lk = kernels[id(later)]
         e_by_code = {a.code: a for a in earlier.activities.values()}
+        l_by_code = {a.code: a for a in later.activities.values()}
+
+        def _win_weight(code: str) -> Optional[float]:
+            """Item 3 — weight from min(RF_(u-1), RF_u): float that was
+            near-critical at *either* end of the window is weighted at that
+            criticality.  ``None`` when the activity has no RF at either end."""
+            rfs = [r for r in (ek.rf.get(code), lk.rf.get(code)) if r is not None]
+            if not rfs:
+                return None
+            return kernel_weight(min(rfs), lam)
+
         burn = 0.0
         recov = 0.0
         burners: list[Burner] = []
         for code, delta in cs.float_deltas.items():
+            # item 1 — completed activities are out of scope for BOTH burn and
+            # recovery: an activity's float ending at completion is not a burn.
+            la = l_by_code.get(code)
+            if la is not None and la.completed:
+                continue
             any_delta = True
-            w = ek.weight.get(code)
+            w = _win_weight(code)
             if w is None:
                 continue
             if delta > 0:                       # regained float, tracked separately
@@ -283,28 +330,39 @@ def _fcbi(sa, kernels: dict[int, _Kernel], lam: float) -> FcbiResult:
                 a.contribution += contrib
                 a.constraint_flagged = a.constraint_flagged or flagged
 
-        # normalized: share of the criticality-weighted float stock burned
+        # normalized: share of the criticality-weighted *live* float stock burned.
+        # Completed activities are excluded (item 1) and the same min(RF) weight
+        # is used, so numerator and denominator share one basis.
         denom = 0.0
         for a in earlier.activities.values():
+            if a.completed:
+                continue
             tf = a.total_float_days(earlier.cal_for(a))
             if tf is not None and tf > 0:
-                w = ek.weight.get(a.code)
+                w = _win_weight(a.code)
                 if w is not None:
                     denom += tf * w
-        pct = 100.0 * burn / denom if denom > 0 else None
+        if denom > 0:
+            pct = 100.0 * burn / denom
+            pct_reason = None
+        else:
+            pct = None
+            pct_reason = ("criticality-weighted live float stock exhausted; "
+                          "normalized FCBI undefined — interpret absolute FCBI+")
 
         burners.sort(key=lambda x: x.contribution, reverse=True)
         windows.append(FcbiWindow(
             earlier_label=earlier.label(), later_label=cs.later.label(),
             fcbi=burn, fcbi_recovery=recov, fcbi_pct=pct,
-            top_burners=burners[:10]))
+            top_burners=burners[:10], pct_undefined_reason=pct_reason))
         running += burn
         cumulative.append(running)
 
     if not any_delta:
         return FcbiResult(windows=windows, cumulative=cumulative,
-                          reason="no activity carried total float in both updates "
-                                 "of any pair")
+                          reason="no incomplete activity carried total float in "
+                                 "both updates of any pair",
+                          disclosures=_fcbi_disclosures(lam))
 
     top = sorted(agg.values(), key=lambda x: x.contribution, reverse=True)[:15]
     total = cumulative[-1] if cumulative else 0.0
@@ -316,7 +374,8 @@ def _fcbi(sa, kernels: dict[int, _Kernel], lam: float) -> FcbiResult:
                  "constraint-manufactured criticality)." if flagged_n
                  else "."))
     return FcbiResult(windows=windows, cumulative=cumulative,
-                      top_burners=top, interpretation=interp)
+                      top_burners=top, interpretation=interp,
+                      disclosures=_fcbi_disclosures(lam))
 
 
 # ==========================================================================

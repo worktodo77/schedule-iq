@@ -77,14 +77,15 @@ def test_fcbi_burns_across_series(indices):
 
 
 def test_fcbi_exact_two_update_pair():
-    """Two updates, no logic (so RF = each activity's own total float), with
-    hand-picked float moves:
-        X: 0d -> -3d  (burn 3d, weight 2^0   = 1.00)
-        Y: 5d -> +9d  (recovery 4d, weight 2^-1 = 0.50)
-        Z: 10d -> 8d  (burn 2d, weight 2^-2 = 0.25)
-    FCBI      = 3*1.00 + 2*0.25            = 3.5
-    FCBI_rec  = 4*0.50                     = 2.0
-    FCBI%     = 100 * 3.5 / (5*0.5 + 10*0.25) = 70.0   (X's TF=0 excluded)
+    """Two updates, no logic (so RF = each activity's own total float).  Weight
+    uses min(RF_(u-1), RF_u) per the audit item-3 ruling; expected values are
+    expressed through kernel_weight so the arithmetic is self-documenting:
+        X: 0d -> -3d  burn 3d, w = 2^-(min(0,-3)/5)  = 2^(3/5)
+        Y: 5d -> +9d  recovery 4d, w = 2^-(min(5,9)/5) = 2^-1 = 0.50
+        Z: 10d -> 8d  burn 2d, w = 2^-(min(10,8)/5)  = 2^-(8/5)
+        FCBI+  = 3*w_X + 2*w_Z
+        FCBI-  = 4*w_Y
+        FCBI%  = 100 * FCBI+ / (5*w_Y + 10*w_Z)   (X's TF=0 excluded from stock)
     """
     def act(uid, code, tf_hours):
         return Activity(uid=uid, code=code, atype=ActivityType.TASK,
@@ -100,10 +101,145 @@ def test_fcbi_exact_two_update_pair():
                                   act("Z", "Z", 64.0)]})
     sa = SeriesAnalysis(schedules=[earlier, later],
                         changesets=[compare(earlier, later)])
+    w_X, w_Y, w_Z = kernel_weight(-3, 5), kernel_weight(5, 5), kernel_weight(8, 5)
+    exp_fcbi = 3 * w_X + 2 * w_Z
+    exp_rec = 4 * w_Y
+    exp_pct = 100.0 * exp_fcbi / (5 * w_Y + 10 * w_Z)
     w = run_li_indices(sa).fcbi.windows[0]
-    assert w.fcbi == pytest.approx(3.5)
-    assert w.fcbi_recovery == pytest.approx(2.0)
-    assert w.fcbi_pct == pytest.approx(70.0)
+    assert w.fcbi == pytest.approx(exp_fcbi)          # ~5.2069
+    assert w.fcbi_recovery == pytest.approx(exp_rec)  # 2.0
+    assert w.fcbi_pct == pytest.approx(exp_pct)       # ~89.793
+
+
+# ---- audit governance-quartet tests (FCBI_audit_2026-07-08.md) --------------
+def _syn(uid_tf, status=None, rels=None):
+    """Build a one-schedule Schedule from {code: tf_hours}; optional per-code
+    status dict and relationship list (pred_code, succ_code)."""
+    from scheduleiq.ingest.model import Calendar, Relationship, RelType
+    cal = Calendar(uid="1", name="5d", hours_per_day=8.0, is_default=True)
+    s = Schedule(project_id="SYN", data_date=datetime(2025, 1, 6, 8))
+    s.calendars = {"1": cal}
+    for code, tf in uid_tf.items():
+        st = (status or {}).get(code, ActivityStatus.NOT_STARTED)
+        a = Activity(uid=code, code=code, name=code, atype=ActivityType.TASK,
+                     status=st, calendar_uid="1", total_float_hours=tf,
+                     original_duration_hours=80.0, remaining_duration_hours=80.0,
+                     early_start=datetime(2025, 1, 1), early_finish=datetime(2025, 2, 1),
+                     planned_start=datetime(2025, 1, 1), planned_finish=datetime(2025, 2, 1))
+        if st == ActivityStatus.COMPLETED:
+            a.actual_start, a.actual_finish = datetime(2025, 1, 2), datetime(2025, 1, 20)
+        s.activities[code] = a
+    for pc, sc in (rels or []):
+        s.relationships.append(Relationship(pred_uid=pc, succ_uid=sc,
+                                            rtype=RelType.FS, lag_hours=0.0))
+    return s
+
+
+def _fcbi_of(*scheds):
+    sa = SeriesAnalysis(schedules=list(scheds),
+                        changesets=[compare(scheds[i], scheds[i + 1])
+                                    for i in range(len(scheds) - 1)])
+    return run_li_indices(sa).fcbi
+
+
+def test_fcbi_item1_completed_excluded_and_exporter_invariant():
+    """Item 1 — an activity that burns then completes must contribute ZERO to
+    both burn and recovery, and must score identically whether the exporter
+    wrote TF=0 or TF=null for the completed activity (no phantom burn)."""
+    e = _syn({"A": 120.0, "B": 0.0}, rels=[("A", "B")])
+    comp0 = _syn({"A": 0.0, "B": 0.0},
+                 status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
+    compN = _syn({"A": None, "B": 0.0},
+                 status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
+    w0 = _fcbi_of(e, comp0).windows[0]
+    wN = _fcbi_of(e, compN).windows[0]
+    assert w0.fcbi == pytest.approx(0.0) and w0.fcbi_recovery == pytest.approx(0.0)
+    assert wN.fcbi == pytest.approx(w0.fcbi)
+    assert wN.fcbi_recovery == pytest.approx(w0.fcbi_recovery)
+    # recovery side too: a completed activity that "regained" float is excluded
+    e2 = _syn({"A": 40.0, "B": 0.0}, rels=[("A", "B")])
+    l2 = _syn({"A": 200.0, "B": 0.0},
+              status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
+    assert _fcbi_of(e2, l2).windows[0].fcbi_recovery == pytest.approx(0.0)
+
+
+def test_fcbi_item3_weight_uses_min_over_window():
+    """Item 3 — A (its path's min-float member via a floaty target Z) goes
+    RF 20d -> 0d while burning 20d.  min(20,0)=0 -> weight 1.0 -> contribution
+    20.0 (start-of-window weighting would give 2^-4 = 0.0625 -> 1.25)."""
+    from scheduleiq.ingest.model import Relationship, RelType
+    def s(tf_a):
+        sc = _syn({"A": tf_a, "Z": 200.0})
+        sc.activities["A"].early_finish = datetime(2025, 2, 1)
+        sc.activities["Z"].early_finish = datetime(2025, 3, 1)   # Z resolves as target
+        sc.activities["Z"].planned_finish = datetime(2025, 3, 1)
+        sc.relationships.append(Relationship(pred_uid="A", succ_uid="Z",
+                                            rtype=RelType.FS, lag_hours=0.0))
+        return sc
+    b = _fcbi_of(s(160.0), s(0.0)).windows[0].top_burners[0]
+    assert b.code == "A"
+    assert b.weight == pytest.approx(1.0)
+    assert b.contribution == pytest.approx(20.0)
+
+
+def test_fcbi_item4_rf_basis_falls_back_to_own_float_when_no_path():
+    """Item 4 (reproducibility lock) — a tied target-finish yields a <2-step
+    walk, float_paths()==[] , and RF falls back to each activity's OWN total
+    float rather than a shared path minimum."""
+    from scheduleiq.analytics.li_indices import _build_kernel
+    from scheduleiq.ingest.model import Relationship, RelType
+    sc = _syn({"A": 160.0, "Z": 200.0})           # both finish 2025-02-01 (tie)
+    sc.relationships.append(Relationship(pred_uid="A", succ_uid="Z",
+                                        rtype=RelType.FS, lag_hours=0.0))
+    k = _build_kernel(sc, 5.0)
+    assert k.rf["A"] == pytest.approx(20.0)        # own float, not a path min
+    assert k.rf["Z"] == pytest.approx(25.0)
+
+
+def test_fcbi_item5_windowing_not_additive():
+    """Item 5 — TF 10 -> 0 -> 10 : per-window FCBI+ total is 10 (burn then
+    regain), endpoint-only is 0 (net dTF zero).  Locks the intended
+    non-additive semantics."""
+    u0 = _syn({"A": 80.0, "Z": 0.0}, rels=[("A", "Z")])
+    u1 = _syn({"A": 0.0, "Z": 0.0}, rels=[("A", "Z")])
+    u2 = _syn({"A": 80.0, "Z": 0.0}, rels=[("A", "Z")])
+    per_window = sum(w.fcbi for w in _fcbi_of(u0, u1, u2).windows)
+    endpoint = sum(w.fcbi for w in _fcbi_of(u0, u2).windows)
+    assert per_window == pytest.approx(10.0)
+    assert endpoint == pytest.approx(0.0)
+
+
+def test_fcbi_item2_pct_undefined_is_labelled_not_bare_none():
+    """Item 2 — all-negative float stock: FCBI% is None but carries the
+    labelled reason, and absolute FCBI+ is still reported."""
+    e = _syn({"A": -40.0, "B": -80.0}, rels=[("A", "B")])
+    l = _syn({"A": -80.0, "B": -120.0}, rels=[("A", "B")])
+    w = _fcbi_of(e, l).windows[0]
+    assert w.fcbi_pct is None
+    assert w.pct_undefined_reason and "undefined" in w.pct_undefined_reason
+    assert w.fcbi > 0
+
+
+def test_fcbi_crossindex_completed_excluded_by_fcbi_kept_by_cdi():
+    """Item 1b lock — a near-critical activity completing in-window is excluded
+    from FCBI burn but still earns CDI dwell (retrospective vs live-work)."""
+    e = _syn({"A": 40.0, "B": 0.0}, rels=[("A", "B")])
+    l = _syn({"A": 0.0, "B": 0.0},
+             status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    res = run_li_indices(sa)
+    assert all("A" not in {b.code for b in w.top_burners} for w in res.fcbi.windows)
+    assert "A" in {row.code for row in res.cdi.leaderboard}
+
+
+def test_fcbi_disclosures_present():
+    e = _syn({"A": 80.0, "B": 0.0}, rels=[("A", "B")])
+    l = _syn({"A": 0.0, "B": 0.0}, rels=[("A", "B")])
+    res = _fcbi_of(e, l)
+    assert len(res.disclosures) == 5
+    joined = " ".join(res.disclosures)
+    assert "Completed activities are excluded" in joined
+    assert "min(RF_(u-1), RF_u)" in joined
 
 
 # ===================================================================== PCI

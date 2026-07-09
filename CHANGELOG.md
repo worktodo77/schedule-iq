@@ -182,3 +182,30 @@ matrix expanded to 79 checks (LI-11..LI-15, privileged/internal surfaces).
   inputs and internal diagnostics behind the governance wall (provenance
   threads into simulation disclosures; LLM narratives expressly out of
   scope).
+
+## 0.4.1 — 2026-07-08
+
+Check-affecting: **FCBI (LI-01) definition change** per the peer-reviewed audit
+(docs/audit/FCBI_audit_2026-07-08.md; confirmed by Codex).  FCBI values move on
+any series with completed near-critical activities and/or float that changed
+criticality within a window — the LI-01 anchor recalibration against real files
+stays open (a pre-existing L3 task); the demo-series Report Card grades shift
+accordingly (scorecard tests assert internal consistency, not absolute grades,
+so remain green).
+
+- **Completed activities excluded** from both FCBI+ (burn) and FCBI− (recovery):
+  the index now measures float consumed by *in-flight* work only.  Removes the
+  exporter-dependent phantom burn (a completed activity whose tool-of-record
+  float was written 0 rather than null no longer scores its whole prior float
+  as burn).  Aligns FCBI with RDI/BWI; CDI intentionally still counts completed
+  activities as retrospective criticality dwell (documented).
+- **Weight timing** now samples RF as **min(RF at u-1, RF at u)** across the
+  window, so burn that itself drove a chain critical is weighted at that
+  criticality rather than at its floaty start.
+- **Normalized FCBI%** returns a labelled "stock exhausted — interpret absolute
+  FCBI+" reason instead of a bare None when the weighted live float stock ≤ 0.
+- Every FCBI result now carries standing methodology **disclosures** (completed
+  exclusion, min-RF timing, top-10 RF provenance, windowing non-additivity).
+- matrix.yaml LI-01 wording + §9.1 conventions updated; 7 new governance tests
+  (completed-invariance, min-RF timing, RF basis fallback, windowing
+  non-additivity, sentinel, cross-index, disclosures).  Suite: 2069 passed.

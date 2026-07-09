@@ -425,6 +425,30 @@ overlay.  Guard: activities whose criticality is manufactured by constraints
 index cannot be gamed by constraint placement.  The cumulative FCBI curve is
 "the float story of the project in one line."
 
+**Implementation conventions (v0.4.1; per the FCBI audit rulings —
+docs/audit/FCBI_audit_2026-07-08.md).**
+- *Completed activities are excluded* from both burn and FCBI⁻: FCBI measures
+  float consumed by **in-flight** work, so an activity's float ending at
+  completion is not scored as burn (which also removes the exporter-dependent
+  phantom burn when a tool writes 0 rather than null for a completed
+  activity's float).  This aligns FCBI with RDI and BWI (live-work indices);
+  **CDI intentionally keeps completed activities** because it measures where
+  criticality *dwelt* over time, including on now-finished work — a
+  retrospective, not forward, question.
+- *Weight timing:* RF is sampled as **min(RF_{u-1}, RF_u)** across the window,
+  so float that was near-critical at *either* end of the interval is weighted
+  at that criticality (burn that itself drove a chain critical is not
+  under-weighted by its floaty start).
+- *RF provenance:* RF is the minimum relative float over the **top-10** float
+  paths containing the activity (its own total float when on no enumerated
+  path); the driving path is the tool-of-record's minimum-float chain, not a
+  CPM pass — so RF is independent of the diagnostic engine's statusing mode.
+- *Normalized form:* FCBI% is reported **undefined** (a labelled sentinel, not
+  0) when the criticality-weighted live float stock at the window start is ≤ 0.
+- *Windowing:* FCBI⁺ is windowing-dependent and **not additive** across merged
+  windows (max(0, −ΔTF) is a total-variation measure); compare only
+  like-for-like update cadences.
+
 ### 9.2 LHL — Logic Half-Life
 Survival analysis on relationships: each relationship ever observed has a
 lifespan (updates until deleted or modified); Kaplan-Meier over the series

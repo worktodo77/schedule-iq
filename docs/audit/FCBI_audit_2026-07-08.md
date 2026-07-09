@@ -3,10 +3,23 @@
 **Date:** 2026-07-08 · **Auditor:** Claude (lead) · **Rev 3** (2026-07-08,
 Codex sign-off; strengthened the severity rationale for item 1) · **Rev 2**
 incorporated Codex peer review — all five primary findings independently
-confirmed; wording tightened, one cross-index issue added, item 4 softened ·
-**Status:** AUDIT ONLY — findings and current-behavior spec; no code or spec
-changed. The methodology owner makes the rulings; a proposed test list and a
-minimum governance package follow.
+confirmed; wording tightened, one cross-index issue added, item 4 softened.
+
+> **RESOLVED in v0.4.1 (2026-07-08).** All rulings adopted and implemented with
+> the governance quartet — item 1 (exclude completed from burn *and* recovery),
+> item 3 (weight at min(RF(u-1), RF(u))), item 1b (completed-activity split
+> documented; FCBI aligned with RDI/BWI, CDI retained as retrospective), and
+> the disclosure items 2/4/5 (labelled FCBI% sentinel; standing disclosures;
+> §9.1 + matrix wording).  Code: `analytics/li_indices.py::_fcbi`.  Tests: 7 new
+> governance tests in `tests/test_li_indices.py` (+ the exact-pair test updated
+> to the new convention).  See CHANGELOG 0.4.1.  The sections below are retained
+> as the as-audited record of *pre-0.4.1* behavior and the rationale for each
+> ruling.
+
+The body below was written pre-implementation ("AUDIT ONLY — no code or spec
+changed"); the methodology owner has since made the rulings and they are live.
+A proposed test list and the minimum governance package follow — both now
+implemented.
 
 ## Finding categories (kept distinct throughout — do not conflate)
 

@@ -459,6 +459,105 @@ def test_bwi_target_survives_rename_via_uid():
     assert all(r.density is not None for r in bwi.rows)  # uid survived the rename
 
 
+def test_rdi_accrues_against_p50_not_max():
+    """R2 ruling (v0.4.3): RDI accrues debt against the running P50 (median)
+    demonstrated pace, not the single best window (max).  Construct a series
+    whose required pace, at one window, exceeds the running P50 but NOT the
+    running max — debt must accrue (it would be zero under the old max-only
+    rule)."""
+    from scheduleiq.ingest.model import (ActivityType as AT, ActivityStatus as ST,
+                                         Calendar, Relationship, RelType)
+    from scheduleiq.analytics.li_indices import _median
+
+    cal = Calendar(uid="1", name="5d", hours_per_day=8.0, is_default=True)
+
+    def A(uid, code, rem, status=ST.NOT_STARTED, af=None, as_=None, od=80.0,
+          atype=AT.TASK):
+        return Activity(uid=uid, code=code, name=code, atype=atype, status=status,
+                        calendar_uid="1", original_duration_hours=od,
+                        remaining_duration_hours=rem, total_float_hours=0.0,
+                        early_start=datetime(2025, 1, 1),
+                        early_finish=datetime(2025, 6, 1), actual_start=as_,
+                        actual_finish=af, planned_start=datetime(2025, 1, 1),
+                        planned_finish=datetime(2025, 6, 1))
+
+    def S(acts, dd, fin):
+        s = Schedule(project_id="SYN", data_date=dd, finish_date=fin)
+        s.calendars = {"1": cal}
+        for a in acts:
+            s.activities[a.uid] = a
+        s.relationships = [Relationship(pred_uid="a", succ_uid="ms",
+                                        rtype=RelType.FS, lag_hours=0.0)]
+        return s
+
+    def acts(rem, done=None, af=None, od=80.0):
+        lst = [A("a", "A", rem), A("ms", "MS", 0.0, atype=AT.FINISH_MILESTONE)]
+        if done:
+            lst.append(A(done, done, 0.0, status=ST.COMPLETED, af=af, od=od))
+        return lst
+    u0 = S(acts(400.0), datetime(2025, 1, 1), datetime(2025, 4, 1))
+    u1 = S(acts(300.0, "C1", datetime(2025, 1, 20), od=800.0),   # fast window
+           datetime(2025, 2, 1), datetime(2025, 4, 1))
+    u2 = S(acts(250.0, "C2", datetime(2025, 2, 20), od=40.0),    # slow window
+           datetime(2025, 3, 1), datetime(2025, 4, 1))
+    u3 = S(acts(200.0, "C3", datetime(2025, 3, 20), od=40.0),    # slow window
+           datetime(2025, 3, 25), datetime(2025, 4, 1))
+    sa = SeriesAnalysis(schedules=[u0, u1, u2, u3],
+                        changesets=[compare(u0, u1), compare(u1, u2), compare(u2, u3)])
+    res = run_li_indices(sa).rdi
+
+    # Per window w (update w -> w+1): accrual uses required[w] (window start) and
+    # the demonstrated pace observed through window w.  Replicate both anchors.
+    required = [r.required_pace for r in res.rows]
+    demonstrated = [res.rows[w + 1].demonstrated_pace
+                    for w in range(len(res.rows) - 1)]
+    seen: list[float] = []
+    max_only_would_accrue = False
+    p50_triggers = False
+    for w, d in enumerate(demonstrated):
+        if d is not None:
+            seen.append(d)
+        rq = required[w]
+        if rq is None:
+            continue
+        if rq > (max(seen) if seen else 0.0):
+            max_only_would_accrue = True
+        if rq > _median(seen):
+            p50_triggers = True
+    assert res.rdi_days > 0            # debt accrued under the P50 rule
+    assert p50_triggers               # ... because required exceeded the P50
+    assert not max_only_would_accrue  # ... but never exceeded the running max
+
+
+def test_bwi_slipping_milestone_holds_at_one_fixed_horizon():
+    """B1 ruling (v0.4.3): BWI normalizes against a FIXED reference horizon.  A
+    milestone that SLIPS with unchanged near-critical work must read BWI == 1.0
+    (the bow wave neither grew nor shrank), not < 1.0 as the old moving-forecast
+    denominator produced (which mis-read a slip as relief)."""
+    from scheduleiq.ingest.model import ActivityType as AT, ConstraintType as CT
+
+    def mk(ms_finish, dd):
+        s = _sched_with([("w1", "W1", 0.0, AT.TASK, 80.0),
+                         ("m1", "MS", 0.0, AT.FINISH_MILESTONE, 0.0)],
+                        dd, ms_finish, [("w1", "m1")])
+        s.activities["w1"].early_finish = datetime(2025, 5, 1)
+        ms = s.activities["m1"]
+        ms.constraint = CT.MANDATORY_FINISH
+        ms.constraint_date = ms_finish
+        ms.early_finish = ms_finish
+        return s
+    # same data date + same near-critical work; only the milestone slips.
+    u0 = mk(datetime(2025, 6, 1), datetime(2025, 1, 1))
+    u1 = mk(datetime(2025, 9, 1), datetime(2025, 1, 1))
+    bwi = run_li_indices(SeriesAnalysis(schedules=[u0, u1],
+                                        changesets=[compare(u0, u1)])).bwi
+    assert bwi.target_code == "MS"
+    assert bwi.rows[0].density == pytest.approx(bwi.rows[1].density)  # denom fixed
+    assert bwi.rows[1].bwi == pytest.approx(1.0)                      # not < 1.0
+    assert any("fixed reference horizon".lower() in d.lower()
+               for d in bwi.disclosures)
+
+
 def test_rdi_bwi_cdi_carry_disclosures():
     res = run_li_indices(_loe_series())
     assert res.cdi.disclosures and any("retrospective" in d for d in res.cdi.disclosures)
@@ -490,22 +589,18 @@ def test_pci_all_milestone_schedule_graceful():
     assert res.pci.reason                                 # a labelled reason is carried
 
 
-def test_pci_mixed_path_loe_residual_is_intentional():
-    """Closure lock for the DEFERRED mixed-path residual (ANALYTICS_PROPOSAL
-    §9.4 future-work).  v0.4.2 drops pure LOE/summary paths, but a *kept* mixed
-    path (real work + LOE) still has its relative float computed by the shared
-    float_paths() over ALL its members — so when the LOE is the lowest-float
-    member, it still drives the path rel_float AND the discrete member's RF.
+def test_pci_mixed_path_loe_neutralized_in_kernel():
+    """v0.4.3 mixed-path LOE neutralization ruling.  Previously (v0.4.2) a kept
+    mixed path (real work + LOE) took its relative float from the shared
+    float_paths() over ALL members, so an LOE that was the lowest-float member
+    dragged the discrete member's RF toward criticality (the disclosed residual).
 
-    This is intentional current behavior, not a regression: neutralizing the LOE
-    inside a mixed path would require an LI-specific kernel/path calc, never a
-    change to the shared float_paths() (tool-of-record driving-path analytics).
-
-    This test PINS the residual: it FAILS if a future change neutralizes the LOE
-    inside float_paths() (the mixed path's rel_float would then follow A's own
-    30d / the target's 5d instead of the LOE's 2d, and A's RF would no longer be
-    LOE-driven).  Read that failure as 'the deferred methodology item was
-    actioned — update this lock and §9.4', not as a broken test."""
+    v0.4.3 layers an LI-specific per-path relative float over the path's DISCRETE
+    unique members only (relative_float_map / _li_path_rel_float), so the LOE no
+    longer drives the discrete member's RF.  The shared float_paths() is
+    untouched: the driving path itself, and its rel_float_days, are unchanged —
+    only the LI kernel's RF map is neutralized (it reads float_paths' additive
+    unique_uids, nothing more)."""
     from scheduleiq.ingest.model import ActivityType as AT, ConstraintType as CT
     from scheduleiq.analytics.li_indices import _build_kernel
     from scheduleiq.analytics.paths import float_paths
@@ -521,13 +616,13 @@ def test_pci_mixed_path_loe_residual_is_intentional():
     a_own = s.activities["a"].total_float_days(s.cal_for(s.activities["a"]))
     loe_own = s.activities["loe"].total_float_days(s.cal_for(s.activities["loe"]))
     assert (a_own, loe_own) == (30.0, 2.0)                # LOE strictly below A
-    # shared float_paths() still routes the driving path through the LOE and
-    # takes its relative float FROM the LOE's lower float, not A's own.
+    # shared float_paths() is UNCHANGED — it still routes the driving path through
+    # the LOE and its rel_float_days still follows the LOE's lower float.
     driving = float_paths(s, n=10, band_days=None)[0]
     assert [st.activity.code for st in driving.steps] == ["A", "LOE", "T"]
-    assert driving.rel_float_days == pytest.approx(loe_own)   # LOE-driven, == 2d
-    assert driving.rel_float_days < a_own                     # residual: not A's 30d
-    # and the discrete member A therefore inherits the LOE-driven RF.
+    assert driving.rel_float_days == pytest.approx(loe_own)   # enumerator untouched
+    # but the LI kernel now neutralizes the LOE: A's RF is its OWN 30d, not 2d.
     rf = _build_kernel(s, 5.0).rf
-    assert rf["A"] == pytest.approx(loe_own)                  # A's RF == LOE's 2d
-    assert "LOE" not in rf                                    # LOE itself still excluded
+    assert rf["A"] == pytest.approx(a_own)                    # neutralized: 30d
+    assert rf["A"] != pytest.approx(loe_own)                  # no longer LOE-driven
+    assert "LOE" not in rf                                    # LOE still excluded

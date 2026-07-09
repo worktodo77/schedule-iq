@@ -3,6 +3,39 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## 0.4.3 — 2026-07-09
+
+Check-affecting: **three bespoke-metric methodology rulings** from the
+RDI/BWI/CDI audit's deferred set (docs/audit/RDI_BWI_CDI_audit_2026-07-08.md),
+ruled by the methodology owner.  Each ships with the full governance quartet
+(matrix row + implementation + seeded fixture + tests).  Scored members LI-05
+(RDI) and LI-09 (BWI) move on real data; the pinned demo letter grades
+(C+/C/D per file, D for the series) held, so the scorecard suite stays green.
+
+- **B1 — BWI fixed reference horizon (LI-09).** BWI now normalizes near-critical
+  density against a FIXED denominator — working days from the first update's
+  data date to the target's constrained (promised) date, else baseline finish,
+  else first-update forecast finish — held constant across updates.  A slipping
+  milestone with unchanged work now reads BWI = 1.0 (the old moving-forecast
+  denominator mis-read a slip as relief).  Demo BWI: [1.0, 0.833, 0.661].
+- **R2 — RDI accrues against P50, not max (LI-05).** Debt accrues when required
+  pace exceeds the running P50 (median, sustainable) demonstrated pace; the
+  running max is retained as the reported optimistic bound.  The old max-only
+  anchor under-accrued.  Demo RDI: 161.1 working days.
+- **Mixed-path LOE neutralization (kernel: LI-01/04/05/07/09).** The LI kernel
+  now computes each kept path's relative float over its DISCRETE members only,
+  so an LOE that is the lowest-float member of a mixed path no longer drives the
+  discrete members' RF.  Layered on top of `float_paths()`, which is UNCHANGED —
+  a purely additive `unique_uids` field was exposed on `FloatPath` and the LI
+  kernel reads it; no tool-of-record driving-path result shifts.  This supersedes
+  the v0.4.2 disclosed residual (the prior residual-lock test is replaced by a
+  neutralization test).
+- 3 new/updated regression tests (BWI fixed-horizon slip, RDI P50-vs-max accrual,
+  kernel LOE neutralization).  Full suite: 2080 passed, 2 skipped.
+- **STILL OPEN (not implemented):** R1 (RDI demonstrated-pace basis) — direction
+  ruled (actual elapsed) but the exact aggregation is a further sub-decision
+  returned to the methodology owner; B-side items B1 done, R-side R2 done.
+
 ## 0.1.0 — 2026-07-06
 
 Initial release.

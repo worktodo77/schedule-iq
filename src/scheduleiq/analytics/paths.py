@@ -77,6 +77,11 @@ class FloatPath:
     constraints: list[str]
     pct_complete: float                     # length-weighted mean % complete
     rel_float_days: float = 0.0             # near-criticality of this path's own branch
+    # Additive metadata (does NOT affect rel_float_days or any tool-of-record
+    # driving-path result): the uids of the branch unique to this path, exposed
+    # so the LI-index kernel can compute a discrete-work-only relative float
+    # without re-deriving the walk.  Consumers that ignore it are unaffected.
+    unique_uids: set = field(default_factory=set)
 
     @property
     def codes(self) -> list[str]:
@@ -374,7 +379,8 @@ def _finalize_path(schedule: Schedule, rank: int, steps: list[PathStep],
     rel = min(uvals) if uvals else (mn if mn is not None else 0.0)
     return FloatPath(rank=rank, steps=steps, min_float_days=mn, max_float_days=mx,
                      calendars=cals, constraints=cons, pct_complete=pc,
-                     rel_float_days=rel if rel is not None else 0.0)
+                     rel_float_days=rel if rel is not None else 0.0,
+                     unique_uids=set(unique_uids))
 
 
 def float_paths(schedule: Schedule, target_uid: Optional[str] = None,

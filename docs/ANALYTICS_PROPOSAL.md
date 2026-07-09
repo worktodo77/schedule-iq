@@ -494,35 +494,40 @@ split methods, not snapshot TIA) and where SRA effort matters.
 or bare-milestone chains — are excluded so summary activities cannot
 manufacture a spurious near-critical path and dilute the concentration.
 
-*Deferred residual (mixed paths).* The v0.4.2 exclusion drops paths that carry
-*no* discrete work; it does not change how a *kept* mixed path's relative float
-is computed.  A mixed path that contains real work **and** an LOE still takes
-its relative float from `float_paths()` over all of the path's members, so when
-the LOE is the lowest-float member it still drives that path's relative float —
-and therefore the relative-float basis (RF) of the discrete member on it.  This
-is a known, intentional limitation, not a defect: the LOE is removed as a
-weighted/dwelling *entity* (it earns no criticality weight and no dwell), but it
-is not neutralized inside the shared path-float arithmetic.  If the methodology
-owner later decides an LOE must be fully neutralized inside mixed paths, that
-must be implemented as an **LI-specific kernel/path calculation** layered on top
-of the enumerator — **do not modify the shared `float_paths()`**, which feeds the
-tool-of-record driving-path analytics used outside the LI indices and must not
-shift.  A regression test (`test_pci_mixed_path_loe_residual_is_intentional`)
-pins this behavior so the residual is recognized as a deferred methodology item
-rather than a regression.
+*Mixed-path LOE neutralization (v0.4.3).* The v0.4.2 exclusion dropped paths
+that carry *no* discrete work but did not change how a *kept* mixed path's
+relative float was computed, so an LOE that was the lowest-float member of a
+mixed path still drove that path's relative float — and the relative-float basis
+(RF) of the discrete member on it.  v0.4.3 closes this: the LI kernel computes an
+**LI-specific per-path relative float over the path's discrete members only**
+(`relative_float_map` / `_li_path_rel_float`), so an LOE no longer influences a
+discrete activity's RF.  This is layered on top of the enumerator — the shared
+`float_paths()` is **untouched** (it still feeds the tool-of-record driving-path
+analytics unchanged; the LI kernel only reads its additive `unique_uids`
+metadata).  A regression test
+(`test_pci_mixed_path_loe_neutralized_in_kernel`) pins the neutralization while
+asserting `float_paths()` itself is unchanged.
 
 ### 9.5 RDI — Recovery Debt Index
 Cumulative gap between promised and demonstrated pace.  Each update implies
 a required future pace to hold its forecast finish (remaining driving/near-
-critical work per remaining working time); compare against the best pace
-actually demonstrated over trailing windows (P50 and max).  Debt accrues
-each window the required pace exceeds anything ever achieved:
-**RDI = Σ max(0, required − demonstrated_max) × window length**, in days.
-RDI is the portion of the current completion forecast resting on unproven
-acceleration.  A finish date that holds steady while RDI climbs is being
-defended by paper productivity (pairs with DUR-04 and the evergreen
-detector); at project end, realized slip ≈ RDI is a self-validating exhibit
-of sustained forecast unrealism.
+critical work per remaining working time); compare against the pace actually
+demonstrated over trailing windows.  Debt accrues each window the required
+pace exceeds the **P50 (median) demonstrated pace** — the pace the Project
+has *sustainably* shown, not the single best window it ever hit:
+**RDI = Σ max(0, required − demonstrated_P50) × window length**, in days.
+*Convention (v0.4.3, R2 ruling):* the accrual anchor is the running P50 of
+the demonstrated series (the old max-only anchor under-accrued — it forgave
+any required pace below the single best window ever); the running max is
+retained and reported as the optimistic bound.  RDI is the portion of the
+current completion forecast resting on unproven acceleration.  A finish date
+that holds steady while RDI climbs is being defended by paper productivity
+(pairs with DUR-04 and the evergreen detector); at project end, realized
+slip ≈ RDI is a self-validating exhibit of sustained forecast unrealism.
+
+*Open item (R1, pending ruling):* whether "demonstrated pace" is measured as
+planned scope retired per window (current) or actual-elapsed throughput is a
+separate methodology decision, not yet resolved.
 
 *Backlog: N6-N10 (PARKED pending review).  Dependencies: all five compute
 from existing modules (float paths, change register, actuals, resources);
@@ -580,17 +585,23 @@ emergence/response event log per path, each entry naming the triggering
 finding and the responsive edits (from the change register).
 
 ### 10.4 BWI — Bow-Wave Index
-Quantifies work piling up against a fixed milestone.  For a selected
-milestone with a stationary (often constrained or promised) date: per update,
-compute remaining near-critical work volume per remaining working period
-ahead of the milestone, normalized by the same ratio at baseline.
-**BWI > 1 and rising = a bow wave: each update packs more work into less
-time while the milestone date holds.**  The companion statistic is the
-projected break date — the update at which required density exceeds anything
-the project has demonstrated (ties to RDI's demonstrated-pace record).  The
-bow wave is the most common real-world compression pathology; every expert
-describes it narratively, none of the tools measure it.  Decomposes into the
-work packed per window with the edits that packed it.
+Quantifies work piling up against a milestone.  For a selected milestone: per
+update, compute remaining near-critical work volume ahead of the milestone,
+divided by a **fixed reference horizon**, normalized to the first update.
+*Convention (v0.4.3, B1 ruling):* the denominator is held constant across
+updates — working days from the first update's data date to the target's
+constrained (promised) date, else its baseline finish, else its first-update
+forecast finish — so that "working days to target" no longer moves.  This
+isolates the numerator (near-critical work packed ahead of the milestone); a
+milestone that *slips* while the work is unchanged now reads BWI = 1.0, where
+the old moving-forecast denominator mis-read a slip as relief (BWI < 1.0).
+**BWI > 1 and rising = a bow wave: each update packs more work into the fixed
+window to the promised date.**  The companion statistic is the projected break
+date — the update at which required density exceeds anything the project has
+demonstrated (ties to RDI's demonstrated-pace record).  The bow wave is the
+most common real-world compression pathology; every expert describes it
+narratively, none of the tools measure it.  Decomposes into the work packed
+per window with the edits that packed it.
 
 ### 10.5 MML — Measured-Mile Locator
 Automates the hardest part of a disruption analysis: finding the measured

@@ -6,8 +6,26 @@ reusable template from the FCBI audit (docs/audit/FCBI_audit_2026-07-08.md).
 
 > **PARTIALLY RESOLVED in v0.4.2 (2026-07-08).** The methodology owner approved
 > **C1, C2, B2, X1**; all implemented with the governance quartet.
-> **DEFERRED (open methodology decisions, NOT implemented):** B1 (fixed BWI
-> denominator), R1 (actual-vs-planned demonstrated pace), R2 (P50 comparator).
+>
+> **RESOLVED in v0.4.3 (2026-07-09).** The methodology owner ruled on the
+> deferred items:
+> - **B1 — BWI fixed reference horizon: ADOPTED (option A).** BWI normalizes
+>   against a fixed horizon (constrained/promised date, else baseline finish,
+>   else first-update forecast finish), held constant across updates, so a
+>   slipping milestone no longer dilutes the bow wave.  A slip with unchanged
+>   work now reads BWI = 1.0.  Scored (LI-09); pinned demo letter grades held.
+> - **R2 — RDI accrual anchor: ADOPTED (P50).** Debt accrues against the running
+>   P50 (median) demonstrated pace, with the running max retained as the reported
+>   optimistic bound.  Scored (LI-05); pinned demo letter grades held.
+> - **Mixed-path LOE residual: NEUTRALIZED.** The LI kernel now computes each
+>   kept path's relative float over its discrete members only, so an LOE on a
+>   mixed path no longer drives a discrete activity's RF.  Implemented as an
+>   LI-specific layer on top of `float_paths()` (which is unchanged; the kernel
+>   reads only its additive `unique_uids`).
+> - **R1 — RDI demonstrated-pace basis (planned vs actual elapsed): STILL OPEN.**
+>   The direction was ruled (actual), but the exact aggregation is a further
+>   methodology sub-decision (the two readings move RDI in opposite directions);
+>   returned to the owner for a precise ruling before implementation.
 >
 > **Shared-kernel family audit (Part 2 of the ruling) — metric by metric:**
 > | LI | Metric | Kernel/RF-map consumer? | LOE status in v0.4.2 |

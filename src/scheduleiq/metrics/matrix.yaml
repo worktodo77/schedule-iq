@@ -967,7 +967,7 @@ checks:
   - id: LI-04
     name: "PCI — Path Concentration Index"
     category: "LI Proprietary Indices"
-    description: "Herfindahl concentration of criticality across the top float paths (same kernel as FCBI).  Paths with no discrete-work member (pure LOE/summary or bare-milestone chains) are excluded so summary activities cannot inflate the path count.  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
+    description: "Herfindahl concentration of criticality across the top float paths (same kernel as FCBI).  Paths with no discrete-work member (pure LOE/summary or bare-milestone chains) are excluded so summary activities cannot inflate the path count; on a kept mixed path an LOE no longer drives the discrete members' relative float (the kernel takes the min total float over discrete members only).  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
     formula: "sum of squared kernel-weight shares over the top-10 discrete-work float paths, per update (LOE/summary-only paths dropped)"
     unit: ratio
     threshold: null
@@ -980,8 +980,8 @@ checks:
   - id: LI-05
     name: "RDI — Recovery Debt Index"
     category: "LI Proprietary Indices"
-    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the maximum demonstrated pace.  LOE/summary activities are excluded (not discrete work); depends on maintained remaining durations and a project finish date (data-quality disclosures emitted when absent)."
-    formula: "sum over windows of max(0, required pace - max demonstrated pace) x window working days"
+    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the running P50 (median, sustainable) demonstrated pace, with the running max reported as the optimistic bound.  LOE/summary activities are excluded (not discrete work); an LOE on a mixed near-critical path no longer drives the discrete members' relative float (kernel neutralization).  Depends on maintained remaining durations and a project finish date (data-quality disclosures emitted when absent)."
+    formula: "sum over windows of max(0, required pace - P50 demonstrated pace) x window working days; max demonstrated reported as bound"
     unit: days
     threshold: null
     direction: info
@@ -1032,8 +1032,8 @@ checks:
   - id: LI-09
     name: "BWI — Bow-Wave Index"
     category: "LI Proprietary Indices"
-    description: "Remaining near-critical work per remaining working period ahead of a held milestone, normalized to the first update.  LOE/summary activities are excluded (not discrete work); the target is pinned by persistent UID so it survives re-coding/renaming.  Rising BWI while the date holds = compression that must eventually break; projected break reported against demonstrated pace."
-    formula: "density_u / density_first, density = near-critical remaining days / working days to target"
+    description: "Remaining near-critical work per remaining working period ahead of a milestone, normalized to the first update.  The denominator is a FIXED reference horizon (working days from the first update's data date to the target's constrained/baseline/first-forecast date), held constant across updates, so a slipping milestone cannot dilute the signal — the ratio isolates the near-critical work packed ahead of the milestone.  LOE/summary activities are excluded (not discrete work); the target is pinned by persistent UID so it survives re-coding/renaming.  Rising BWI = compression that must eventually break; projected break reported against demonstrated pace."
+    formula: "density_u / density_first, density = near-critical remaining days / fixed working-days-to-reference-horizon"
     unit: ratio
     threshold: null
     direction: info

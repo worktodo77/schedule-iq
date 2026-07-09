@@ -270,7 +270,8 @@ class LiIndicesResult:
 def _fcbi(sa, kernels: dict[int, _Kernel], lam: float) -> FcbiResult:
     changesets = getattr(sa, "changesets", [])
     if not changesets:
-        return FcbiResult(reason="series has fewer than two updates")
+        return FcbiResult(reason="series has fewer than two updates",
+                          disclosures=_fcbi_disclosures(lam))
 
     windows: list[FcbiWindow] = []
     cumulative: list[float] = []

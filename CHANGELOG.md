@@ -189,9 +189,12 @@ Check-affecting: **FCBI (LI-01) definition change** per the peer-reviewed audit
 (docs/audit/FCBI_audit_2026-07-08.md; confirmed by Codex).  FCBI values move on
 any series with completed near-critical activities and/or float that changed
 criticality within a window — the LI-01 anchor recalibration against real files
-stays open (a pre-existing L3 task); the demo-series Report Card grades shift
-accordingly (scorecard tests assert internal consistency, not absolute grades,
-so remain green).
+stays open (a pre-existing L3 task).  The demo-series FCBI figures shift (e.g.
+cumulative burn) and so does LI-01's weighted contribution to the Report Card;
+the scorecard tests do not pin absolute FCBI values or absolute numeric grades
+(they combine trace self-consistency checks with fixture letter-grade
+expectations — C+/C/D per file, D for the series), and those pinned letters
+held stable across the change, so the suite stays green.
 
 - **Completed activities excluded** from both FCBI+ (burn) and FCBI− (recovery):
   the index now measures float consumed by *in-flight* work only.  Removes the

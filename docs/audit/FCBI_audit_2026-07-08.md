@@ -1,14 +1,35 @@
 # FCBI (LI-01) implementation audit — peer-review response
 
-**Date:** 2026-07-08 · **Auditor:** Claude (lead) · **Status:** AUDIT ONLY —
-findings and current-behavior spec; no code or spec changed. RJL to make the
-methodology rulings; a proposed test list follows each finding.
+**Date:** 2026-07-08 · **Auditor:** Claude (lead) · **Rev 2** (2026-07-08,
+incorporating Codex peer review — all five primary findings independently
+confirmed; wording tightened, one cross-index issue added, severities on
+item 4 softened) · **Status:** AUDIT ONLY — findings and current-behavior
+spec; no code or spec changed. RJL to make the methodology rulings; a proposed
+test list and a minimum governance package follow.
+
+## Finding categories (kept distinct throughout — do not conflate)
+
+- **Implementation defect** — the code does something other than what the spec
+  says, or produces a mathematically wrong/unsafe result.
+- **Specification gap** — the behavior is a reasonable choice but is
+  undocumented in §9.1 / the matrix.
+- **Methodology decision** — a substantive modelling choice (changes numbers)
+  that is legitimate but must be *ruled on and recorded*, not assumed.
+- **Disclosure / reproducibility issue** — the behavior is correct given its
+  own definition, but a reader or a re-runner could be surprised unless it is
+  stated (e.g. a fixed truncation constant, a basis that depends on inputs).
+
+None of the five primary findings is an outright implementation *defect*; the
+one behavior that yields a wrong-looking number (item 1) does so because of an
+undocumented methodology choice interacting with exporter variance, not a
+coding error. That distinction is carried below.
 
 **Scope reviewed**
 
 | Artifact | Location |
 |---|---|
 | FCBI metric | `src/scheduleiq/analytics/li_indices.py` — `_fcbi()` (L241-319), kernel L48-114 |
+| Sibling indices (cross-index check) | `_rdi()` L447-503, `_bwi()` L534-565, `_cdi()` L365-406, `_demonstrated_series()` L412-441 |
 | Float deltas (input) | `src/scheduleiq/compare/diff.py` — `compare()` L145-150 |
 | RF / float-path module | `src/scheduleiq/analytics/paths.py` — `float_paths()` L380-441, `_walk()` L258-302 |
 | RF map | `li_indices.py` — `relative_float_map()` L64-90, `_build_kernel()` L110-114 |
@@ -16,257 +37,301 @@ methodology rulings; a proposed test list follows each finding.
 | Spec | `docs/ANALYTICS_PROPOSAL.md` §9.1 L412-426 |
 | Tests | `tests/test_li_indices.py` L52-106 (3 FCBI tests) |
 
-All findings below were reproduced with live probes driving `compare()` +
-`run_li_indices()` on hand-built two/three-update series. Existing suite
-(`tests/test_li_indices.py`) is green (10 passed) but covers none of the five
-areas (see coverage table at the end).
+All findings were reproduced with live probes driving `compare()` +
+`run_li_indices()` on hand-built two/three-update series. Existing suite is
+green (10 passed) but covers none of the areas below.
 
 ---
 
 ## Current-behavior spec table (for rulings)
 
-| # | Area | Current behavior | Documented? | Tested? | Severity |
-|---|---|---|---|---|---|
-| 1 | Completed activity | **Data-dependent.** No completion filter. Burn = `max(0, -ΔTF)·w`. If tool-of-record writes **TF=0** for a completed activity → full prior float scored as **phantom burn**. If it writes **TF=null** → activity silently excluded (delta not populated). | No | No | **High** |
-| 2 | FCBI% denominator | Guarded: `pct = 100·burn/denom if denom>0 else None`. No div-zero. But normalized form goes **None** exactly in the at/past-driving-path regime; absolute FCBI+ is still reported (and amplified by negative-RF weights). | Partly (matrix says ">100% = beyond available float"; None case undocumented) | No | Medium |
-| 3 | Weight timing | Weight sampled at the **earlier** file (u-1, start of window): `ek = kernels[id(earlier)]`. RF frozen at window start. | No | No (not isolated) | Medium |
-| 4 | RF provenance | RF = **path-level** min relative float over the **top-10** float paths containing the activity; driving path = **min-float** (not longest-path CPM); fallback to activity's **own** TF when on no enumerated path; negative RF allowed (weight >1). Reads tool-of-record stored floats — **independent of `scheduleiq.cpm` statusing mode**. | Partly (matrix formula names "min relative float of containing float paths"; fallbacks/truncation/tie behavior undocumented) | No | Medium |
-| 5 | Windowing | Strictly consecutive update pairs; `cumulative` is a running sum over those pairs. **Not** re-windowing invariant (`max(0,-ΔTF)` is not additive across concatenation). No rollup code recomputes over coarser windows. | No (no invariance claimed, but non-additivity not warned) | No | Low-Med |
+| # | Area | Current behavior | Category | Severity |
+|---|---|---|---|---|
+| 1 | Completed activity (burn **and** recovery) | No completion filter. Burn `max(0,-ΔTF)·w` and recovery `ΔTF·w` both include completed activities. If the tool-of-record writes **TF=0** on completion → full prior float scored as phantom burn; **TF=null** → silently excluded. | Spec gap + **methodology decision** (yields non-reproducible output) | **High** |
+| 1b | Completed-activity handling is **inconsistent across LI indices** | FCBI (burn+recovery) and CDI include completed; RDI and BWI exclude completed. Verified in code. | Spec gap / methodology decision | Medium |
+| 2 | FCBI% denominator | `pct = None` when weighted float stock ≤ 0. Mathematically safe; no div-zero/NaN/inf. Bare `None` is not communicative. | Spec gap | Low-Med |
+| 3 | Weight timing | RF/weight sampled at the **earlier** file (u-1). This is an objective implementation fact; whether it is the *right* convention is a separate methodology question. | Spec gap + **methodology decision** | Medium |
+| 4 | RF provenance | Path-level min RF over the **top-10** float paths; min-float driving path (not CPM); own-TF fallback off-path; omit when undefined; negative RF allowed; independent of `scheduleiq.cpm` statusing. | **Disclosure / reproducibility** | Low |
+| 5 | Windowing | Consecutive pairs; `cumulative` is a running sum; no rollup recompute. Not re-windowing invariant, by construction. | Spec gap (disclosure) | Low-Med |
 
 ---
 
-## 1. Completed-activity handling (highest priority)
+## 1. Completed-activity handling (highest priority) — CONFIRMED
 
-**(a) Code path.** `compare()` (diff.py L145-150) populates
-`cs.float_deltas[code]` for **every** activity whose `total_float_hours` is
-non-null in *both* files — there is no `completed`/status guard. `_fcbi()`
-(li_indices.py L259-284) iterates those deltas, looks up the weight from the
-earlier kernel, and for `delta < 0` adds `(-delta)·w` to burn. Completed
-activities are neither excluded nor float-frozen; their TF is taken at face
-value from each file.
+**Implementation facts** (all verified in code):
+- `compare()` (diff.py L145-150) creates `cs.float_deltas[code]` for **any**
+  activity whose `total_float_hours` is non-null in *both* files — no
+  `completed`/status guard.
+- `_fcbi()` (li_indices.py L259-284) burns every negative delta using the
+  **earlier** schedule's weight; there is no completion filter.
+- **The recovery side has the same gap.** L264-266:
+  ```python
+  if delta > 0:                       # regained float, tracked separately
+      recov += delta * w
+  ```
+  Completed activities feed `fcbi_recovery` just as they feed `fcbi` (burn).
+  Any ruling that freezes/excludes completed activities on the burn side
+  **must apply identically to recovery**, or the two halves of the index will
+  disagree about which activities are in scope.
+- `TF=None` excludes an activity only as a side effect: no delta is generated.
+- The XER parser preserves the raw `total_float_hr_cnt` exactly as exported
+  (`xer.py` L272).
 
-**(b) Documented?** No. §9.1 and the matrix entry say "for each activity in
-both updates" without addressing completion.
+**Category.** Specification gap (behavior undocumented in §9.1 / matrix)
+compounded by a **methodology decision** that has never been made: the index
+produces a *data-dependent, non-reproducible* number — the same project scores
+differently depending only on whether the source tool nulls or zeroes the
+float of a completed activity. That is the sense in which it behaves like a
+defect, but the code is doing exactly what it was written to do; what is
+missing is a rule.
 
-**(c) Tested?** No.
+**Probe — an activity that burns 15d then completes in the window.** Earlier:
+A has TF=120h (15d). Later: A `COMPLETED`.
 
-**(d) Probe — an activity that burns 15d then completes in the window.**
-Earlier: A has TF=120h (15d). Later: A `COMPLETED`.
-
-| Later-file completed TF | FCBI+ registered | Burner |
+| Later-file completed TF | FCBI+ | Burner |
 |---|---|---|
-| `TF = 0` (some P6/XER exports) | **15.000** | A, consumption 15.0d, weight 1.0 |
-| `TF = null` (typical P6 export) | 0.000 | — (A excluded) |
+| `TF = 0` (some exporters) | **15.000** | A, consumption 15.0d, weight 1.0 |
+| `TF = null` (typical P6) | 0.000 | — (A excluded) |
 
-So an activity that finished **on schedule** is scored as having burned its
-entire remaining float, purely because the tool-of-record wrote a hard zero
-on completion. The result is **not reproducible across exporters** — the same
-project scores differently depending on whether the scheduling tool nulls or
-zeroes completed float. Our own XER parser stores whatever the file carries
-(`xer.py` L272, raw `total_float_hr_cnt`), so both regimes occur in practice.
+**Options / recommendation (methodology ruling).**
+- **A (recommend): freeze/exclude at completion** — when `later.completed`,
+  drop the activity from *both* burn and recovery. Cleanest, reproducible,
+  matches the "float story of in-flight work" intent, and aligns FCBI with
+  RDI/BWI (see 1b).
+- **B: net to the last-incomplete value** — count only the float actually
+  consumed while the activity was live; more faithful but requires carrying
+  the activity's TF from the update where it was last incomplete.
+- **C: normalize exporter behavior** — treat completed TF as null regardless
+  of stored value; removes phantom burn but discards any genuine
+  final-window consumption.
 
-**Options / recommendation.**
-- **A (recommend): freeze at completion.** When `later.completed`, drop the
-  activity from the burn/recovery sums (its float history ended; any u→u
-  change is a reporting artifact, not consumption). Cleanest and defensible;
-  matches the "float story of in-flight work" intent.
-- **B: net completion to the value at last-incomplete update.** More faithful
-  to "float actually consumed while the activity was live," but needs the
-  activity's TF from the update where it was last incomplete — more state.
-- **C: keep as-is but normalize exporter behavior** (treat completed TF as
-  null regardless of stored value). Removes the phantom burn but discards any
-  genuine last-window consumption.
-Recommend **A**, with the ruling recorded in §9.1 and the matrix formula.
-
-**Proposed tests.** (1) completed-with-TF=0 → zero burn from that activity;
-(2) completed-with-TF=null → unchanged (already zero); (3) an activity that
-legitimately burns while *incomplete* then completes next window → burn
-counted in the incomplete window only.
+Recommend **A**, applied symmetrically to burn and recovery, recorded in §9.1
+and the matrix formula.
 
 ---
 
-## 2. FCBI% denominator guard
+## 1b. Completed-activity handling is inconsistent across LI indices — NEW (verified)
 
-**(a) Code.** li_indices.py L286-294: `denom = Σ tf·w` over earlier activities
-with `tf > 0`; `pct = 100·burn/denom if denom > 0 else None`.
+The completed-activity question is not isolated to FCBI; the five indices
+sharing the criticality kernel disagree on it. Verified in code:
 
-**(b) Documented?** Partly — the matrix notes ">100% means erosion beyond
-available float." The **None** outcome (stock ≤ 0) is undocumented.
+| Index | Completed-activity treatment | Evidence |
+|---|---|---|
+| **FCBI burn** | **included** (no filter) | li_indices.py L259-284 |
+| **FCBI recovery** | **included** (no filter) | li_indices.py L264-266 |
+| **RDI** (required-pace side) | **excluded** | L462 `if a.is_loe_or_summary or a.completed: continue` |
+| **RDI** (demonstrated-pace side) | *only* completed (by design — it measures completed near-critical work) | L429 `if ... not a.completed: continue` |
+| **BWI** | **excluded** | L556 `if a.is_loe_or_summary or a.completed: continue` |
+| **CDI** | **included** (any RF-qualified code gets dwell) | L376-377 (no completion test) |
 
-**(c) Tested?** No (the one exact test has a positive stock).
+So FCBI and CDI count completed activities; RDI and BWI do not. This may be
+deliberate — FCBI/CDI are *retrospective* (what happened to float / where did
+criticality dwell, including on now-finished work), whereas RDI/BWI are
+*forward* (remaining work vs remaining time, where completed work is
+irrelevant by definition). If that is the intent, **state it** in §9.1/§9.5/
+§10.4 and the matrix so the asymmetry is defensible rather than accidental. If
+it is not intended, it becomes a governance decision to align them.
 
-**(d) Probe — all-negative-float network.** Two activities, both negative
-float in the earlier file, both driven further negative. Result:
-`FCBI+ = 40.000`, `fcbi_pct = None`. No divide-by-zero, no overflow. Note the
-burn is **amplified**: on a path with RF = −10d the kernel weight is
-`2^(10/5) = 4.0`, so 5d of further-negative movement on each activity yields
-40 weighted units. That is correct-by-design (over-critical work must not be
-under-counted) but means the **normalized** reading is unavailable precisely
-when the schedule is most distressed — a reader who keys on FCBI% (not FCBI+)
-sees a blank exactly at the worst moment.
-
-**Options / recommendation.** Keep the guard (safe). **Recommendation:** when
-`denom ≤ 0`, emit an explicit sentinel/label ("criticality-weighted float
-stock exhausted — normalized burn undefined; see absolute FCBI+") rather than
-a bare `None`, and surface FCBI+ prominently in that regime. Consider whether
-the stock should include |negative-float| capacity; that is a methodology
-ruling, not a bug.
-
-**Proposed tests.** (1) all-negative stock → `fcbi_pct is None`, `fcbi > 0`,
-no exception; (2) mixed stock with one positive-TF activity → finite pct;
-(3) empty deltas → `reason` set, pct None.
+**Category.** Specification gap / methodology decision. **Recommendation:**
+document the retrospective-vs-forward rationale for the split, and make the
+FCBI ruling in item 1 consciously consistent with it (freezing FCBI's
+completed activities would move FCBI *toward* the RDI/BWI convention and away
+from CDI — a choice worth making explicitly).
 
 ---
 
-## 3. Weight timing
+## 2. FCBI% denominator — CONFIRMED
 
-**(a) Code.** `_fcbi()` L254: `ek = kernels[id(earlier)]`; all weights come
-from `ek.weight`. Kernels are built per schedule in `run_li_indices()` L640.
-Weight (hence RF) is therefore sampled at the **start of the window (u-1)**.
+**Implementation fact.** li_indices.py L286-294: `denom = Σ tf·w` over earlier
+activities with `tf > 0`; `pct = 100·burn/denom if denom > 0 else None`.
+Verified: no divide-by-zero, no NaN, no overflow. Absolute FCBI+ is still
+emitted, and is *amplified* by negative-RF weights (a path at RF=−10d weighs
+`2^(10/5)=4.0`), so the all-negative probe returns `FCBI+ = 40.000`,
+`fcbi_pct = None`.
 
-**(b) Documented?** No — neither §9.1 nor the matrix states start-vs-end.
+**Category.** Specification gap. `None` is mathematically safe but **not
+communicative**: a reader keying on the percentage sees a blank precisely when
+the schedule is most distressed (float stock exhausted / at-or-past the
+driving path).
 
-**(c) Tested?** Not isolated. The exact 2-update test uses no logic, so RF =
-own float and the earlier value is used, but it does not *contrast* earlier vs
-later, so it would not catch a switch to end-of-window sampling.
+**Recommendation.** Keep the guard. When `denom ≤ 0`, emit an explicit
+labelled sentinel rather than a bare `None`, e.g.:
 
-**(d) Probe — A goes RF=20 → RF=0 while burning 20d** (path built so A is the
-path's min-float member, isolating the timing):
-- earlier kernel RF(A)=20 → weight `2^(-20/5)=0.0625` → contribution **1.25**
-- later kernel RF(A)=0 → weight 1.0 → contribution would be 20
-- **Observed contribution = 1.25, weight = 0.0625 → confirmed earlier (u-1).**
+> "Criticality-weighted float stock exhausted. Normalized FCBI undefined.
+> Interpret absolute FCBI+."
 
-**Consequence to rule on.** Start-of-window weighting means float burned on a
-chain that was *not yet* near-critical at u-1 is weighted **low**, even if the
-same burn is exactly what *made* it critical by u. An activity racing from 20d
-to 0d float contributes 1.25, not 20. Alternatives: end-of-window (u) weight
-(rewards "became critical"), or **min(RF_{u-1}, RF_u)** (counts a chain that
-was critical at either end — arguably the most defensible for a burn index).
-**Recommendation:** rule explicitly; my lean is `min` over the window, but
-this is a genuine methodology choice, not a defect. Whatever is chosen must be
-stated in §9.1 and the matrix formula.
-
-**Proposed tests.** The probe above as a fixed assertion under whichever rule
-is adopted; plus the symmetric case (RF 0→20 with burn) to pin the semantics.
+and surface FCBI+ prominently in that regime. Whether the stock should also
+count `|negative-float|` capacity is a separate methodology question, not a
+bug.
 
 ---
 
-## 4. RF provenance
+## 3. Weight timing — CONFIRMED
 
-**(a) How RF is computed.**
+**Implementation fact (objective).** `_fcbi()` L254: `ek = kernels[id(earlier)]`;
+all weights come from the earlier kernel. Kernels are built per schedule in
+`run_li_indices()` L640. Therefore:
+
+> **RF = RF(u-1)** — sampled at the start of the window.
+
+Isolation probe (path built so A is its path's min-float member, i.e. RF is
+A's own float, not inherited): A goes RF=20 → RF=0 while burning 20d →
+observed contribution **1.25**, weight **0.0625** = `2^(-20/5)`. Confirmed
+earlier-file sampling. (The naïve probe where A shares a path with a zero-float
+target gives weight 1.0 for a *different* reason — path-min inheritance, item
+4 — and must not be used to infer timing.)
+
+**This is not presented as an implementation defect.** RF(u-1) is a legitimate,
+self-consistent choice; it is simply undocumented (spec gap) and one of
+several defensible conventions (methodology decision).
+
+**Methodology recommendation (separate from the fact above).** For a *burn*
+index, **min(RF(u-1), RF(u))** is the strongest candidate: it weights float
+that was critical at *either* end of the interval, so a chain that raced from
+20d to 0d — i.e. the burn that *created* the criticality — is counted at full
+weight rather than the start-of-window 0.0625. Alternatives: end-of-window
+RF(u) (rewards "became critical" but ignores work already critical that
+de-criticalised), or the current RF(u-1). Recommend `min` over the window, but
+this is RJL's ruling; whichever is chosen must be stated in §9.1 and the
+matrix formula.
+
+---
+
+## 4. RF provenance — CONFIRMED (severity softened: disclosure / reproducibility)
+
+**Implementation facts** (all verified; none is an implementation defect):
 - `_build_kernel()` → `float_paths(schedule, n=KERNEL_PATHS_N=10,
-  band_days=None)`: enumerate the **top-10** distinct paths to the resolved
-  target, ranked by path relative float. Path 1 is the least-float chain from
-  `_walk()`; each subsequent path is the least-float feeder spliced onto an
-  existing path's tail (feeder activities then removed from the walkable set).
-- **Driving-path identification:** `_walk()` (L258-302) chooses the
-  predecessor with **minimum total float first**; ties within
-  `FLOAT_TIE_BAND_DAYS = 0.1` d are broken by date-satisfaction, then by code.
-  This is **tool-of-record float**, *not* an internal longest-path/CPM pass
-  (ADR-0004 spine) — so RF is **independent of `scheduleiq.cpm` and its
-  retained-logic vs progress-override statusing**; those modes never touch it.
-- **Path relative float** (`_finalize_path` L360-377): `rel_float_days =
-  min TF over activities *unique* to this path` (else the path min).
-- **RF(activity)** (`relative_float_map` L64-90): `min` over the paths
-  containing it of those paths' `rel_float_days`; **fallback** to the
-  activity's **own** total float when it is on no enumerated path; **omitted**
-  (weight undefined → excluded from FCBI) when it has neither.
-- **Negative float:** carried through; negative RF → weight > 1.
-- **Multiple driving paths / ties:** `_walk` deterministically commits to one
-  (min float, then satisfied, then code); co-driving paths are not all
-  retained in path 1, though feeders recover many as later ranks.
+  band_days=None)`: the **top-10** distinct paths to the resolved target,
+  ranked by path relative float; path 1 from `_walk()`, each subsequent path a
+  least-float feeder spliced onto an existing tail.
+- **Driving path** = minimum total float first (`_walk` L288-291; ties within
+  `FLOAT_TIE_BAND_DAYS=0.1`d broken by date-satisfaction then code). This reads
+  **tool-of-record float**, not an internal longest-path/CPM pass — so RF is
+  **independent of `scheduleiq.cpm` and its retained-logic vs progress-override
+  statusing**.
+- **Path relative float** = min TF over activities *unique* to the path.
+- **RF(activity)** = min over containing paths of their rel_float; **fallback**
+  to own TF when on no enumerated path; **omitted** when neither.
+- Negative RF carried through (weight > 1).
 
-**(b) Documented?** Partly. The matrix formula names "min relative float of
-containing float paths." Undocumented: the top-10 truncation, the own-float
-fallback, the omit-when-undefined rule, tie handling, and that an activity
-**inherits the path minimum** rather than its own float.
-
-**(c) Tested?** No dedicated RF-provenance test.
-
-**(d) Truncation / edge behavior observed.**
-- **Path-min inheritance.** Probe 1's A had 15d of its *own* float but, sharing
-  a path with the zero-float target, took **RF=0 → weight 1.0**. An activity's
-  weight is governed by the most-critical member of its path, not its own
-  float. Correct per the "criticality of the float" intent, but it means own
-  TF is often *not* what drives the weight — worth stating.
-- **Tie/short-path fallback flip.** When both candidate finishes tie and the
-  resolved target yields a <2-step walk, `float_paths()` returns `[]`; RF then
-  falls back to **each activity's own TF** (observed: two activities scored
-  RF=20 and RF=25 = their own floats, not a shared path min). So RF silently
-  switches basis (path-relative ↔ own-float) depending on target resolution
-  and enumeration success.
+**Category — disclosure / reproducibility, not correctness.** The published
+methodology does *not* promise exhaustive path enumeration, so the following
+are things to *state*, not bugs to fix:
+- **Path-min inheritance.** An activity's weight is governed by the most
+  critical member of its path, not its own float (probe 1's A: 15d own float,
+  weight 1.0 via a zero-float target). Correct per the "criticality of the
+  float" intent; worth documenting so a reader does not expect own-float.
 - **Top-10 truncation.** An activity reachable only on the 11th+ float path
   gets no path-derived RF and falls back to own TF; on wide networks this can
   understate near-criticality for deep alternates. `KERNEL_PATHS_N` is a fixed
-  constant (L42), not surfaced in the matrix.
+  constant (L42), not surfaced in output. **Reproducibility consideration**
+  (a re-runner needs to know N=10), not a defect.
+- **Tie/short-path basis switch.** When candidate finishes tie and the resolved
+  target yields a <2-step walk, `float_paths()` returns `[]` and RF falls back
+  to each activity's **own** TF (observed: RF=20 and RF=25 = own floats, not a
+  shared path min). So RF's *basis* (path-relative vs own-float) can depend on
+  target resolution. Again a reproducibility/disclosure point.
 
-**Options / recommendation.** (i) Document the full RF definition (path-min,
-fallbacks, truncation, ties) in §9.1 verbatim; (ii) consider raising or making
-`KERNEL_PATHS_N` configurable and disclosing it in output; (iii) decide
-whether the own-float fallback should use the activity's own TF or its
-best-available path RF when enumeration is truncated. All are methodology/
-disclosure rulings — no correctness bug, but the basis-switch (path vs own) is
-a reproducibility footgun on tied targets.
-
-**Proposed tests.** (1) activity on a zero-float path inherits RF=0; (2)
-activity off all top-10 paths falls back to own TF; (3) tied-target →
-own-float basis, asserted and disclosed; (4) negative-float path → weight >1.
-
----
-
-## 5. Windowing convention
-
-**(a) Code.** `_fcbi()` iterates `sa.changesets` (built as consecutive pairs
-in `trend/series.py` L115). `cumulative` (L301-302) is a running sum of
-per-window burns over those same pairs — additive **within** the chosen
-windowing. No code recomputes FCBI over coarser/merged windows; there is no
-rollup that would re-window.
-
-**(b) Documented?** §9.1 speaks of "per window" and a "cumulative FCBI curve";
-it does **not** claim re-windowing invariance (correctly), but neither does it
-**warn** that the index is windowing-dependent.
-
-**(c) Tested?** No.
-
-**(d) Probe — TF 10 → 0 → 10.**
-- per-window (u0→u1→u2): FCBI+ total = **10.000** (10 burned in window 1, 0 in
-  window 2 since regain is recovery, not negative burn)
-- endpoint-only (u0→u2): FCBI+ = **0.000** (net ΔTF = 0)
-- **Invariance holds? No** — 10 vs 0, exactly the peer-review counterexample.
-
-This is inherent to `max(0, -ΔTF)` (a total-variation-style measure) and is
-arguably the *desired* property (burn-then-regain is real churn, not a
-no-op). The risk is purely presentational: a reader must not compare an
-FCBI+ computed on monthly updates against one computed on quarterly windows.
-
-**Options / recommendation.** No code change needed. **Recommendation:** add a
-one-line disclosure to §9.1 and to the FCBI output (`interpretation` string):
-"FCBI+ is windowing-dependent and not additive across merged windows; compare
-only like-for-like update cadences." Optionally record the update cadence /
-window count in the result (already have `len(windows)`).
-
-**Proposed tests.** (1) the 10→0→10 counterexample asserting per-window=10,
-endpoint=0 (locks the intended non-additive semantics so a future "fix" that
-nets them can't land silently); (2) monotonic `cumulative` under pure burn.
+**Recommendation.** Document the full RF definition (path-min, fallbacks,
+truncation constant, tie behavior) verbatim in §9.1; consider surfacing
+`KERNEL_PATHS_N` in output and/or making it configurable. No correctness change
+is implied.
 
 ---
 
-## Existing test coverage of the five areas
+## 5. Windowing convention — CONFIRMED (leave as-is)
+
+**Implementation fact.** `_fcbi()` iterates `sa.changesets` (consecutive pairs,
+`trend/series.py` L115); `cumulative` (L301-302) is a running sum over those
+pairs. No code recomputes FCBI over coarser/merged windows.
+
+**Probe — TF 10 → 0 → 10.** per-window (u0→u1→u2) FCBI+ total = **10.000**;
+endpoint-only (u0→u2) = **0.000**. Re-windowing invariance does **not** hold —
+exactly the reviewer counterexample.
+
+**Category.** Specification gap (disclosure only). The non-additivity is
+inherent to `max(0, -ΔTF)` (a total-variation measure) and is the *desired*
+behavior — burn-then-regain is real churn, not a no-op. No code change.
+
+**Recommendation.** Add a one-line disclosure to §9.1 and the FCBI output
+`interpretation`: "FCBI+ is windowing-dependent and not additive across merged
+windows; compare only like-for-like update cadences." Record the window count
+(already available as `len(windows)`).
+
+---
+
+## Proposed tests (expanded per review)
+
+Add under the governance quartet once items 1 and 3 are ruled. Lock intended
+semantics so a future change cannot land silently.
+
+- **A — completed-activity invariance.** An activity completed in-window with
+  **TF=0** must produce **identical** FCBI (burn *and* recovery) to the same
+  activity with **TF=null**. Assert both cases equal the adopted rule's value
+  (0 under recommendation A). Add the mirror on the recovery side.
+- **B — weight timing.** Fixture where RF changes dramatically across the
+  window (RF 20→0 with 20d burn, and the symmetric 0→20). Assert the
+  contribution under whichever convention is adopted (e.g. under `min`:
+  full-weight 20; under RF(u-1): 1.25). This pins the choice numerically.
+- **C — RF basis switch.** A tied target-finish that makes `float_paths()==[]`
+  must be tested explicitly (assert RF falls back to own TF, and the disclosed
+  basis flag) so the path↔own-float switch cannot change silently.
+- **D — windowing non-additivity.** Keep the 10→0→10 test exactly: assert
+  per-window FCBI+ total = 10 and endpoint-only = 0, plus monotone
+  `cumulative` under pure burn.
+- **(cross-index)** optional: a completed near-critical activity asserted
+  *excluded* by RDI/BWI and *included* by CDI, so the 1b asymmetry is locked
+  to whatever is ruled.
+
+---
+
+## Minimum governance package (for the two number-changing items only)
+
+Per house governance (matrix + spec + fixture + test change together). No
+implementation is proposed here beyond what the rulings require.
+
+**Item 1 — completion handling (recommend: freeze/exclude, burn and recovery):**
+- **matrix.yaml (LI-01)** — add to `formula`/`description`: "activities
+  completed within a window are excluded from both burn and recovery."
+- **§9.1** — one sentence stating the freeze rule and its rationale
+  (retrospective float story of *in-flight* work; consistency with RDI/BWI per
+  1b).
+- **seeded fixture** — extend a demo update pair with one near-critical
+  activity that burns then completes, exported once with TF=0 and once with
+  TF=null (or a parametrized fixture) so the invariance is real data.
+- **regression test** — test A above.
+
+**Item 3 — weight timing (recommend: `min(RF(u-1), RF(u))`):**
+- **matrix.yaml (LI-01)** — `formula`: state the RF sampling convention
+  explicitly (`RF = min(RF_{u-1}, RF_u)` or the chosen rule).
+- **§9.1** — one sentence naming the convention and why (captures float
+  critical at either interval end).
+- **seeded fixture** — the RF 20→0 burn pair from test B.
+- **regression test** — test B above.
+
+Items 2, 4, 5 and 1b are **disclosure/specification** changes (wording in §9.1
++ matrix, plus the sentinel string for item 2 and the windowing note for item
+5); they need no fixture beyond the tests already listed and can ship in the
+same documentation pass once 1 and 3 are settled.
+
+---
+
+## Existing test coverage of these areas
 
 | Existing test | Covers |
 |---|---|
 | `test_kernel_weights_closed_form` | kernel formula only (0/5/10/−5 d) |
-| `test_fcbi_burns_across_series` | burn>0, cumulative monotone, recovery≥0, ranked burners — on the demo series |
+| `test_fcbi_burns_across_series` | burn>0, cumulative monotone, recovery≥0, ranked burners — demo series |
 | `test_fcbi_exact_two_update_pair` | one hand-computed pair (no logic → RF=own float, positive stock, no completed activity) |
 
-**Gaps:** items 1 (completed), 2 (zero/negative stock), 3 (weight timing
-isolation), 4 (RF path-min, fallback, truncation, ties), 5 (windowing
-non-additivity) are **entirely uncovered**. Proposed tests above, added under
-the governance quartet (matrix note + §9.1 wording + fixture + test) once RJL
-rules on items 1 and 3 (the two that change numbers).
+**Gaps:** items 1, 1b, 2, 3, 4, 5 are entirely uncovered. Proposed tests A-D
+(+ cross-index) close them.
 
 ## Recommended ruling priority
-1. **Item 1** (changes numbers, reproducibility across exporters) — rule first.
-2. **Item 3** (changes numbers, methodology substance) — rule next.
-3. Items 2, 4, 5 — primarily disclosure/documentation; adopt the wording and
-   tests once 1 and 3 are settled.
+1. **Item 1** (changes numbers; non-reproducible across exporters) — rule
+   first; make it consciously consistent with 1b.
+2. **Item 3** (changes numbers; methodology substance) — rule next.
+3. **Item 1b** — decide whether the retrospective/forward split is intended and
+   state it.
+4. Items 2, 4, 5 — disclosure/specification; adopt wording + the sentinel +
+   the windowing note once 1/3 are settled.

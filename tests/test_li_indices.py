@@ -464,3 +464,70 @@ def test_rdi_bwi_cdi_carry_disclosures():
     assert res.cdi.disclosures and any("retrospective" in d for d in res.cdi.disclosures)
     assert res.rdi.disclosures and any("LOE" in d for d in res.rdi.disclosures)
     assert res.bwi.disclosures and any("LOE" in d for d in res.bwi.disclosures)
+
+
+def test_pci_all_milestone_schedule_graceful():
+    """Closure lock: a schedule with no discrete executable work (milestones
+    only) has no genuine near-critical path.  The discrete-work kernel filter
+    must drop every path, PCI must degrade gracefully to None (not a spurious
+    concentration figure), and run_li_indices must not raise.
+
+    Non-vacuous: this fails if PCI ever returns a numeric path-concentration
+    value for an all-milestone schedule (e.g. treating a bare-milestone chain
+    as a real path)."""
+    from scheduleiq.ingest.model import ActivityType as AT
+    from scheduleiq.analytics.li_indices import _build_kernel
+    ms = _sched_with([("m0", "M0", 40.0, AT.START_MILESTONE, 0.0),
+                      ("m1", "M1", 40.0, AT.FINISH_MILESTONE, 0.0),
+                      ("m2", "M2", 0.0, AT.FINISH_MILESTONE, 0.0)],
+                     datetime(2025, 1, 1), datetime(2025, 4, 1),
+                     [("m0", "m1"), ("m1", "m2")])
+    k = _build_kernel(ms, 5.0)
+    assert k.paths == []                                  # no discrete-work path survives
+    res = run_li_indices(SeriesAnalysis(schedules=[ms]))  # must not raise
+    assert res.pci.per_update == [None]                   # graceful, NOT a number
+    assert not any(isinstance(v, (int, float)) for v in res.pci.per_update)
+    assert res.pci.reason                                 # a labelled reason is carried
+
+
+def test_pci_mixed_path_loe_residual_is_intentional():
+    """Closure lock for the DEFERRED mixed-path residual (ANALYTICS_PROPOSAL
+    §9.4 future-work).  v0.4.2 drops pure LOE/summary paths, but a *kept* mixed
+    path (real work + LOE) still has its relative float computed by the shared
+    float_paths() over ALL its members — so when the LOE is the lowest-float
+    member, it still drives the path rel_float AND the discrete member's RF.
+
+    This is intentional current behavior, not a regression: neutralizing the LOE
+    inside a mixed path would require an LI-specific kernel/path calc, never a
+    change to the shared float_paths() (tool-of-record driving-path analytics).
+
+    This test PINS the residual: it FAILS if a future change neutralizes the LOE
+    inside float_paths() (the mixed path's rel_float would then follow A's own
+    30d / the target's 5d instead of the LOE's 2d, and A's RF would no longer be
+    LOE-driven).  Read that failure as 'the deferred methodology item was
+    actioned — update this lock and §9.4', not as a broken test."""
+    from scheduleiq.ingest.model import ActivityType as AT, ConstraintType as CT
+    from scheduleiq.analytics.li_indices import _build_kernel
+    from scheduleiq.analytics.paths import float_paths
+    # A own float 30d -> LOE 2d -> T 5d ; competing real path X 50d -> T.
+    # LOE (2d) is the strictly-lowest-float member of the driving mixed path.
+    s = _sched_with([("a", "A", 240.0, AT.TASK, 80.0),
+                     ("loe", "LOE", 16.0, AT.LOE, 80.0),
+                     ("t", "T", 40.0, AT.FINISH_MILESTONE, 0.0),
+                     ("x", "X", 400.0, AT.TASK, 80.0)],
+                    datetime(2025, 1, 1), datetime(2025, 4, 1),
+                    [("a", "loe"), ("loe", "t"), ("x", "t")])
+    s.activities["t"].constraint = CT.MANDATORY_FINISH
+    a_own = s.activities["a"].total_float_days(s.cal_for(s.activities["a"]))
+    loe_own = s.activities["loe"].total_float_days(s.cal_for(s.activities["loe"]))
+    assert (a_own, loe_own) == (30.0, 2.0)                # LOE strictly below A
+    # shared float_paths() still routes the driving path through the LOE and
+    # takes its relative float FROM the LOE's lower float, not A's own.
+    driving = float_paths(s, n=10, band_days=None)[0]
+    assert [st.activity.code for st in driving.steps] == ["A", "LOE", "T"]
+    assert driving.rel_float_days == pytest.approx(loe_own)   # LOE-driven, == 2d
+    assert driving.rel_float_days < a_own                     # residual: not A's 30d
+    # and the discrete member A therefore inherits the LOE-driven RF.
+    rf = _build_kernel(s, 5.0).rf
+    assert rf["A"] == pytest.approx(loe_own)                  # A's RF == LOE's 2d
+    assert "LOE" not in rf                                    # LOE itself still excluded

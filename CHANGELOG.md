@@ -251,3 +251,23 @@ float consumption, recovery, or criticality-time.
 - NOT changed: BWI/RDI mathematics, kernel equations, RF calculations, the
   deferred B1 (fixed BWI denominator), R1 (actual-vs-planned demonstrated
   pace), R2 (P50 comparator).
+
+**Validation follow-up (no code / no number change).**  Independent peer review
+of the v0.4.2 validation added two regression locks and a disclosure, closing
+the remaining review items:
+
+- **All-milestone graceful lock** (`test_pci_all_milestone_schedule_graceful`):
+  a schedule with no discrete executable work drops every kernel path and PCI
+  degrades to `None` (never a spurious concentration figure) without raising.
+- **PCI mixed-path residual lock** (`test_pci_mixed_path_loe_residual_is_intentional`):
+  pins the *deferred* behavior that a kept mixed path (real work + LOE) still
+  takes its relative float from the shared `float_paths()`, so an LOE that is the
+  lowest-float member still drives that path's relative float and the discrete
+  member's RF.  The lock fails if the residual is ever removed inside
+  `float_paths()`, flagging it as an actioned methodology decision rather than a
+  regression.
+- **§9.4 disclosure** records the residual as an intentional deferred item and
+  that any full LOE neutralization inside mixed paths must be an LI-specific
+  kernel/path calculation, never a change to the shared `float_paths()` (which
+  feeds tool-of-record driving-path analytics outside the LI indices).
+- Validation report filed at `docs/audit/v0.4.2_validation_2026-07-09.md`.

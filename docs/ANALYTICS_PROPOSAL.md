@@ -494,6 +494,23 @@ split methods, not snapshot TIA) and where SRA effort matters.
 or bare-milestone chains — are excluded so summary activities cannot
 manufacture a spurious near-critical path and dilute the concentration.
 
+*Deferred residual (mixed paths).* The v0.4.2 exclusion drops paths that carry
+*no* discrete work; it does not change how a *kept* mixed path's relative float
+is computed.  A mixed path that contains real work **and** an LOE still takes
+its relative float from `float_paths()` over all of the path's members, so when
+the LOE is the lowest-float member it still drives that path's relative float —
+and therefore the relative-float basis (RF) of the discrete member on it.  This
+is a known, intentional limitation, not a defect: the LOE is removed as a
+weighted/dwelling *entity* (it earns no criticality weight and no dwell), but it
+is not neutralized inside the shared path-float arithmetic.  If the methodology
+owner later decides an LOE must be fully neutralized inside mixed paths, that
+must be implemented as an **LI-specific kernel/path calculation** layered on top
+of the enumerator — **do not modify the shared `float_paths()`**, which feeds the
+tool-of-record driving-path analytics used outside the LI indices and must not
+shift.  A regression test (`test_pci_mixed_path_loe_residual_is_intentional`)
+pins this behavior so the residual is recognized as a deferred methodology item
+rather than a regression.
+
 ### 9.5 RDI — Recovery Debt Index
 Cumulative gap between promised and demonstrated pace.  Each update implies
 a required future pace to hold its forecast finish (remaining driving/near-

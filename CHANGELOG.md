@@ -61,9 +61,21 @@ Metric (`analytics/li_record.py`):
   implemented fixed 12-month anchor.
 
 Governance quartet: matrix.yaml LI-02 row + §9.2 conventions block +
-seeded in-memory fixtures + 15 new regression tests (T1-T11, incl. the
+seeded in-memory fixtures + 21 new regression tests (T1-T11, incl. the
 audit's probe numbers pinned exactly); 3 existing KM/LHL tests updated to
 the ruled conventions; METRIC_MATRIX.md regenerated.
+
+**Post-implementation peer review (Codex):** one L8 conformance defect
+found and fixed — the completion-censor update was omitted from the on/off
+split's "any update while alive" classification range, so a tie that
+became driving in the same update both endpoints completed read off-path
+(narrative split/ratio only; the LI-02 score was unaffected).  Fixed by
+recording the completion update as the instance's last-alive update (it is
+present in that schedule), with a regression test.  The reviewer's second
+finding — an inconsistent new-test count in the release notes — is
+reconciled here (21, including the L8 regression test).  All other rulings
+verdicted faithful, including the two flagged judgment calls (L10 extended
+to unreached-with-unusable-dates; L9 validation over the used cohort only).
 
 ## 0.4.4 — 2026-07-09
 

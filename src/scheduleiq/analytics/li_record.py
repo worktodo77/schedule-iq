@@ -192,8 +192,9 @@ def _build_instances(scheds: list[Schedule]) -> list[_RelInstance]:
             elif key in comps[idx]:
                 inst.censored = True
                 inst.completed_at_idx = idx
-                instances.append(inst)
-                del open_inst[key]
+                inst.last_alive_idx = idx     # present (alive) at the completion
+                instances.append(inst)        # update — it counts for the on/off
+                del open_inst[key]            # split's "any update while alive"
                 retired.add(key)
             elif sig[key] != inst.lag_state:
                 inst.censored = False

@@ -399,6 +399,35 @@ def test_t7_on_path_membership_at_any_point_in_life():
     assert any("ANY update" in d for d in lhl.disclosures)
 
 
+def test_t7_completion_update_counts_for_split_classification():
+    """v0.4.5 peer-review finding 1: a tie that becomes driving in the SAME
+    update both its endpoints complete is alive (present) at that update, so
+    under the ruled "any update while alive" convention it is ON-path — even
+    though observation (censoring) stops there.  Pre-fix, the completion
+    update was omitted from the classification range and the tie read
+    off-path."""
+    def mk(a_tf, x_tf, dd, xc_done):
+        st = ActivityStatus.COMPLETED if xc_done else ActivityStatus.NOT_STARTED
+        A = _lhl_act("A", tf=a_tf, es=dd, ef=dd + timedelta(days=10))
+        B = _lhl_act("B", tf=a_tf, es=dd + timedelta(days=10), ef=dd + timedelta(days=20))
+        C = _lhl_act("C", tf=0.0, status=st, es=dd + timedelta(days=20),
+                     ef=dd + timedelta(days=30))
+        X = _lhl_act("X", tf=x_tf, status=st, es=dd, ef=dd + timedelta(days=20))
+        return _lhl_sched([A, B, C, X], [_lhl_rel("A", "B"), _lhl_rel("B", "C"),
+                                         _lhl_rel("X", "C")], dd)
+    # u0: A->B->C drives, X->C floaty/off.  u1: X and C complete AND X->C is
+    # now the min-float (driving) edge.  u2: unchanged.
+    scheds = [mk(0.0, 40.0, _dd(0), False), mk(40.0, 0.0, _dd(30), True),
+              mk(40.0, 0.0, _dd(60), True)]
+    insts = _build_instances(scheds)
+    xc = next(i for i in insts if i.key == ("X", "C", "FS"))
+    assert xc.censored is True and xc.completed_at_idx == 1
+    assert xc.last_alive_idx == 1                  # present at the completion update
+    lhl = logic_half_life(SeriesAnalysis(schedules=scheds), exclude_first_pair=False)
+    assert lhl.on_path is not None and lhl.on_path.n == 3   # X->C lands ON-path
+    assert (lhl.off_path.n if lhl.off_path else 0) == 0
+
+
 def test_t7_split_drop_counted_and_disclosed():
     # A tie born and dead entirely inside an update whose driving path is
     # unresolvable (no activity dates) cannot be classified: it must be

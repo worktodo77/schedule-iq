@@ -457,15 +457,49 @@ RDI/BWI/CDI audit — docs/audit/RDI_BWI_CDI_audit_2026-07-08.md).**
 
 ### 9.2 LHL — Logic Half-Life
 Survival analysis on relationships: each relationship ever observed has a
-lifespan (updates until deleted or modified); Kaplan-Meier over the series
-(censored at the last update) gives the **median survival of a logic tie, in
-months** — the schedule's planning stability in one number.  A 24-month
-programme whose logic half-life is 3 months is a rolling narrative, not a
-plan.  Report the on-driving-path vs off-path ratio: driving-path logic
-should be MORE stable than average; when it is less stable, the path itself
-is being re-engineered — exactly where a delay analyst should dig.  First
-update pair excluded by default (baseline development noise), stated in the
-methodology.
+lifespan (time until deleted or modified); Kaplan-Meier over the series
+(right-censored) gives the **median survival of a logic tie, in months** —
+the schedule's planning stability in one number.  A 24-month programme whose
+logic half-life is 3 months is a rolling narrative, not a plan.  Report the
+on-driving-path vs off-path ratio: driving-path logic should be MORE stable
+than average; when it is less stable, the path itself is being re-engineered
+— exactly where a delay analyst should dig.  First update pair excluded by
+default (baseline development noise), stated in the methodology.
+
+*Conventions (v0.4.5, per the LHL audit rulings —
+docs/audit/LHL_audit_2026-07-09.md):*
+- *Signature identity:* a tie is (pred code, succ code, link type), keyed by
+  activity **CODE** — consistent with the code-keyed logic-churn diff
+  (TRD-03) and robust to UID churn on re-export; the disclosed consequence
+  is that a re-coded activity reads as logic death + rebirth.  A **lag or
+  type change ends a lifespan** (that is the "modified" in the definition).
+  Parallel duplicate ties collapse into one signature (sorted lag tuple), so
+  deleting one duplicate reads as a modification of the merged signature.
+- *Population:* ties with an LOE/WBS-summary/hammock endpoint are
+  **excluded** (hammock re-tying is bookkeeping, not plan instability —
+  extends the family "real work only" ruling to LHL).  Ties are **censored
+  at the update both endpoints complete** (logic on finished work is
+  effectively immortal and would inflate survival; its live history still
+  counts); ties born on already-completed work are not observed.
+- *Units:* lifespans are measured **directly in calendar days between data
+  dates** (KM in days; months = days / 30.44) — no cadence-mean conversion,
+  so irregular update spacing cannot distort the median.  **Deaths are dated
+  at the midpoint** of the disappearance window (standard interval-censored
+  convention).  When data dates are missing or non-increasing, the months
+  basis is withheld (never a negative or silent-None figure) and LI-02 is
+  ungradeable.
+- *Not reached:* when the KM curve never crosses 0.5, the reported median is
+  the **longest observed follow-up** — a flagged lower bound ("at least N
+  months"), never the last event time.
+- *Split:* a tie is on-path if its edge was on the tool-of-record driving
+  path at **any update while alive** ("ever became driving"); ties whose
+  alive updates all lack a resolvable path are dropped from the split and
+  the count disclosed.  **Ratio > 1 = driving-path logic MORE stable**; the
+  ratio is suppressed unless both medians were actually reached.
+- *Exclusion mechanics:* "first pair excluded" = the baseline schedule is
+  dropped from the cohort (deaths in the baseline window unobserved;
+  baseline-born ties clock from update 1); it requires ≥ 3 schedules and the
+  effective state is reported alongside the request.
 
 ### 9.3 FRB — Forecast Reliability Band
 An empirical error bar on this scheduler's forecasts, from their own track

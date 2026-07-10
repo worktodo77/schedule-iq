@@ -105,9 +105,12 @@ caps Update & Record Discipline at 40 and the overall series grade at C+ —
 the as-built record is the foundation of everything else.
 
 Bespoke indices are normalized to 0–100 by published mappings (e.g., LHL:
-100 at half-life ≥ remaining duration, 70 at ≥ 6 months, 0 at ≤ 1 month;
-FRB: scored on band width relative to forecast horizon; each mapping lives
-in `scorecard.yaml` with its rationale line).
+100 at half-life ≥ 12 months, 70 at ≥ 6 months, 0 at ≤ 1 month — the fixed
+12-month anchor is the implemented rule; this document's original
+"remaining duration" anchor was superseded when the mapping was published,
+reconciled per the LHL audit (X1 item 8) so the two texts agree; FRB:
+scored on band width relative to forecast horizon; each mapping lives in
+`scorecard.yaml` with its rationale line).
 
 ## 5. The card itself
 

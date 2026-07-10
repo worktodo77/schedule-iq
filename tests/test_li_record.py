@@ -62,19 +62,26 @@ def test_kaplan_meier_known_median():
     assert km.median_reached is True
 
 
-def test_kaplan_meier_all_censored_has_no_median():
+def test_kaplan_meier_all_censored_reports_follow_up_bound():
+    # ruling L2 (v0.4.5): with no events the median is "not reached" and the
+    # reported value is the LONGEST OBSERVED FOLLOW-UP, not None — so a
+    # frozen network can still carry a quantified lower bound.
     km = kaplan_meier([(1.0, True), (2.0, True), (3.0, True)])
     assert km.n == 3
     assert km.censored == 3
-    assert km.median is None
+    assert km.median == 3.0
+    assert km.median_reached is False
 
 
-def test_kaplan_meier_median_not_reached_falls_back_to_last_event():
-    # 1 death among 20 far-outlived censored items: S never drops to <=0.5,
-    # so the fallback reports the (only) event time as a lower bound.
+def test_kaplan_meier_median_not_reached_reports_longest_follow_up():
+    # T2 / ruling L2 (v0.4.5): 1 death at t=0 among 19 censored at t=5 —
+    # S stays above 0.5 through the end of follow-up, so the median provably
+    # exceeds the longest observed lifespan.  Pre-0.4.5 this reported the
+    # last EVENT time (0.0 — the degenerate "at least zero" bound the audit
+    # found live on the demo card); the ruled bound is 5.0.
     lifespans = [(0.0, False)] + [(5.0, True)] * 19
     km = kaplan_meier(lifespans)
-    assert km.median == 0.0
+    assert km.median == 5.0
     assert km.median_reached is False
 
 
@@ -113,19 +120,23 @@ def test_lhl_overall_sample_and_censoring_are_consistent(series):
     """The fixture bug this test originally documented (removed_rels naming
     "PR_SS" for a PR_FS relationship, so the intended deletion never fired)
     was FIXED in the wave-A audit: A1050->A1070 is now genuinely deleted in
-    update2.  The series therefore carries exactly one observed relationship
-    death; with 27 of 28 instances censored the KM curve never crosses 0.5,
-    so the median is the flagged conservative lower bound
-    (median_reached=False).  KM arithmetic itself is proven by the synthetic
-    known-answer tests above.
+    update2.  The series carries exactly one observed relationship death
+    (both endpoints incomplete, so it survives the v0.4.5 population
+    rulings); with all other instances censored the KM curve never crosses
+    0.5, so the median is the flagged lower bound (median_reached=False) at
+    the longest observed follow-up — the 91-day u1->u2 window, ~3.0 months
+    (pre-0.4.5 this read "0.0 months").  KM arithmetic itself is proven by
+    the synthetic known-answer tests above.
     """
     lhl = logic_half_life(series)
     assert lhl.overall is not None, lhl.reason
     assert lhl.overall.n >= 1
     assert 0 <= lhl.overall.censored <= lhl.overall.n
     assert lhl.overall.censored == lhl.overall.n - 1  # exactly one death: A1050->A1070 deleted in update2
-    assert lhl.overall.median_updates is not None     # conservative lower bound reported
-    assert lhl.overall.median_reached is False        # 27/28 censored: curve never crosses 0.5
+    assert lhl.overall.median_reached is False        # curve never crosses 0.5
+    assert lhl.overall.median_days == pytest.approx(91.0)   # longest follow-up bound
+    assert lhl.overall.median_months == pytest.approx(91.0 / 30.44)
+    assert lhl.first_pair_excluded is True            # 3 schedules: exclusion applied
 
 
 def test_lhl_on_off_split_or_reason(series):
@@ -146,6 +157,360 @@ def test_lhl_degrades_gracefully_on_short_series():
     res = logic_half_life(SeriesAnalysis(schedules=[empty]))
     assert res.overall is None
     assert res.reason
+
+
+# ==========================================================================
+# LHL governance-quartet tests — audit rulings v0.4.5
+# (docs/audit/LHL_audit_2026-07-09.md, tests T1-T11)
+# ==========================================================================
+from datetime import datetime, timedelta                               # noqa: E402
+
+from scheduleiq.ingest.model import (Activity, ActivityStatus,          # noqa: E402
+                                     ActivityType, Relationship, RelType)
+from scheduleiq.analytics.li_record import _build_instances             # noqa: E402
+
+
+def _lhl_act(uid, code=None, tf=40.0, atype=ActivityType.TASK,
+             status=ActivityStatus.NOT_STARTED, es=None, ef=None):
+    return Activity(uid=uid, code=code or uid, name=code or uid, atype=atype,
+                    status=status, total_float_hours=tf,
+                    original_duration_hours=80.0, remaining_duration_hours=80.0,
+                    early_start=es, early_finish=ef)
+
+
+def _lhl_rel(p, s, rt=RelType.FS, lag=0.0):
+    return Relationship(pred_uid=p, succ_uid=s, rtype=rt, lag_hours=lag)
+
+
+def _lhl_sched(acts, rels, dd):
+    s = Schedule(project_id="SYN", data_date=dd)
+    s.activities = {a.uid: a for a in acts}
+    s.relationships = list(rels)
+    return s
+
+
+def _dd(k):
+    return datetime(2025, 1, 1, 8) if k == 0 else datetime(2025, 1, 1, 8) + timedelta(days=k)
+
+
+def _li02_override():
+    from scheduleiq.scorecard import load_spec
+    return load_spec()["series_curve_overrides"]["LI-02"]
+
+
+def _pair_series(n_ties, dies, dds):
+    """len(dds) schedules over ``n_ties`` disjoint ties; the first ``dies``
+    ties disappear at the LAST schedule."""
+    acts = lambda: [_lhl_act(f"N{i}") for i in range(2 * n_ties)]
+    all_rels = [_lhl_rel(f"N{2*i}", f"N{2*i+1}") for i in range(n_ties)]
+    out = []
+    for j, d in enumerate(dds):
+        rels = all_rels[dies:] if j == len(dds) - 1 else all_rels
+        out.append(_lhl_sched(acts(), rels, d))
+    return SeriesAnalysis(schedules=out)
+
+
+# ---- T1 (L1): scoring branches pinned ------------------------------------
+def test_t1_li02_frozen_network_scores_100():
+    from scheduleiq.scorecard import _li02_score
+    # 20 ties, zero churn, 2 schedules 30d apart: median not reached, 0%
+    # died -> 100 (pre-0.4.5 the inverted branch tested the CENSORED
+    # fraction and scored this 70).  Value = follow-up bound (~0.99 mo).
+    sa = _pair_series(20, dies=0, dds=[_dd(0), _dd(30)])
+    v, sc, offenders = _li02_score(sa, _li02_override())
+    assert sc == 100.0
+    assert offenders == 0
+    assert v == pytest.approx(30.0 / 30.44)
+
+
+def test_t1_li02_not_reached_with_real_churn_scores_70():
+    from scheduleiq.scorecard import _li02_score
+    # 3 of 20 die (15% >= 10%), median not reached -> 70-point placeholder.
+    sa = _pair_series(20, dies=3, dds=[_dd(0), _dd(30)])
+    v, sc, offenders = _li02_score(sa, _li02_override())
+    assert sc == 70.0
+    assert offenders == 3
+
+
+def test_t1_li02_reached_short_median_scores_zero():
+    from scheduleiq.scorecard import _li02_score
+    # all 20 die in a 15-day window: median reached at the 7.5d midpoint
+    # (~0.25 mo <= 1 mo) -> 0.
+    sa = _pair_series(20, dies=20, dds=[_dd(0), _dd(15)])
+    v, sc, offenders = _li02_score(sa, _li02_override())
+    assert sc == 0.0
+    assert offenders == 20
+    assert v == pytest.approx(7.5 / 30.44)
+
+
+# ---- T2 (L2): not-reached bound = longest follow-up (KM level is covered
+# by test_kaplan_meier_median_not_reached_reports_longest_follow_up) -------
+def test_t2_lhl_not_reached_reports_follow_up_not_event_time():
+    # 1 early death among many survivors: the metric-level bound must be
+    # the full follow-up (60d), not the death time.
+    sa = _pair_series(10, dies=0, dds=[_dd(0), _dd(30), _dd(60)])
+    # kill one tie in the FIRST window instead (present u0 only)
+    sa.schedules[1].relationships = sa.schedules[1].relationships[1:]
+    sa.schedules[2].relationships = sa.schedules[2].relationships[1:]
+    lhl = logic_half_life(sa, exclude_first_pair=False)
+    assert lhl.overall.median_reached is False
+    assert lhl.overall.median_days == pytest.approx(60.0)
+
+
+# ---- T3 (L3): code-keying retained, disclosed -----------------------------
+def test_t3_recode_reads_as_death_plus_rebirth():
+    """Ruling L3 (kept deliberately): signatures are keyed by activity CODE,
+    so a UID-stable re-code reads as one logic death + one rebirth.  This is
+    the CHOSEN convention — consistent with the code-keyed logic-churn diff
+    (compare.diff / TRD-03) and robust to UID churn on re-export — not an
+    accident; moving LHL to UID keying is a governance change that must be
+    made jointly with TRD-03.  The consequence is disclosed on every result.
+    """
+    def mk(code_a, dd):
+        acts = [_lhl_act("uidA", code_a), _lhl_act("uidB", "B"),
+                _lhl_act("uidC", "C"), _lhl_act("uidD", "D")]
+        return _lhl_sched(acts, [_lhl_rel("uidA", "uidB"), _lhl_rel("uidC", "uidD")], dd)
+    sa = SeriesAnalysis(schedules=[mk("A100", _dd(0)), mk("A100R", _dd(30)),
+                                   mk("A100R", _dd(60))])
+    lhl = logic_half_life(sa, exclude_first_pair=False)
+    assert lhl.overall.n == 3                      # (A100,B) dead + (A100R,B) + (C,D)
+    assert lhl.overall.n - lhl.overall.censored == 1   # exactly one (spurious) death
+    assert any("re-coded" in d for d in lhl.disclosures)
+
+
+# ---- T4 (L4a/L4b): population rulings -------------------------------------
+def test_t4_loe_attached_ties_excluded():
+    loe = _lhl_act("L1", atype=ActivityType.LOE)
+    def mk(dd):
+        acts = [_lhl_act("A"), _lhl_act("B"), _lhl_act("L1", atype=ActivityType.LOE)]
+        rels = [_lhl_rel("A", "B"), _lhl_rel("L1", "A"), _lhl_rel("A", "L1")]
+        return _lhl_sched(acts, rels, dd)
+    sa = SeriesAnalysis(schedules=[mk(_dd(0)), mk(_dd(30))])
+    lhl = logic_half_life(sa)
+    assert lhl.overall.n == 1                      # only the task-task tie observed
+
+
+def test_t4_completed_ties_no_longer_inflate_survival():
+    """Ruling L4b: pre-0.4.5, immortal completed-work ties inflated S(t) and
+    flipped a reached ~1-month median (score 0) to not-reached (score 70).
+    Now ties born on completed work are unobserved, so the two populations
+    score identically."""
+    from scheduleiq.scorecard import _li02_score
+    live = [_lhl_rel(f"L{2*i}", f"L{2*i+1}") for i in range(6)]
+    comp = [_lhl_rel(f"C{2*i}", f"C{2*i+1}") for i in range(6)]
+    def mk(rels, dd):
+        acts = [_lhl_act(f"L{i}") for i in range(12)] + \
+               [_lhl_act(f"C{i}", status=ActivityStatus.COMPLETED) for i in range(12)]
+        return _lhl_sched(acts, rels, dd)
+    def series(extra):
+        return SeriesAnalysis(schedules=[
+            mk(live + extra, _dd(0)), mk(live + extra, _dd(30)),
+            mk(live[:2] + extra, _dd(60))])
+    base = logic_half_life(series([]), exclude_first_pair=False)
+    with_comp = logic_half_life(series(comp), exclude_first_pair=False)
+    assert with_comp.overall.n == base.overall.n == 6
+    assert with_comp.overall.median_days == base.overall.median_days
+    assert with_comp.overall.median_reached == base.overall.median_reached
+    v1, s1, _ = _li02_score(series([]), _li02_override())
+    v2, s2, _ = _li02_score(series(comp), _li02_override())
+    assert s1 == s2
+
+
+def test_t4_tie_censored_at_completion_mid_life():
+    def mk(status, dd):
+        acts = [_lhl_act("A", status=status), _lhl_act("B", status=status)]
+        return _lhl_sched(acts, [_lhl_rel("A", "B")], dd)
+    scheds = [mk(ActivityStatus.IN_PROGRESS, _dd(0)),
+              mk(ActivityStatus.COMPLETED, _dd(30)),
+              mk(ActivityStatus.COMPLETED, _dd(60))]
+    insts = _build_instances(scheds)
+    assert len(insts) == 1
+    assert insts[0].censored is True
+    assert insts[0].completed_at_idx == 1          # observation stops at completion
+
+
+# ---- T5 (L5/L7): day basis + midpoint dating ------------------------------
+def test_t5_day_basis_immune_to_irregular_cadence():
+    """Rulings L5+L7: lifespans in calendar days between data dates, deaths
+    at the disappearance-window midpoint.  Two ties die during the second
+    window in both series; the reported median must be the actual midpoint
+    day count — 21 + 92/2 = 67d irregular, 92 + 92/2 = 138d uniform — not an
+    update count priced at the cadence mean (pre-0.4.5: 56.5d and 92d)."""
+    for i1, i2, expect in ((21, 92, 67.0), (92, 92, 138.0)):
+        sa = _pair_series(4, dies=2, dds=[_dd(0), _dd(i1), _dd(i1 + i2)])
+        lhl = logic_half_life(sa, exclude_first_pair=False)
+        assert lhl.overall.median_reached is True
+        assert lhl.overall.median_days == pytest.approx(expect)
+        assert lhl.overall.median_months == pytest.approx(expect / 30.44)
+
+
+# ---- T6 (L6): exclusion mechanics honestly reported -----------------------
+def test_t6_two_schedule_exclusion_not_applied_and_disclosed():
+    sa = _pair_series(4, dies=1, dds=[_dd(0), _dd(30)])
+    lhl = logic_half_life(sa, exclude_first_pair=True)
+    assert lhl.exclude_first_pair is True          # the request
+    assert lhl.first_pair_excluded is False        # what actually happened
+    assert any("NOT APPLIED" in d for d in lhl.disclosures)
+    assert lhl.overall.n - lhl.overall.censored == 1   # baseline-window death observed
+
+
+def test_t6_three_schedule_exclusion_drops_baseline_cohort():
+    # A->B dies in the BASELINE window; C->D and E->F survive throughout.
+    def mk(rels, dd):
+        acts = [_lhl_act(u) for u in "ABCDEF"]
+        return _lhl_sched(acts, rels, dd)
+    r_ab, r_cd, r_ef = _lhl_rel("A", "B"), _lhl_rel("C", "D"), _lhl_rel("E", "F")
+    scheds = [mk([r_ab, r_cd, r_ef], _dd(0)), mk([r_cd, r_ef], _dd(30)),
+              mk([r_cd, r_ef], _dd(60))]
+    ex = logic_half_life(SeriesAnalysis(schedules=scheds), exclude_first_pair=True)
+    assert ex.first_pair_excluded is True
+    assert ex.overall.n == 2                       # baseline-window death unobserved
+    assert ex.overall.censored == 2
+    assert ex.overall.median_days == pytest.approx(30.0)  # clock starts at update 1
+    inc = logic_half_life(SeriesAnalysis(schedules=scheds), exclude_first_pair=False)
+    assert inc.overall.n == 3                      # death visible when included
+
+
+# ---- T7 (L8): any-point-in-life split + silent-drop disclosure ------------
+def _flip_sched(a_tf, x_tf, dd, extra=()):
+    A = _lhl_act("A", tf=a_tf, es=dd, ef=dd + timedelta(days=10))
+    B = _lhl_act("B", tf=a_tf, es=dd + timedelta(days=10), ef=dd + timedelta(days=20))
+    C = _lhl_act("C", tf=0.0, es=dd + timedelta(days=20), ef=dd + timedelta(days=30))
+    X = _lhl_act("X", tf=x_tf, es=dd, ef=dd + timedelta(days=20))
+    D = _lhl_act("D", tf=400.0, es=dd, ef=dd + timedelta(days=5))
+    E = _lhl_act("E", tf=400.0, es=dd + timedelta(days=5), ef=dd + timedelta(days=10))
+    rels = [_lhl_rel("A", "B"), _lhl_rel("B", "C"), _lhl_rel("X", "C"),
+            _lhl_rel("D", "E")] + list(extra)
+    return _lhl_sched([A, B, C, X, D, E], rels, dd)
+
+
+def test_t7_on_path_membership_at_any_point_in_life():
+    """Ruling L8 ("ever became driving"): X->C is off the driving path at
+    birth (u0: A->B->C drives) but becomes THE driving edge at u1/u2 — it
+    must land in the on-path bucket.  D->E never drives: off-path."""
+    scheds = [_flip_sched(0.0, 40.0, _dd(0)), _flip_sched(40.0, 0.0, _dd(30)),
+              _flip_sched(40.0, 0.0, _dd(60))]
+    lhl = logic_half_life(SeriesAnalysis(schedules=scheds), exclude_first_pair=False)
+    assert lhl.on_path is not None and lhl.off_path is not None
+    assert lhl.on_path.n == 3                      # (A,B), (B,C) and the joiner (X,C)
+    assert lhl.off_path.n == 1                     # (D,E)
+    assert lhl.on_off_ratio is None                # both unreached -> suppressed (L2)
+    assert any("suppressed" in d for d in lhl.disclosures)
+    assert any("ANY update" in d for d in lhl.disclosures)
+
+
+def test_t7_split_drop_counted_and_disclosed():
+    # A tie born and dead entirely inside an update whose driving path is
+    # unresolvable (no activity dates) cannot be classified: it must be
+    # counted in split_dropped and disclosed, not silently vanish.
+    s0 = _flip_sched(0.0, 40.0, _dd(0))
+    dateless = [_lhl_act(u, tf=0.0) for u in "ABCX"] + \
+               [_lhl_act("D", tf=400.0), _lhl_act("E", tf=400.0),
+                _lhl_act("N1"), _lhl_act("N2")]
+    s1 = _lhl_sched(dateless, [_lhl_rel("A", "B"), _lhl_rel("B", "C"),
+                               _lhl_rel("X", "C"), _lhl_rel("D", "E"),
+                               _lhl_rel("N1", "N2")], _dd(30))
+    s2 = _flip_sched(40.0, 0.0, _dd(60))           # N1->N2 gone: died at u1 only
+    lhl = logic_half_life(SeriesAnalysis(schedules=[s0, s1, s2]),
+                          exclude_first_pair=False)
+    assert lhl.split_dropped == 1
+    split_n = (lhl.on_path.n if lhl.on_path else 0) + \
+              (lhl.off_path.n if lhl.off_path else 0)
+    assert split_n + lhl.split_dropped == lhl.overall.n
+    assert any("unclassifiable" in d for d in lhl.disclosures)
+
+
+# ---- T8 (X1): standing disclosures ----------------------------------------
+def test_t8_standing_disclosures_present(series):
+    lhl = logic_half_life(series)
+    text = "\n".join(lhl.disclosures)
+    for needle in ("Signature", "CODE", "duplicate",        # signature definition + X2
+                   "LOE", "both endpoints complete",        # population
+                   "calendar days", "midpoint", "30.44",    # units basis
+                   "censored"):                             # censoring stats
+        assert needle in text, f"missing disclosure: {needle}"
+    assert any("Baseline pair excluded" in d for d in lhl.disclosures)
+
+
+def test_t8_wiring_narrative_rounds_and_carries_censoring(series):
+    from scheduleiq.analytics.li_wiring import li_series_results
+    from scheduleiq.metrics.engine import load_matrix
+    r = next(x for x in li_series_results(series, load_matrix())
+             if x.check.id == "LI-02")
+    assert "censored" in r.narrative
+    assert "months" in r.narrative
+    # rounded presentation, not a repr'd float
+    assert ".989487" not in r.narrative
+    assert any(f.detail and "Signature" in f.detail for f in r.findings)
+
+
+# ---- T9 (L9): data-date validation ----------------------------------------
+def test_t9_out_of_order_dates_never_yield_negative_months():
+    from scheduleiq.scorecard import _li02_score
+    sa = _pair_series(4, dies=2, dds=[_dd(60), _dd(30), _dd(0)])
+    lhl = logic_half_life(sa, exclude_first_pair=False)
+    assert lhl.overall.median_months is None       # withheld, not negative
+    assert any("MONTHS BASIS UNAVAILABLE" in d for d in lhl.disclosures)
+    v, sc, _ = _li02_score(sa, _li02_override())
+    assert sc is None                              # ungradeable, not 0-via-negative
+
+
+def test_t9_same_day_and_missing_dates_are_ungradeable_not_silent():
+    from scheduleiq.scorecard import _li02_score
+    for dds in ([_dd(0), _dd(0), _dd(0)], [None, None, None]):
+        sa = _pair_series(4, dies=2, dds=dds)
+        lhl = logic_half_life(sa, exclude_first_pair=False)
+        assert lhl.overall.median_months is None
+        assert any("MONTHS BASIS UNAVAILABLE" in d for d in lhl.disclosures)
+        v, sc, _ = _li02_score(sa, _li02_override())
+        assert sc is None
+
+
+def test_t9_missing_date_outside_used_cohort_still_grades():
+    # baseline data date missing, but the default exclusion drops the
+    # baseline from the cohort: the used schedules carry valid dates, so the
+    # day basis stands (the sane partial degradation, pinned).
+    sa = _pair_series(4, dies=1, dds=[None, _dd(30), _dd(60)])
+    lhl = logic_half_life(sa, exclude_first_pair=True)
+    assert lhl.first_pair_excluded is True
+    assert lhl.overall.median_months is not None
+
+
+# ---- T10 (L10): reached median with no usable dates is NEVER censoring-scored
+def test_t10_reached_median_without_dates_is_ungradeable_not_100():
+    """The audit's L1xL10 compound: 19/20 ties die (maximal churn); with no
+    data dates the pre-0.4.5 code skipped the reached curve, fell into the
+    censoring branch, and the inverted test awarded 100.  Ruled: ungradeable
+    (None), never any branch score."""
+    from scheduleiq.scorecard import _li02_score
+    sa = _pair_series(20, dies=19, dds=[None, None])
+    lhl = logic_half_life(sa, exclude_first_pair=False)
+    assert lhl.overall.median_reached is True      # reached in update units
+    assert lhl.overall.median_months is None       # but no months basis
+    v, sc, offenders = _li02_score(sa, _li02_override())
+    assert sc is None and v is None
+    assert offenders == 19
+    # identical churn WITH dates scores at the bottom of the curve
+    sa2 = _pair_series(20, dies=19, dds=[_dd(0), _dd(15)])
+    v2, sc2, _ = _li02_score(sa2, _li02_override())
+    assert sc2 == 0.0
+
+
+# ---- T11 (X2): duplicate-tie lag-tuple semantics ---------------------------
+def test_t11_duplicate_tie_deletion_reads_as_merged_modification():
+    def mk(lags, dd):
+        acts = [_lhl_act("A"), _lhl_act("B")]
+        return _lhl_sched(acts, [_lhl_rel("A", "B", lag=x) for x in lags], dd)
+    scheds = [mk([0.0, 16.0], _dd(0)), mk([0.0], _dd(30)), mk([0.0], _dd(60))]
+    insts = _build_instances(scheds)
+    assert len(insts) == 2
+    died = [i for i in insts if not i.censored]
+    assert len(died) == 1 and died[0].lag_state == (0.0, 16.0)
+    survivor = [i for i in insts if i.censored][0]
+    assert survivor.lag_state == (0.0,) and survivor.birth_idx == 1
+    # and the collapse is disclosed on the metric result
+    lhl = logic_half_life(SeriesAnalysis(schedules=scheds), exclude_first_pair=False)
+    assert any("duplicate" in d for d in lhl.disclosures)
 
 
 # ==========================================================================

@@ -66,14 +66,24 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
     v = None
     narrative = lhl.reason or ""
     if lhl.overall:
-        v = lhl.overall.median_months
-        flag = "" if lhl.overall.median_reached else \
-            "  (median not reached — conservative lower bound; " \
-            f"{lhl.overall.censored}/{lhl.overall.n} relationships censored)"
-        narrative = (f"Logic half-life {v if v is not None else '—'} months{flag}."
-                     + (f"  On/off-path ratio {lhl.on_off_ratio:.2f}."
-                        if lhl.on_off_ratio is not None else ""))
-    r = _res(by_id, "LI-02", v, narrative, [])
+        ov = lhl.overall
+        v = ov.median_months
+        cens = f"{ov.censored}/{ov.n} ties censored ({100.0 * ov.censored / ov.n:.0f}%)"
+        if v is None:
+            narrative = (f"Logic half-life ungradeable: months basis unavailable "
+                         f"({cens}).")
+        elif ov.median_reached:
+            narrative = f"Logic half-life {v:.1f} months ({cens})."
+        else:
+            narrative = (f"Logic half-life not reached within follow-up — at "
+                         f"least {v:.1f} months ({cens}).")
+        if lhl.on_off_ratio is not None:
+            narrative += (f"  On/off-path ratio {lhl.on_off_ratio:.2f} "
+                          "(>1 = driving-path logic more stable).")
+        if lhl.reason:
+            narrative += f"  {lhl.reason}"
+    finds = [Finding("disclosure", "", d) for d in lhl.disclosures]
+    r = _res(by_id, "LI-02", v, narrative, finds)
     if r:
         out.append(r)
 

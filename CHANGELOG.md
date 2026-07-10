@@ -3,6 +3,68 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## 0.4.5 — 2026-07-10
+
+**LHL (LI-02) audit resolution — all 12 rulings implemented.**  Ruled by the
+methodology owner on the LHL audit (docs/audit/LHL_audit_2026-07-09.md; two
+independent Codex review passes).  LI-02 is a SCORED series member (weight 2,
+Plan Stability): several rulings move its number.  Pinned demo letters hold
+(series D; LI-02 member 70 → 100 on the demo, overall 52.2 → 53.3).
+
+Scoring (`scorecard.py::_li02_score`, scorecard.yaml LI-02):
+- **L1 (defect):** the not-reached branch now grants 100 when fewer than 10%
+  of relationships DIED (`deaths_pass_threshold`, renamed from
+  `censored_pass_threshold`).  Pre-0.4.5 it tested the CENSORED fraction —
+  inverted vs its own published rationale; a frozen network scored 70 and
+  the 100 branch was unreachable.
+- **L10 (defect):** a reached median whose months basis is unavailable is
+  now UNGRADEABLE (None), never scored by the censoring branch.  Pre-0.4.5,
+  a 19/20-die series with missing data dates scored 100 via the L1
+  inversion (0 ↔ 100 swing on data-date availability alone).
+- Offender count = relationship deaths; not-reached scores report the
+  longest-follow-up lower bound as the value.
+
+Metric (`analytics/li_record.py`):
+- **L5+L7:** lifespans are now measured in CALENDAR DAYS between data dates
+  (KM in days; months = days/30.44), deaths dated at the MIDPOINT of the
+  disappearance window.  Replaces update-count KM × series-mean cadence
+  (irregular cadence distorted the median) and last-seen death dating
+  (which made every first-window deletion a 0-duration event).
+- **L2:** when the KM curve never crosses 0.5, the reported median is the
+  LONGEST OBSERVED FOLLOW-UP (flagged lower bound), not the last event time
+  (the demo card read "0.0 months"; it now reads "at least 3.0 months").
+  The on/off ratio is suppressed unless both medians were actually reached.
+- **L4a:** ties with an LOE/WBS-summary/hammock endpoint are excluded
+  (extends the v0.4.2 family "real work only" ruling to LHL).
+- **L4b:** ties are censored at the update both endpoints complete; ties
+  born on already-completed work are not observed (immortal completed-work
+  logic no longer inflates survival — pre-0.4.5 it flipped a reached
+  ~1-month median, score 0, to not-reached, score 70).
+- **L9:** missing or non-increasing data dates withhold the months basis
+  with an explicit disclosure (never a negative or silent-None figure;
+  pre-0.4.5 an out-of-order series reported −0.99 months).
+- **L8:** on/off-path membership is now "on the driving path at ANY update
+  while alive" (was: at birth only); unclassifiable instances are counted
+  (`split_dropped`) and disclosed; ratio direction (>1 = driving logic more
+  stable) documented in output.
+- **L3 (affirmed):** signatures stay CODE-keyed — consistent with the
+  code-keyed logic diff (TRD-03) and robust to UID churn on re-export — with
+  the re-code consequence disclosed.
+- **L6:** `LHLResult.first_pair_excluded` now reports the EFFECTIVE
+  exclusion state (with exactly 2 schedules the requested exclusion cannot
+  apply and is disclosed); dead guard branch removed.
+- **X1+X2:** standing `disclosures` list on every result (signature
+  definition incl. the duplicate-tie collapse, population rules, units
+  basis, censoring %, split basis); wiring narrative rounds the months,
+  always carries censoring, and preserves partial-split reasons;
+  REPORT_CARD_DESIGN's "remaining duration" anchor reconciled to the
+  implemented fixed 12-month anchor.
+
+Governance quartet: matrix.yaml LI-02 row + §9.2 conventions block +
+seeded in-memory fixtures + 15 new regression tests (T1-T11, incl. the
+audit's probe numbers pinned exactly); 3 existing KM/LHL tests updated to
+the ruled conventions; METRIC_MATRIX.md regenerated.
+
 ## 0.4.4 — 2026-07-09
 
 **R1 resolution (LI-05, RDI): planned-scope basis affirmed; companion

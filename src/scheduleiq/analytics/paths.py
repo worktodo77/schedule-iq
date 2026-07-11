@@ -457,6 +457,105 @@ def float_paths(schedule: Schedule, target_uid: Optional[str] = None,
     return out
 
 
+def iter_float_paths(schedule: Schedule, target_uid: Optional[str] = None,
+                     tolerance_hours: float = DEFAULT_TOL_HOURS):
+    """Lazy, best-first generator equivalent to :func:`float_paths` — yields the
+    SAME ``FloatPath`` objects in the SAME order, one at a time, but without a
+    fixed ``n`` and without recomputing every candidate feeder every round
+    (FCBI v0.5.4; closes W3-05).
+
+    A priority queue holds candidate feeders keyed by ``(native rel float, pred
+    code)`` — the same key ``float_paths`` minimizes.  Because a feeder's ``_walk``
+    depends on the growing ``used`` set, a popped candidate is REVALIDATED against
+    the current ``used`` (lazy deletion): if its predecessor is now used it is
+    discarded, and if its recomputed rel rose it is re-pushed — so the sequence of
+    yielded rels is exactly ``float_paths``'s.  After yielding a path, only the
+    NEW path's attachment points add candidates, so each feeder is walked O(1)
+    amortized rather than O(paths) times.
+
+    Yields ``(native_rel_float_days, FloatPath)``; the caller stops when the next
+    frontier (the value it would receive next, available via ``.send`` semantics
+    or by peeking the yielded rel) is immaterial.  The rel of each yielded path is
+    a proven lower bound on every path not yet yielded (best-first order)."""
+    import heapq
+    if not schedule.relationships:
+        return
+    target = _resolve_target(schedule, target_uid)
+    if target is None:
+        return
+    all_uids = {a.uid for a in schedule.activities.values()}
+    steps1 = _walk(schedule, target, tolerance_hours, allowed=all_uids)
+    if len(steps1) < 2:
+        return
+    used = {s.activity.uid for s in steps1}
+    fp1 = _finalize_path(schedule, 1, steps1, used.copy())
+    yield fp1.rel_float_days, fp1
+    rank = 1
+
+    heap: list = []                          # (rel, pred_code, seq) + payload dict
+    counter = [0]
+    path_by_id: dict = {id(steps1): steps1}
+
+    def _feeder_for(p, X, r):
+        """Feeder from unused predecessor ``p`` into attachment ``X`` under the
+        CURRENT ``used`` set; ``(rel_native, feeder_steps)`` or ``None``."""
+        allowed = (all_uids - used) | {p.uid}
+        feeder = _walk(schedule, p, tolerance_hours, allowed=allowed)
+        if not feeder:
+            return None
+        sat = _is_satisfied(schedule, p, X, r, tolerance_hours)
+        feeder[-1] = _make_step(schedule, p, r, sat)
+        fvals = [s.total_float_days for s in feeder if s.total_float_days is not None]
+        return (min(fvals) if fvals else 1e9), feeder
+
+    def _push(rel, pcode, idx, path_id, pred_uid, x_uid):
+        counter[0] += 1
+        heapq.heappush(heap, (rel, pcode, counter[0],
+                              {"idx": idx, "path_id": path_id,
+                               "pred_uid": pred_uid, "x_uid": x_uid}))
+
+    def _add_candidates(path_steps):
+        for idx, step in enumerate(path_steps):
+            X = step.activity
+            for r in schedule.predecessors_of(X.uid):
+                p = schedule.activities.get(r.pred_uid)
+                if p is None or p.uid in used:
+                    continue
+                fr = _feeder_for(p, X, r)
+                if fr is not None:
+                    _push(fr[0], p.code, idx, id(path_steps), p.uid, X.uid)
+
+    _add_candidates(steps1)
+
+    while heap:
+        rel, pcode, _c, pay = heapq.heappop(heap)
+        pred_uid, x_uid = pay["pred_uid"], pay["x_uid"]
+        if pred_uid in used:                          # stale: predecessor consumed
+            continue
+        path_steps = path_by_id.get(pay["path_id"])
+        X = schedule.activities.get(x_uid)
+        p = schedule.activities.get(pred_uid)
+        rel_obj = next((rr for rr in schedule.predecessors_of(x_uid)
+                        if rr.pred_uid == pred_uid), None)
+        if path_steps is None or X is None or p is None or rel_obj is None:
+            continue
+        fr = _feeder_for(p, X, rel_obj)               # REVALIDATE under current used
+        if fr is None:
+            continue
+        cur_rel, feeder = fr
+        if cur_rel > rel + 1e-9:                       # rose since pushed: re-push
+            _push(cur_rel, pcode, pay["idx"], pay["path_id"], pred_uid, x_uid)
+            continue
+        feeder_uids = {s.activity.uid for s in feeder}
+        full = feeder + path_steps[pay["idx"]:]
+        rank += 1
+        fp = _finalize_path(schedule, rank, full, feeder_uids)
+        used |= feeder_uids
+        path_by_id[id(full)] = full
+        _add_candidates(full)                          # only the NEW path adds work
+        yield fp.rel_float_days, fp
+
+
 # --------------------------------------------------------------------------
 # P2: proximity profile
 # --------------------------------------------------------------------------

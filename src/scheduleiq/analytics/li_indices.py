@@ -35,19 +35,18 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from ..ingest.model import ActivityType, ConstraintType, Schedule
-from .paths import FloatPath, float_paths
+from .paths import FloatPath, float_paths, iter_float_paths
 
 DEFAULT_LAMBDA = 5.0          # half-weight constant, working days
 DEFAULT_BAND_DAYS = 10.0      # near-critical band, working days
 KERNEL_PATHS_N = 10           # top-N float paths feeding the criticality kernel
 
 # -- FCBI v0.5 (LI-01 governed revision) constants --------------------------
-FCBI_PATHS_N0 = 25            # initial enumeration depth for the adaptive
-                              # convergence rule (ruling O7.3): enumerate deeper
-                              # until the MAX POSSIBLE OMITTED WEIGHT < tolerance,
-                              # doubling each round.  Activities on no enumerated
-                              # path are DISTANCE UNRESOLVED -> quarantine (O6),
-                              # never assigned their own total float (O1).
+                              # (v0.5.4) enumeration is now a lazy best-first
+                              # generator (iter_float_paths) with a PROVEN frontier
+                              # bound — no doubling/restart.  Activities on no
+                              # enumerated path are DISTANCE UNRESOLVED -> quarantine
+                              # (O6), never assigned their own total float (O1).
 FCBI_CONV_TOL = 0.01         # convergence tolerance on the omitted weight: once
                               # the next (unenumerated) path could contribute at
                               # most this weight, deeper paths are immaterial.
@@ -435,69 +434,72 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
     repriced by native calendar length (ruling O7.7; REV-02) and cannot be set
     by a level-of-effort node (ruling O7.3; REV-07).
 
-    **Adaptive convergence (ruling O7.3; REV-08; W3-01/02/09).**  The distance
-    basis is **λ-INDEPENDENT** — convergence is judged at the fixed reference
-    ``FCBI_CONV_LAMBDA`` (not the weighting λ), so the resolved set, B, and the
-    eligible population do not move with the weighting λ (W3-02).  Depth starts at
-    ``FCBI_PATHS_N0`` and DOUBLES until the *max possible omitted weight* — the
-    weight the next path could carry, bounded at ``FCBI_CONV_LAMBDA`` — falls
-    below ``FCBI_CONV_TOL``, or the network is exhausted (confirmed by a one-path
-    lookahead, W3-09), or ``FCBI_PATHS_MAX`` is hit (then ``depth_capped``, the
-    window is provisional).  The omitted-weight bound assumes ``float_paths``
-    emits paths in non-decreasing branch margin; a **monotonicity guard** marks
-    the run provisional if that is ever violated (defends the W3-01 concern
-    without relying on an unproven property).  NOTE: the driving-path *identity*
-    still follows the tool-of-record native-calendar float walk (ADR-0004)."""
+    **Best-first enumeration with a PROVEN frontier bound (ruling O7.3; v0.5.4;
+    closes W3-01/05).**  Paths are drawn from :func:`iter_float_paths` — a lazy
+    best-first generator that computes each path once (no restart, no per-round
+    re-scan).  The distance basis is **λ-INDEPENDENT** (convergence judged at the
+    fixed reference ``FCBI_CONV_LAMBDA``, not the weighting λ — W3-02).  Early
+    stopping uses a **sound** frontier that needs NO monotonicity assumption: the
+    minimum reference float over discrete activities that can reach m and are not
+    yet on any yielded path is a valid LOWER BOUND on the margin of every path not
+    yet enumerated (a future path's branch margin is a min over unused members).
+    Once that frontier's weight (at ``FCBI_CONV_LAMBDA``) < ``FCBI_CONV_TOL``,
+    every omitted path is immaterial — a proven bound, not the wave-3 assumption.
+    Enumeration exhaustion resolves everything; ``FCBI_PATHS_MAX`` caps the
+    pathological wide near-critical fan (then ``depth_capped``, provisional).
+    NOTE: the driving-path *identity* still follows the tool-of-record
+    native-calendar float walk (ADR-0004)."""
     if target_code is None:
         return {}, None, None, False
-    n = FCBI_PATHS_N0
-    paths: list = []
-    converged = False
-    monotonic = True
-    prev_max = float("-inf")
-    while True:
-        # one extra slot so an exact-ceiling network is seen as exhausted (W3-09)
-        paths = float_paths(schedule, target_uid=target_code, n=n + 1, band_days=None)
-        exhausted = len(paths) <= n
-        paths = paths[:n]
-        if not paths:
-            return {}, None, None, False
-        driving_h0 = paths[0].rel_float_hours
-        seq = [p.rel_float_hours for p in paths if p.rel_float_hours is not None]
-        if seq:                                    # monotonicity guard (W3-01)
-            cur_max = seq[0]
-            for m in seq:
-                if m < cur_max - 1e-9:
-                    monotonic = False
-                cur_max = max(cur_max, m)
-        margins = seq
-        if exhausted or driving_h0 is None or not margins:
-            converged = True                      # network exhausted / nothing to refine
-            break
-        d_next = max(0.0, (max(margins) - driving_h0) / REFERENCE_HPD)
-        if kernel_weight(d_next, FCBI_CONV_LAMBDA) < FCBI_CONV_TOL:
-            converged = True                      # omitted weight immaterial (O7.3)
-            break
-        if n >= FCBI_PATHS_MAX:
-            break                                 # ceiling hit WITHOUT converging
-        n = min(n * 2, FCBI_PATHS_MAX)
-    depth_capped = (not converged) or (not monotonic)
-    driving_h = paths[0].rel_float_hours
-    if driving_h is None:                          # no discrete member on the spine
-        return {}, None, None, depth_capped
-    driving_margin = driving_h / REFERENCE_HPD
-    dist: dict[str, float] = {}
-    for p in paths:
-        if p.rel_float_hours is None:              # branch has no discrete float
-            continue
-        d = max(0.0, p.rel_float_hours / REFERENCE_HPD - driving_margin)
-        for a in p.activities:
-            if a.is_loe_or_summary:
-                continue
-            cur = dist.get(a.code)
-            if cur is None or d < cur:
-                dist[a.code] = d
     tgt = _find_by_code(schedule, target_code)
+    # activities that can REACH m (forward), for the sound frontier lower bound
+    reachable: set[str] = set()
+    if tgt is not None:
+        stack = [tgt.uid]
+        seen = {tgt.uid}
+        while stack:
+            cur = stack.pop()
+            for r in schedule.predecessors_of(cur):
+                if r.pred_uid not in seen:
+                    seen.add(r.pred_uid)
+                    stack.append(r.pred_uid)
+        reachable = seen
+    dist: dict[str, float] = {}
+    driving_margin: Optional[float] = None
+    used_uids: set[str] = set()
+    n_paths = 0
+    depth_capped = False
+    for _native_rel, fp in iter_float_paths(schedule, target_uid=target_code):
+        n_paths += 1
+        if driving_margin is None:
+            if fp.rel_float_hours is None:         # driving spine has no discrete float
+                return {}, None, None, False
+            driving_margin = fp.rel_float_hours / REFERENCE_HPD
+        if fp.rel_float_hours is not None:
+            d = max(0.0, fp.rel_float_hours / REFERENCE_HPD - driving_margin)
+            for a in fp.activities:
+                used_uids.add(a.uid)
+                if a.is_loe_or_summary:
+                    continue
+                cur = dist.get(a.code)
+                if cur is None or d < cur:
+                    dist[a.code] = d
+        # PROVEN frontier: min reference float over reachable, discrete, UNUSED
+        # activities bounds every not-yet-enumerated path's margin from below
+        rem = [act.total_float_hours
+               for uid in reachable - used_uids
+               if (act := schedule.activities.get(uid)) is not None
+               and not act.is_loe_or_summary and act.total_float_hours is not None]
+        if not rem:
+            break                                  # everything material resolved
+        frontier_d = max(0.0, min(rem) / REFERENCE_HPD - driving_margin)
+        if kernel_weight(frontier_d, FCBI_CONV_LAMBDA) < FCBI_CONV_TOL:
+            break                                   # all omitted paths immaterial (proven)
+        if n_paths > FCBI_PATHS_MAX:                # a (MAX+1)-th path exists -> cap
+            depth_capped = True
+            break
+    if driving_margin is None:                      # no paths at all
+        return {}, None, None, False
     tmargin = (tgt.total_float_hours / REFERENCE_HPD
                if tgt is not None and tgt.total_float_hours is not None else None)
     return dist, driving_margin, tmargin, depth_capped

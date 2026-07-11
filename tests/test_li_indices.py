@@ -684,7 +684,6 @@ def test_fcbi_w3_06_and_09_depth_cap(monkeypatch):
     network with exactly MAX paths is NOT falsely capped (one-path lookahead)."""
     import scheduleiq.analytics.li_indices as li
     monkeypatch.setattr(li, "FCBI_PATHS_MAX", 5)
-    monkeypatch.setattr(li, "FCBI_PATHS_N0", 5)
     # W3-06: later endpoint has many equal feeders -> caps
     e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], [Relationship("A", "T")])
     lacts = [_a("A", "A", -2.0)] + [_a(f"G{i}", f"G{i}", 3.0 + i * 0.1) for i in range(8)] + [_m("T", "T", 0.0)]
@@ -731,6 +730,69 @@ def test_fcbi_w3_10_milestone_margin_signed():
     l = _s(datetime(2025, 2, 6, 8), [_m("MM", "MM", 10.0), _m("T", "T", 0.0)], r)   # +5 recovery
     mm = _fcbi([e, l], target="T").windows[0].milestone_margin_changes[0]
     assert mm.signed_delta_days == pytest.approx(5.0)
+
+
+# ---- v0.5.4 best-first enumerator (W3-05) --------------------------------
+def test_iter_float_paths_matches_float_paths_distances():
+    """v0.5.4: the lazy best-first generator produces the SAME per-activity
+    distance map as the reference float_paths enumeration (tail-ordering ties do
+    not affect distances)."""
+    from scheduleiq.analytics.paths import iter_float_paths
+    from scheduleiq.analytics.li_indices import _target_distance, REFERENCE_HPD
+    rels = [Relationship("D", "T"), Relationship("X", "D"), Relationship("P", "X"),
+            Relationship("Q", "X"), Relationship("R", "Q")] + \
+           [Relationship(f"F{i}", "D") for i in range(10)]
+    acts = [_m("T", "T", 0.0), _a("D", "D", 0.0), _a("X", "X", 50.0), _a("P", "P", 40.0),
+            _a("Q", "Q", 41.0), _a("R", "R", 5.0)] + \
+           [_a(f"F{i}", f"F{i}", 60.0 + i) for i in range(10)]
+    s = _s(datetime(2025, 1, 6, 8), acts, rels)
+    ref = _target_distance(s, "T")[0]
+    # rebuild the distance map from the iterator (all paths)
+    paths = [fp for _rel, fp in iter_float_paths(s, target_uid="T")]
+    dm = paths[0].rel_float_hours / REFERENCE_HPD
+    itd = {}
+    for p in paths:
+        if p.rel_float_hours is None:
+            continue
+        d = max(0.0, p.rel_float_hours / REFERENCE_HPD - dm)
+        for a in p.activities:
+            if not a.is_loe_or_summary:
+                itd[a.code] = min(itd.get(a.code, 1e9), d)
+    assert {k: round(v, 9) for k, v in ref.items()} == \
+           {k: round(itd[k], 9) for k in ref}
+
+
+def test_fcbi_proven_frontier_bound():
+    """v0.5.4: the sound frontier (min unused reachable float) stops enumeration
+    once every omitted path is immaterial — a far-off-critical fan resolves only
+    the driver (frontier weight < tol), and every omitted activity's weight is
+    provably below tolerance."""
+    from scheduleiq.analytics.li_indices import (_target_distance, kernel_weight,
+                                                 FCBI_CONV_LAMBDA, FCBI_CONV_TOL,
+                                                 REFERENCE_HPD)
+    acts = [_m("T", "T", 0.0), _a("D", "D", 0.0)] + \
+           [_a(f"F{i}", f"F{i}", 80.0 + i) for i in range(200)]     # far off critical
+    rels = [Relationship("D", "T")] + [Relationship(f"F{i}", "T") for i in range(200)]
+    s = _s(datetime(2025, 1, 6, 8), acts, rels)
+    dist, dmarg, _tm, capped = _target_distance(s, "T")
+    assert not capped and len(dist) < 10                 # frontier stopped early
+    omitted = [f"F{i}" for i in range(200) if f"F{i}" not in dist]
+    assert omitted
+    worst = min(s.activities[c].total_float_hours for c in omitted)  # least-float omitted
+    wd = max(0.0, worst / REFERENCE_HPD - dmarg)
+    assert kernel_weight(wd, FCBI_CONV_LAMBDA) < FCBI_CONV_TOL       # bound HOLDS
+
+
+def test_fcbi_wide_fan_completes_and_caps(monkeypatch):
+    """v0.5.4: a genuinely wide near-critical fan completes (no O(n^2) restart
+    hang) and, beyond the cap, is disclosed provisional."""
+    import scheduleiq.analytics.li_indices as li
+    monkeypatch.setattr(li, "FCBI_PATHS_MAX", 20)
+    acts = [_m("T", "T", 0.0), _a("D", "D", 0.0)] + \
+           [_a(f"F{i}", f"F{i}", 1.0 + i * 0.01) for i in range(40)]   # all near-critical
+    rels = [Relationship("D", "T")] + [Relationship(f"F{i}", "T") for i in range(40)]
+    dist, _dm, _tm, capped = li._target_distance(_s(datetime(2025, 1, 6, 8), acts, rels), "T")
+    assert capped and len(dist) > 15                     # completed + provisional
 
 
 def test_fcbi_retired_surfaces_absent():

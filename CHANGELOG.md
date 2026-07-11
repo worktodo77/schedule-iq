@@ -3,6 +3,26 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-01 FCBI v0.5.4 (best-first enumerator; W3-05 closed)
+
+- **`paths.iter_float_paths`** — a lazy, best-first generator equivalent to
+  `float_paths` (identical paths, same order) but computed one at a time with a
+  priority queue and lazy revalidation: no restart, no per-round re-scan.
+  `float_paths` itself is unchanged (PCI/CDI still use it).
+- **`_target_distance` rebuilt** on the generator with a **PROVEN** frontier
+  early-stop: the minimum reference float over discrete activities that can reach
+  m and are not yet on a yielded path lower-bounds every not-yet-enumerated
+  path's margin, so enumeration stops once that frontier's weight (at the fixed
+  `FCBI_CONV_LAMBDA`) is below `FCBI_CONV_TOL` — no monotonicity assumption
+  (closes the wave-3 W3-01 concern) and no doubling/restart (closes W3-05).
+- **Performance:** near-critical fan ×100 3.0 s → 0.06 s, ×150 10.2 s → 0.16 s;
+  a far-off-critical 500-fan stops after ~1 path (0.005 s); the 513-fan that
+  previously did not complete now finishes (3.6 s) and is correctly capped
+  provisional.  Distance maps verified identical to `float_paths` across 120
+  random networks + mixed calendars, and all existing FCBI numbers are unchanged.
+
+Suite: 202 passed, 1 skipped.
+
 ## Unreleased — LI-01 FCBI v0.5.3 (wave-3 peer-review hardening)
 
 Third independent peer review (GPT-5.6 Pro) raised 10 findings on the v0.5.2

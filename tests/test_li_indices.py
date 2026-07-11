@@ -19,7 +19,7 @@ sys.path.insert(0, SRC)
 from scheduleiq.ingest import load_many                             # noqa: E402
 from scheduleiq.ingest.model import (Activity, ActivityStatus,      # noqa: E402
                                      ActivityType, ConstraintType,
-                                     Relationship, Schedule)
+                                     RelType, Relationship, Schedule)
 from scheduleiq.compare.diff import compare                         # noqa: E402
 from scheduleiq.trend.series import SeriesAnalysis, analyze_series  # noqa: E402
 from scheduleiq.analytics.li_indices import (                       # noqa: E402
@@ -732,34 +732,302 @@ def test_fcbi_w3_10_milestone_margin_signed():
     assert mm.signed_delta_days == pytest.approx(5.0)
 
 
-# ---- v0.5.4 best-first enumerator (W3-05) --------------------------------
-def test_iter_float_paths_matches_float_paths_distances():
-    """v0.5.4: the lazy best-first generator produces the SAME per-activity
-    distance map as the reference float_paths enumeration (tail-ordering ties do
-    not affect distances)."""
-    from scheduleiq.analytics.paths import iter_float_paths
-    from scheduleiq.analytics.li_indices import _target_distance, REFERENCE_HPD
-    rels = [Relationship("D", "T"), Relationship("X", "D"), Relationship("P", "X"),
-            Relationship("Q", "X"), Relationship("R", "Q")] + \
-           [Relationship(f"F{i}", "D") for i in range(10)]
-    acts = [_m("T", "T", 0.0), _a("D", "D", 0.0), _a("X", "X", 50.0), _a("P", "P", 40.0),
-            _a("Q", "Q", 41.0), _a("R", "R", 5.0)] + \
-           [_a(f"F{i}", f"F{i}", 60.0 + i) for i in range(10)]
-    s = _s(datetime(2025, 1, 6, 8), acts, rels)
-    ref = _target_distance(s, "T")[0]
-    # rebuild the distance map from the iterator (all paths)
-    paths = [fp for _rel, fp in iter_float_paths(s, target_uid="T")]
-    dm = paths[0].rel_float_hours / REFERENCE_HPD
-    itd = {}
-    for p in paths:
-        if p.rel_float_hours is None:
+# ---- wave-4 review (W4-01..07): EXACT float_paths equivalence ------------
+import random as _random                                             # noqa: E402
+from scheduleiq.analytics.paths import (float_paths as _float_paths,  # noqa: E402
+                                        iter_float_paths as _iter_fp)
+from scheduleiq.analytics.li_indices import (                        # noqa: E402
+    _target_distance as _tdist, kernel_weight as _kw,
+    FCBI_CONV_LAMBDA as _CL, FCBI_CONV_TOL as _CT, REFERENCE_HPD as _HPD)
+
+
+def _ah(uid, tf_hours, atype=ActivityType.TASK):
+    """Activity keyed by RAW total-float HOURS (the wave-4 counterexamples give
+    floats in hours, not whole days)."""
+    return _a(uid, uid, None, tf_hours=tf_hours, atype=atype, od=10, rem=10)
+
+
+def _oracle_distance(schedule, target, big_n=256):
+    """Per-activity distance built DIRECTLY from the reference float_paths (NEVER
+    the iterator) — the non-circular oracle for the O1 definition."""
+    paths = _float_paths(schedule, target_uid=target, n=big_n, band_days=None)
+    if not paths or paths[0].rel_float_hours is None:
+        return {}, paths
+    dm = paths[0].rel_float_hours / _HPD
+    dist = {}
+    for fp in paths:
+        if fp.rel_float_hours is None:
             continue
-        d = max(0.0, p.rel_float_hours / REFERENCE_HPD - dm)
-        for a in p.activities:
+        d = max(0.0, fp.rel_float_hours / _HPD - dm)
+        for a in fp.activities:
             if not a.is_loe_or_summary:
-                itd[a.code] = min(itd.get(a.code, 1e9), d)
-    assert {k: round(v, 9) for k, v in ref.items()} == \
-           {k: round(itd[k], 9) for k in ref}
+                dist[a.code] = min(dist.get(a.code, 1e18), d)
+    return dist, paths
+
+
+def _random_dag(rng, n_acts):
+    """A seeded random single-sink DAG: tasks A0..A{n-1} in topological order with
+    FS edges only to a later task or the terminal milestone T (so every task
+    reaches T), random working-day floats spanning negative to large."""
+    acts = [_m("T", "T", 0.0)]
+    codes = [f"A{i}" for i in range(n_acts)]
+    for c in codes:
+        acts.append(_a(c, c, round(rng.uniform(-15.0, 110.0), 2)))
+    rels = []
+    for i, c in enumerate(codes):
+        later = codes[i + 1:] + ["T"]
+        tgts = {rng.choice(later)}                       # >=1 successor -> reaches T
+        for _ in range(rng.randint(0, 2)):
+            tgts.add(rng.choice(later))
+        rels += [Relationship(c, t) for t in tgts]
+    return _s(datetime(2025, 1, 6, 8), acts, rels)
+
+
+def _assert_iter_equals_float_paths(schedule, target, big_n=128):
+    """iter_float_paths yields EXACTLY float_paths's paths, in the same order (same
+    node sequence AND branch margin) — the core wave-4 fix (W4-01)."""
+    ref = _float_paths(schedule, target_uid=target, n=big_n, band_days=None)
+    got = []
+    for _rel, fp, _used in _iter_fp(schedule, target_uid=target):
+        got.append(fp)
+        if len(got) >= big_n:
+            break
+    assert [p.codes for p in got] == [p.codes for p in ref]
+    assert [p.rel_float_hours for p in got] == [p.rel_float_hours for p in ref]
+
+
+def test_w4_01_counterexample_regression():
+    """W4-01 (BLOCKER, permanent regression): the all-8h FS-only network on which
+    the withdrawn best-first iterator spliced A18 onto the wrong tail (iter path 3
+    = A04,A13,A14,A18,A20,T vs reference A04,A13,A14,T), giving A18 a spurious
+    d=0.  The reference-equivalent iterator restores d(A18)=29.625."""
+    acts = [_ah("A04", -72.0), _ah("A05", 254.0), _ah("A11", 183.0), _ah("A13", 640.0),
+            _ah("A14", 320.0), _ah("A18", 237.0), _ah("A20", 8.0),
+            _ah("T", 0.0, atype=ActivityType.FINISH_MILESTONE)]
+    rels = [Relationship("A14", "T"), Relationship("A13", "A14"),
+            Relationship("A18", "A20"), Relationship("A14", "A18"),
+            Relationship("A04", "A13"), Relationship("A05", "A18"),
+            Relationship("A20", "T"), Relationship("A11", "A20"),
+            Relationship("A05", "A14")]
+    s = _s(datetime(2025, 1, 6, 8), acts, rels)
+    _assert_iter_equals_float_paths(s, "T")
+    dist, _dm, _tm, capped = _tdist(s, "T")
+    oracle, _p = _oracle_distance(s, "T")
+    assert dist.get("A18") == pytest.approx(29.625)      # was a spurious 0.0
+    for code, d in dist.items():
+        assert oracle[code] == pytest.approx(d, abs=1e-9)
+
+
+def test_w4_02_counterexample_regression():
+    """W4-02 (BLOCKER, permanent regression): mixed relationship types + lags on
+    which the withdrawn iterator split float_paths's A01,A06,A08,A16,T into two
+    wrong paths, OMITTED A06/A08 entirely, and the frontier (read off the corrupted
+    used set) falsely declared convergence while dropping material weight
+    (0.354).  A06/A08 must now resolve at d=15 days (weight 0.354)."""
+    acts = [_ah("A01", -40.0), _ah("A02", 344.0), _ah("A03", 598.0), _ah("A05", 619.0),
+            _ah("A06", 600.0), _ah("A08", 495.0), _ah("A16", -160.0), _ah("A17", 665.0),
+            _ah("A18", -80.0), _ah("A19", 631.0),
+            _ah("T", 0.0, atype=ActivityType.FINISH_MILESTONE)]
+    rels = [Relationship("A01", "A06", RelType.SF, -8.0),
+            Relationship("A16", "T", RelType.FF),
+            Relationship("A18", "T", RelType.SF),
+            Relationship("A03", "A17", RelType.FS, -8.0),
+            Relationship("A19", "T", RelType.FS, -8.0),
+            Relationship("A06", "A08", RelType.SF),
+            Relationship("A08", "A16", RelType.SF, -8.0),
+            Relationship("A05", "A19", RelType.SS),
+            Relationship("A01", "A05", RelType.FS, -8.0),
+            Relationship("A17", "A18", RelType.SS),
+            Relationship("A03", "A08", RelType.FF, -8.0),
+            Relationship("A02", "A16", RelType.SF)]
+    s = _s(datetime(2025, 1, 6, 8), acts, rels)
+    _assert_iter_equals_float_paths(s, "T")
+    dist, _dm, _tm, capped = _tdist(s, "T")
+    oracle, _p = _oracle_distance(s, "T")
+    assert dist.get("A06") == pytest.approx(15.0)        # was OMITTED (None)
+    assert dist.get("A08") == pytest.approx(15.0)        # was OMITTED (None)
+    assert _kw(15.0, _CL) == pytest.approx(0.353553, abs=1e-6)   # material weight
+    for code, d in dist.items():
+        assert oracle[code] == pytest.approx(d, abs=1e-9)
+
+
+def test_w4_03_iter_exactly_matches_float_paths_corpus():
+    """W4-03: on a 500-DAG seeded corpus the streaming iterator is byte-for-byte
+    the reference float_paths enumeration (same paths, same order, same margins),
+    and _target_distance agrees with the float_paths-built oracle on every RESOLVED
+    activity — the equivalence check no longer reads the reference from the iterator
+    itself (the wave-4 circularity, W4-03)."""
+    rng = _random.Random(20260711)
+    for _ in range(500):
+        s = _random_dag(rng, rng.randint(4, 10))
+        _assert_iter_equals_float_paths(s, "T")
+        oracle, _paths = _oracle_distance(s, "T")
+        dist, _dm, _tm, _capped = _tdist(s, "T")
+        for code, d in dist.items():                     # resolved == oracle exactly
+            assert oracle.get(code) == pytest.approx(d, abs=1e-9), (code, d)
+
+
+def test_w4_03_frontier_no_material_omission_corpus():
+    """W4-03/W4-02: across the seeded corpus, whenever a run is NOT depth-capped,
+    every activity the frontier OMITTED is provably immaterial (reference weight at
+    the convergence λ is below tolerance) — zero material-weight omissions, the
+    property the wave-4 W4-02 counterexample violated."""
+    rng = _random.Random(770077)
+    material_omissions = 0
+    for _ in range(500):
+        s = _random_dag(rng, rng.randint(4, 11))
+        oracle, _paths = _oracle_distance(s, "T")
+        dist, _dm, _tm, capped = _tdist(s, "T")
+        if capped:
+            continue
+        for code, d_ref in oracle.items():
+            if code not in dist and _kw(d_ref, _CL) >= _CT:
+                material_omissions += 1
+    assert material_omissions == 0
+
+
+def test_w4_03_determinism():
+    """W4-03: the enumerator and the distance map are deterministic — identical
+    across repeated calls on the same network (no set-iteration nondeterminism in
+    the yielded order or the resolved distances)."""
+    rng = _random.Random(4242)
+    for _ in range(40):
+        s = _random_dag(rng, rng.randint(5, 10))
+        seq1 = [fp.codes for _r, fp, _u in _iter_fp(s, target_uid="T")]
+        seq2 = [fp.codes for _r, fp, _u in _iter_fp(s, target_uid="T")]
+        assert seq1 == seq2
+        assert _tdist(s, "T")[0] == _tdist(s, "T")[0]
+
+
+def test_w4_04_sensitivity_reuses_one_basis(monkeypatch):
+    """W4-04: fcbi_lambda_sensitivity enumerates the λ-independent distance basis
+    ONCE per schedule and reuses it across every λ — a 2-schedule set does 2
+    enumerations, not 2·(len(lams)+1).  Counts _target_distance invocations."""
+    import scheduleiq.analytics.li_indices as li
+    calls = {"n": 0}
+    orig = li._target_distance
+    monkeypatch.setattr(li, "_target_distance",
+                        lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1) or orig(*a, **k)))
+    r = [Relationship("D", "T"), Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("D", "D", 0.0), _a("A", "A", 3.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("D", "D", 0.0), _a("A", "A", -2.0), _m("T", "T", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    calls["n"] = 0
+    ls = fcbi_lambda_sensitivity(sa, target="T", lams=(3.0, 5.0, 10.0))
+    assert calls["n"] == 2                               # one per schedule, reused across λ
+    assert [p.status for p in ls.points] == ["ok", "ok", "ok"]
+
+
+def test_w4_05_lambda_range_enforced():
+    """W4-05: the FCBI weighting λ must be finite and in (0, FCBI_CONV_LAMBDA].
+    λ ≤ 10 is evaluated; λ > 10 (or non-finite/≤0) is NOT EVALUATED / a failed
+    sensitivity point, because the convergence basis is proven only for λ ≤ the
+    reference λ."""
+    r = [Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+
+    def evaluated(lam):
+        return run_li_indices(sa, fcbi_target="T", lam=lam).fcbi.reason == ""
+    # <= reference λ (10): evaluated
+    assert evaluated(3.0) and evaluated(5.0) and evaluated(10.0)
+    # > reference λ: NOT EVALUATED (basis proven only for λ <= reference)
+    assert not evaluated(10.000001) and not evaluated(20.0)
+    # non-positive / non-finite: invalid (never raises — REV-12)
+    assert not evaluated(-1.0) and not evaluated(0.0)
+    assert not evaluated(float("nan")) and not evaluated(float("inf"))
+    # sensitivity: only the out-of-range points fail
+    ls = fcbi_lambda_sensitivity(sa, target="T", lams=(3.0, 10.0, 10.000001, 20.0))
+    st = {p.lam: p.status for p in ls.points}
+    assert st[3.0] == "ok" and st[10.0] == "ok"
+    assert st[10.000001] == "failed" and st[20.0] == "failed"
+
+
+def test_w4_06_target_terminal_in_every_update():
+    """W4-06: an explicit target must be a terminal finish milestone in EVERY
+    update (all, not any); a target present/terminal in only one update is a
+    target-basis discontinuity — NOT EVALUATED."""
+    from scheduleiq.analytics.li_indices import _resolve_fcbi_target
+    r = [Relationship("A", "T")]
+    with_t = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 3.0), _m("T", "T", 0.0)], r)
+    # T is a terminal finish milestone in BOTH updates -> resolves
+    both = [with_t, _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], r)]
+    assert _resolve_fcbi_target(both, "T") == ("T", False)
+    # T present in only ONE update -> all() fails -> NOT EVALUATED
+    no_t = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0)], [])
+    assert _resolve_fcbi_target([with_t, no_t], "T") == (None, False)
+    assert "NOT EVALUATED" in _fcbi([with_t, no_t], target="T").reason
+
+
+def test_w4_06_auto_resolution_intersects_series():
+    """W4-06: auto-resolution takes the INTERSECTION of terminal finish-milestone
+    codes across updates; a milestone terminal in only some updates is excluded,
+    and a series with no common terminal milestone is NOT EVALUATED."""
+    from scheduleiq.analytics.li_indices import _resolve_fcbi_target
+    rA = [Relationship("A", "M1")]
+    rB = [Relationship("A", "M2")]
+    # update 1 terminal = {M1}, update 2 terminal = {M2}: empty intersection
+    s1 = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 3.0), _m("M1", "M1", 0.0)], rA)
+    s2 = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("M2", "M2", 0.0)], rB)
+    assert _resolve_fcbi_target([s1, s2], None) == (None, True)   # discontinuity
+    # both updates share terminal T -> auto-resolves T (provisional)
+    rT = [Relationship("A", "T")]
+    t1 = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 3.0), _m("T", "T", 0.0)], rT)
+    t2 = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], rT)
+    assert _resolve_fcbi_target([t1, t2], None) == ("T", True)
+
+
+def test_w4_07_exact_cap_boundary(monkeypatch):
+    """W4-07: depth_capped fires EXACTLY when a (MAX+1)-th path exists — MAX-1 and
+    MAX paths are not capped, MAX+1 and MAX+2 are (one-path generator lookahead,
+    cap before the exhaustion shortcut)."""
+    import scheduleiq.analytics.li_indices as li
+    monkeypatch.setattr(li, "FCBI_PATHS_MAX", 4)
+
+    def fan(k):
+        # D (driver) + k near-critical feeders => exactly (k+1) float paths to T,
+        # none immaterial (so the frontier never short-circuits the cap test)
+        acts = [_m("T", "T", 0.0), _a("D", "D", 0.0)] + \
+               [_a(f"F{i}", f"F{i}", 0.5 + i * 0.01) for i in range(k)]
+        rels = [Relationship("D", "T")] + [Relationship(f"F{i}", "T") for i in range(k)]
+        return _s(datetime(2025, 1, 6, 8), acts, rels)
+
+    # total paths = k+1; MAX=4
+    assert not li._target_distance(fan(2), "T")[3]       # 3 paths  (MAX-1) -> not capped
+    assert not li._target_distance(fan(3), "T")[3]       # 4 paths  (MAX)   -> not capped
+    assert li._target_distance(fan(4), "T")[3]           # 5 paths  (MAX+1) -> capped
+    assert li._target_distance(fan(5), "T")[3]           # 6 paths  (MAX+2) -> capped
+
+
+def test_w4_reachability_edge_cases():
+    """Reachability edge cases for the frontier: a target with no predecessors
+    yields an empty basis (no paths); an activity that cannot reach m is excluded
+    from the frontier's reachable set (never bounds enumeration or gets resolved),
+    while the reachable burners still resolve; a self-referential/cyclic predecessor
+    graph terminates (the reachability walk is a visited-guarded BFS)."""
+    # (1) target with no predecessors -> no float path -> empty, unresolved basis
+    lone = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 3.0), _m("T", "T", 0.0)],
+              [Relationship("A", "B")])            # nothing feeds T
+    assert _tdist(lone, "T") == ({}, None, None, False)
+    # (2) an activity with no directed path to m is not in `reachable`: it neither
+    #     bounds the frontier nor is resolved, but the reachable driver still is
+    r = [Relationship("D", "T"), Relationship("N", "T"), Relationship("ISLE", "X")]
+    s = _s(datetime(2025, 1, 6, 8),
+           [_a("D", "D", 0.0), _a("N", "N", 4.0), _a("ISLE", "ISLE", -50.0),
+            _a("X", "X", 9.0), _m("T", "T", 0.0)], r)
+    dist, dm, _tm, capped = _tdist(s, "T")
+    assert dist.get("D") == pytest.approx(0.0) and dist.get("N") == pytest.approx(4.0)
+    assert "ISLE" not in dist                    # cannot reach m -> never resolved
+    # ISLE's large negative float must NOT have dragged the frontier (it is unreachable)
+    oracle, _p = _oracle_distance(s, "T")
+    assert "ISLE" not in oracle
+    # (3) a cycle among predecessors of m terminates (visited-guarded reachability)
+    rc = [Relationship("P", "Q"), Relationship("Q", "P"), Relationship("Q", "T")]
+    cyc = _s(datetime(2025, 1, 6, 8),
+             [_a("P", "P", 1.0), _a("Q", "Q", 0.0), _m("T", "T", 0.0)], rc)
+    d2, _dm2, _tm2, _c2 = _tdist(cyc, "T")       # must return, not hang
+    assert d2.get("Q") == pytest.approx(0.0)
 
 
 def test_fcbi_proven_frontier_bound():

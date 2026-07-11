@@ -508,14 +508,23 @@ the cumulative B curve with C annotated at each point; W = B·C is the derived
 single-number diagnostic, and B is never shown alone.  The **target m must be
 analyst-selected** for work product; an auto-resolved terminal milestone flags
 the run provisional.  Report a **λ ∈ {3, 5, 10} sensitivity set** (C and W move
-with λ; B is λ-invariant) in contested use.  Report a **population-coverage
-block** — candidate count, TF-evaluability, population-eligibility, exclusion
-reasons — beside the eligible-burn coverage, so a burn figure is never mistaken
-for data completeness.  Path enumeration is **adaptively converged** (deepen
-until the max possible omitted weight is immaterial); a depth-ceiling hit marks
-the window provisional.  Materiality of record-network vs logic-only distance is
-the single test `|d_record − d_logic| ≥ λ`.  Multiple targets are **never
-summed** — separate profiles with a shared-activity overlap disclosure.
+with λ; B is λ-invariant) in contested use; the weighting **λ is bounded by the
+convergence reference λ (10 working days)** — a larger λ would make
+frontier-omitted paths material and invalidate the resolved basis, so it is NOT
+EVALUATED (v0.5.5, W4-05).  Report a **population-coverage block** — candidate
+count, TF-evaluability, population-eligibility, exclusion reasons — beside the
+eligible-burn coverage, so a burn figure is never mistaken for data completeness.
+Path enumeration streams the **exact reference float-path sequence** and stops on a
+**proven frontier bound** — the min reference float over reachable, discrete,
+still-unused activities lower-bounds every not-yet-enumerated path's margin, so once
+its weight (at the fixed convergence λ) is immaterial, deeper paths are (the bound is
+sound because it is read off the enumeration's own used set — v0.5.5, W4-02; the
+native-margin order is **not** monotone, so no monotonicity is assumed).  A
+depth-ceiling hit marks the window provisional.  The **completion milestone m must
+be a stable terminal target across every update** (v0.5.5, W4-06).  Materiality of
+record-network vs logic-only distance is the single test `|d_record − d_logic| ≥ λ`.
+Multiple targets are **never summed** — separate profiles with a shared-activity
+overlap disclosure.
 
 ### 9.2 LHL — Logic Half-Life
 Survival analysis on relationships: each relationship ever observed has a

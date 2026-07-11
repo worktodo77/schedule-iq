@@ -3,23 +3,61 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
-## Unreleased — LI-01 FCBI v0.5.4 (best-first enumerator; W3-05 closed)
+## Unreleased — LI-01 FCBI v0.5.5 (wave-4 peer-review; enumerator correctness)
 
-- **`paths.iter_float_paths`** — a lazy, best-first generator equivalent to
-  `float_paths` (identical paths, same order) but computed one at a time with a
-  priority queue and lazy revalidation: no restart, no per-round re-scan.
-  `float_paths` itself is unchanged (PCI/CDI still use it).
-- **`_target_distance` rebuilt** on the generator with a **PROVEN** frontier
-  early-stop: the minimum reference float over discrete activities that can reach
-  m and are not yet on a yielded path lower-bounds every not-yet-enumerated
-  path's margin, so enumeration stops once that frontier's weight (at the fixed
-  `FCBI_CONV_LAMBDA`) is below `FCBI_CONV_TOL` — no monotonicity assumption
-  (closes the wave-3 W3-01 concern) and no doubling/restart (closes W3-05).
-- **Performance:** near-critical fan ×100 3.0 s → 0.06 s, ×150 10.2 s → 0.16 s;
-  a far-off-critical 500-fan stops after ~1 path (0.005 s); the 513-fan that
-  previously did not complete now finishes (3.6 s) and is correctly capped
-  provisional.  Distance maps verified identical to `float_paths` across 120
-  random networks + mixed calendars, and all existing FCBI numbers are unchanged.
+**Check-affecting for the topologies where the withdrawn v0.5.4 enumerator
+diverged** (path splices differed from the reference `float_paths`, changing some
+per-activity distances and, through the frontier, which activities were resolved).
+A fourth independent review (Codex GPT-5.6 Pro) found the v0.5.4 best-first
+generator was **not** exactly equivalent to `float_paths`; both counterexamples
+reproduced against the real code.  Correctness was prioritised over performance
+(governed constraint): the enumerator is now the reference algorithm streamed.
+
+- **`paths.iter_float_paths` re-based (W4-01):** the priority-queue variant is
+  **withdrawn** (it cached feeders against a stale used set and only handled a
+  rising rel; a consumed activity can make a feeder's rel *fall* and reroute its
+  walk, and the native-rel order is genuinely non-monotone).  It now streams
+  `float_paths`'s **exact** round structure — same paths, same order, verified
+  byte-for-byte on a 500-DAG seeded corpus — with two provably-equivalent per-round
+  optimisations (feeder memo; attachment-activity dedup).  `float_paths` unchanged.
+- **Frontier soundness corrected (W4-02):** the early-stop bound is now evaluated on
+  `float_paths`'s **own** cumulative used set (yielded per path), so it can no longer
+  omit a material-weight activity; proven sound and property-tested (0 material
+  omissions across 500 uncapped DAGs).
+- **λ bounded (W4-05):** the FCBI weighting λ must be in `(0, FCBI_CONV_LAMBDA]`
+  (=10); λ>10 → NOT EVALUATED (a larger λ would make frontier-omitted paths
+  material and invalidate the basis).  The v0.4 kernel (PCI/CDI/RDI/BWI) is
+  untouched.
+- **Stable target basis (W4-06):** an explicit target must be a terminal finish
+  milestone in **every** update (`all`, not `any`); auto-resolution intersects the
+  per-update terminal-milestone codes; a target-basis discontinuity → NOT EVALUATED.
+- **Exact depth cap (W4-07):** `depth_capped` fires exactly at the (MAX+1)-th path.
+- **λ-sensitivity reuses one basis (W4-04):** `_prepare_fcbi_basis` /
+  `_fcbi_from_basis` compute the λ-independent distance/governance caches once and
+  reuse them across λ (2 enumerations for a 2-schedule set, not 8).
+- **Non-circular equivalence test (W4-03):** the oracle is built directly from
+  `float_paths`; both blocker counterexamples are permanent regressions.
+- All prior FCBI anchors (P1 B=5/C=0.7/W=3.5; worked example B=7/coverage=0.7/N=4;
+  λ-sensitivity C=0.315/0.5/0.707) are unchanged.
+
+Suite: 212 passed, 1 skipped.
+
+## Unreleased — LI-01 FCBI v0.5.4 (best-first enumerator; W3-05 closed) — SUPERSEDED by v0.5.5
+
+- **`paths.iter_float_paths`** — a lazy, best-first generator intended to be
+  equivalent to `float_paths` (identical paths, same order) but computed one at a
+  time with a priority queue and lazy revalidation.  **Wave-4 (v0.5.5) found this
+  variant was NOT exactly equivalent** (stale-used-set caching + rise-only
+  revalidation) and withdrew it; see the v0.5.5 entry above.  `float_paths` itself
+  was unchanged then and remains so (PCI/CDI still use it).
+- **`_target_distance` rebuilt** on the generator with a frontier early-stop; the
+  bound's soundness was later (v0.5.5) re-grounded on `float_paths`'s own used set.
+- **Performance:** near-critical fan ×100 3.0 s → 0.06 s, ×150 10.2 s → 0.16 s
+  (these figures were for the withdrawn variant; the v0.5.5 reference enumerator is
+  slower on a pathological wide near-critical fan, which is capped/provisional).
+  The claim "distance maps verified identical to `float_paths` across 120 random
+  networks" proved **insufficient** — a 1000-network / 500-DAG test later found the
+  divergence.
 
 Suite: 202 passed, 1 skipped.
 

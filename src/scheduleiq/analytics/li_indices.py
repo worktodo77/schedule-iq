@@ -434,21 +434,36 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
     repriced by native calendar length (ruling O7.7; REV-02) and cannot be set
     by a level-of-effort node (ruling O7.3; REV-07).
 
-    **Best-first enumeration with a PROVEN frontier bound (ruling O7.3; v0.5.4;
-    closes W3-01/05).**  Paths are drawn from :func:`iter_float_paths` — a lazy
-    best-first generator that computes each path once (no restart, no per-round
-    re-scan).  The distance basis is **λ-INDEPENDENT** (convergence judged at the
-    fixed reference ``FCBI_CONV_LAMBDA``, not the weighting λ — W3-02).  Early
-    stopping uses a **sound** frontier that needs NO monotonicity assumption: the
-    minimum reference float over discrete activities that can reach m and are not
-    yet on any yielded path is a valid LOWER BOUND on the margin of every path not
-    yet enumerated (a future path's branch margin is a min over unused members).
-    Once that frontier's weight (at ``FCBI_CONV_LAMBDA``) < ``FCBI_CONV_TOL``,
-    every omitted path is immaterial — a proven bound, not the wave-3 assumption.
-    Enumeration exhaustion resolves everything; ``FCBI_PATHS_MAX`` caps the
-    pathological wide near-critical fan (then ``depth_capped``, provisional).
-    NOTE: the driving-path *identity* still follows the tool-of-record
-    native-calendar float walk (ADR-0004)."""
+    **Reference enumeration with a PROVEN frontier bound (ruling O7.3; v0.5.5;
+    closes W3-01/05, corrects wave-4 W4-01/W4-02).**  Paths are drawn from
+    :func:`iter_float_paths`, which streams the SAME paths in the SAME order as the
+    reference :func:`float_paths` (the v0.5.4 best-first variant was withdrawn — it
+    diverged from ``float_paths`` and produced wrong distances and a frontier
+    computed on a corrupted used set; wave-4).  The distance basis is
+    **λ-INDEPENDENT** (convergence judged at the fixed reference
+    ``FCBI_CONV_LAMBDA``, not the weighting λ — W3-02).
+
+    Early stopping uses a **sound** frontier, evaluated on ``float_paths``'s OWN
+    cumulative used set (the ``used`` snapshot the generator yields).  Every
+    not-yet-enumerated path's unique members are a subset of the still-unused
+    activities, so a future path's branch margin (a min of member floats) is
+    bounded below by the minimum reference float over reachable, discrete, UNUSED
+    activities.  Once that frontier's weight (at ``FCBI_CONV_LAMBDA``) <
+    ``FCBI_CONV_TOL`` every omitted path is immaterial — provable ONLY because the
+    used set is ``float_paths``'s true trajectory (the wave-4 defect was a frontier
+    read off a divergent enumeration's used set, which over-stated the bound and
+    dropped material-weight activities).  Soundness needs NO monotonicity of the
+    native-rel order (which is genuinely non-monotone).  Because
+    ``kernel_weight(d, λ)`` increases in λ for d ≥ 0, a frontier proven immaterial
+    at ``FCBI_CONV_LAMBDA`` is immaterial at every λ ≤ ``FCBI_CONV_LAMBDA``; the
+    weighting λ is capped there (ruling O7.3; W4-05) so the basis stays valid.
+
+    Enumeration exhaustion or the frontier resolves everything material;
+    ``FCBI_PATHS_MAX`` caps the pathological wide near-critical fan.  The cap fires
+    EXACTLY when a ``(MAX+1)``-th path exists (the generator's one-path lookahead):
+    ``MAX`` paths → not capped, ``MAX+1`` → ``depth_capped`` (provisional).  NOTE:
+    the driving-path *identity* still follows the tool-of-record native-calendar
+    float walk (ADR-0004)."""
     if target_code is None:
         return {}, None, None, False
     tgt = _find_by_code(schedule, target_code)
@@ -466,11 +481,14 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
         reachable = seen
     dist: dict[str, float] = {}
     driving_margin: Optional[float] = None
-    used_uids: set[str] = set()
     n_paths = 0
     depth_capped = False
-    for _native_rel, fp in iter_float_paths(schedule, target_uid=target_code):
+    for _native_rel, fp, used_snapshot in iter_float_paths(schedule,
+                                                           target_uid=target_code):
         n_paths += 1
+        if n_paths > FCBI_PATHS_MAX:                # a (MAX+1)-th path exists -> cap
+            depth_capped = True                     # (do NOT fold it in; W4-07)
+            break
         if driving_margin is None:
             if fp.rel_float_hours is None:         # driving spine has no discrete float
                 return {}, None, None, False
@@ -478,16 +496,16 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
         if fp.rel_float_hours is not None:
             d = max(0.0, fp.rel_float_hours / REFERENCE_HPD - driving_margin)
             for a in fp.activities:
-                used_uids.add(a.uid)
                 if a.is_loe_or_summary:
                     continue
                 cur = dist.get(a.code)
                 if cur is None or d < cur:
                     dist[a.code] = d
-        # PROVEN frontier: min reference float over reachable, discrete, UNUSED
-        # activities bounds every not-yet-enumerated path's margin from below
+        # PROVEN frontier over float_paths's OWN used set (``used_snapshot``): min
+        # reference float over reachable, discrete, UNUSED activities lower-bounds
+        # every not-yet-enumerated path's margin (their members are all unused)
         rem = [act.total_float_hours
-               for uid in reachable - used_uids
+               for uid in reachable - used_snapshot
                if (act := schedule.activities.get(uid)) is not None
                and not act.is_loe_or_summary and act.total_float_hours is not None]
         if not rem:
@@ -495,9 +513,6 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
         frontier_d = max(0.0, min(rem) / REFERENCE_HPD - driving_margin)
         if kernel_weight(frontier_d, FCBI_CONV_LAMBDA) < FCBI_CONV_TOL:
             break                                   # all omitted paths immaterial (proven)
-        if n_paths > FCBI_PATHS_MAX:                # a (MAX+1)-th path exists -> cap
-            depth_capped = True
-            break
     if driving_margin is None:                      # no paths at all
         return {}, None, None, False
     tmargin = (tgt.total_float_hours / REFERENCE_HPD
@@ -575,34 +590,55 @@ def _is_terminal_target(s: Schedule, code: str) -> bool:
     return not _reaches_other_finish(s, act, fmile_uids)
 
 
+def _terminal_finish_codes(s: Schedule) -> set[str]:
+    """Codes of the terminal FINISH MILESTONES in ``s`` (finish milestones with no
+    directed path to another finish milestone)."""
+    fmiles = [a for a in s.activities.values()
+              if a.atype == ActivityType.FINISH_MILESTONE]
+    fmile_uids = {a.uid for a in fmiles}
+    return {a.code for a in fmiles if not _reaches_other_finish(s, a, fmile_uids)}
+
+
 def _resolve_fcbi_target(scheds: list[Schedule],
                          explicit: Optional[str]) -> tuple[Optional[str], bool]:
     """Resolve the single terminal completion milestone m (ruling O6 v1 scope).
 
-    An explicit analyst-selected code is VALIDATED the same way an auto-resolved
-    one is (W3-04): it must exist and be a terminal finish milestone in at least
-    one schedule; an invalid explicit target returns ``(None, False)`` so the run
-    is NOT EVALUATED — analyst selection does not exempt m from validation.
-    Otherwise resolve a **terminal FINISH MILESTONE** (no directed path to any
-    other finish milestone), preferring the latest-finishing such milestone, from
-    the latest schedule that has one — NEVER a constrained intermediate milestone
-    or a task (REV-01).  Returns ``(code, auto_resolved)``; ``auto_resolved=True``
-    means the analyst must still confirm m (ruling O7.1)."""
+    The completion milestone m must be a **stable target basis** across the whole
+    series (W4-06): a burn trend is only meaningful against ONE fixed completion
+    definition.  So m must be a terminal finish milestone in **every** update, not
+    just one — a code terminal in some updates but not others (or absent from an
+    update) is a *target-basis discontinuity* and the run is NOT EVALUATED.
+
+    An explicit analyst-selected code is validated the same way an auto-resolved
+    one is (W3-04): it must be a terminal finish milestone in **all** schedules
+    (``all``, not ``any`` — W4-06); otherwise ``(None, False)`` → NOT EVALUATED
+    (analyst selection does not exempt m from validation).  Auto-resolution takes
+    the **intersection** of the per-update terminal-finish-milestone codes and
+    prefers the latest-finishing member of that intersection (never a constrained
+    intermediate milestone or a task — REV-01); an empty intersection →
+    ``(None, True)`` → NOT EVALUATED (target-basis discontinuity).  Returns
+    ``(code, auto_resolved)``; ``auto_resolved=True`` means the analyst must still
+    confirm m (ruling O7.1)."""
+    if not scheds:
+        return (None, False) if explicit is not None else (None, True)
     if explicit is not None:
-        if any(_is_terminal_target(s, explicit) for s in scheds):
+        if all(_is_terminal_target(s, explicit) for s in scheds):   # EVERY update (W4-06)
             return explicit, False
-        return None, False                        # invalid explicit target (W3-04)
-    for s in reversed(scheds):
-        fmiles = [a for a in s.activities.values()
-                  if a.atype == ActivityType.FINISH_MILESTONE]
-        if not fmiles:
-            continue
-        fmile_uids = {a.uid for a in fmiles}
-        terminal = [a for a in fmiles if not _reaches_other_finish(s, a, fmile_uids)]
-        pool = terminal or fmiles
-        chosen = max(pool, key=lambda a: (a.finish or datetime.min, a.code))
-        return chosen.code, True
-    return None, True
+        return None, False                        # invalid/unstable explicit target
+    # auto: intersect terminal finish-milestone codes across ALL updates (W4-06)
+    common: Optional[set[str]] = None
+    for s in scheds:
+        tc = _terminal_finish_codes(s)
+        common = tc if common is None else (common & tc)
+    if not common:
+        return None, True                         # target-basis discontinuity
+    latest = scheds[-1]
+
+    def _key(code: str):
+        a = _find_by_code(latest, code)
+        return (a.finish if (a and a.finish) else datetime.min, code)
+
+    return max(common, key=_key), True
 
 
 def _eligibility(code: str, ea, d_start: Optional[float],
@@ -664,29 +700,98 @@ def _basis_change_reasons(cs, target_code: Optional[str]) -> list[str]:
     return reasons
 
 
-def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
-          tier1_tol_hours: float = TIER1_TOL_HOURS) -> FcbiResult:
+def _invalid_lambda_reason(lam: float) -> str:
+    """Ruling O7.3 / W4-05: the FCBI weighting λ must be finite and in
+    ``(0, FCBI_CONV_LAMBDA]``.  The convergence frontier is proven immaterial only
+    at the fixed reference λ = ``FCBI_CONV_LAMBDA``; because ``2**(-d/λ)`` increases
+    in λ for d ≥ 0, an omitted-path bound proven at that reference holds for every
+    λ ≤ it but NOT for a larger λ — a larger weighting λ would make frontier-omitted
+    paths material and invalidate the resolved distance basis.  Returns ``""`` when
+    valid, else a reason (the ruling never raises — REV-12)."""
+    if not (math.isfinite(lam) and lam > 0):
+        return (f"invalid lambda {lam!r}: the FCBI half-weight constant must be a "
+                "finite positive number of working days")
+    if lam > FCBI_CONV_LAMBDA:
+        return (f"invalid lambda {lam!r}: the FCBI half-weight constant must be "
+                f"<= the convergence reference lambda ({FCBI_CONV_LAMBDA:g} working "
+                "days); a larger lambda would make frontier-omitted paths material "
+                "and invalidate the resolved distance basis (ruling O7.3; W4-05)")
+    return ""
+
+
+@dataclass
+class _FcbiBasis:
+    """The λ-INDEPENDENT FCBI basis for a series (W4-04): the resolved target plus
+    the per-schedule target-distance and propagated-governance caches.  Because the
+    distance basis is λ-invariant (W3-02), this is built ONCE and reused across
+    every weighting λ — the sensitivity set no longer re-enumerates float paths per
+    λ (one enumeration per schedule, not one per (λ, schedule))."""
+    scheds: list
+    changesets: list
+    target_code: Optional[str]
+    auto_resolved: bool
+    dist_cache: dict
+    gov_cache: dict
+    reason: str = ""
+
+
+def _prepare_fcbi_basis(sa, target: Optional[str] = None) -> _FcbiBasis:
+    """Resolve m and build the λ-independent distance/governance caches once."""
     scheds = getattr(sa, "schedules", [])
     changesets = getattr(sa, "changesets", [])
     if not changesets:
-        return FcbiResult(reason="series has fewer than two updates", lam=lam)
-    if not (math.isfinite(lam) and lam > 0):          # ruling never-raises (REV-12)
-        return FcbiResult(lam=lam, reason=f"invalid lambda {lam!r}: the half-weight "
-                          "constant must be a finite positive number of working days")
-
+        return _FcbiBasis(scheds, changesets, None, False, {}, {},
+                          reason="series has fewer than two updates")
     target_code, auto_resolved = _resolve_fcbi_target(scheds, target)
     if target_code is None:
-        if target is not None:                        # explicit but invalid (W3-04)
-            return FcbiResult(lam=lam, reason=f"explicit FCBI target {target!r} is not "
-                              "a terminal completion finish milestone in the series "
-                              "(ruling O6 v1 scope) — NOT EVALUATED")
-        return FcbiResult(lam=lam, reason="no terminal completion finish milestone "
-                          "could be resolved as the FCBI target (ruling O6 v1 scope "
-                          "requires one selected completion milestone m — select it "
-                          "explicitly, ruling O7.1)")
-
+        if target is not None:                        # explicit but invalid (W3-04/W4-06)
+            reason = (f"explicit FCBI target {target!r} is not a terminal completion "
+                      "finish milestone in EVERY update of the series (ruling O6 v1 "
+                      "scope; stable target basis — W4-06) — NOT EVALUATED")
+        else:                                         # no code common to all updates
+            reason = ("no terminal completion finish milestone is common to every "
+                      "update (ruling O6 v1 scope requires one stable completion "
+                      "milestone m across the series — select it explicitly, ruling "
+                      "O7.1; target-basis discontinuity — W4-06)")
+        return _FcbiBasis(scheds, changesets, None, auto_resolved, {}, {}, reason=reason)
     dist_cache = {id(s): _target_distance(s, target_code) for s in scheds}
     gov_cache = {id(s): _governed_codes(s, target_code) for s in scheds}
+    return _FcbiBasis(scheds, changesets, target_code, auto_resolved,
+                      dist_cache, gov_cache)
+
+
+def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
+          tier1_tol_hours: float = TIER1_TOL_HOURS) -> FcbiResult:
+    """FCBI at a single weighting λ.  Validate λ, build the λ-independent basis
+    (:func:`_prepare_fcbi_basis`), then weight it (:func:`_fcbi_from_basis`)."""
+    if getattr(sa, "changesets", None) in (None, []):
+        return FcbiResult(reason="series has fewer than two updates", lam=lam)
+    invalid = _invalid_lambda_reason(lam)             # ruling never-raises (REV-12/W4-05)
+    if invalid:
+        return FcbiResult(lam=lam, reason=invalid)
+    basis = _prepare_fcbi_basis(sa, target)
+    if basis.reason:
+        return FcbiResult(lam=lam, reason=basis.reason, target_code=basis.target_code,
+                          target_auto_resolved=basis.auto_resolved)
+    return _fcbi_from_basis(basis, lam, tier1_tol_hours)
+
+
+def _fcbi_from_basis(basis: _FcbiBasis, lam: float,
+                     tier1_tol_hours: float = TIER1_TOL_HOURS) -> FcbiResult:
+    """Weight a prebuilt λ-independent basis at ``lam`` (W4-04).  ``basis`` must be
+    resolved (no ``reason``); the caller checks ``basis.reason`` first.  λ is
+    re-validated here so the sensitivity set can fail a single out-of-range point
+    (W4-05) without touching the shared basis."""
+    invalid = _invalid_lambda_reason(lam)
+    if invalid:
+        return FcbiResult(lam=lam, reason=invalid, target_code=basis.target_code,
+                          target_auto_resolved=basis.auto_resolved)
+    scheds = basis.scheds
+    changesets = basis.changesets
+    target_code = basis.target_code
+    auto_resolved = basis.auto_resolved
+    dist_cache = basis.dist_cache
+    gov_cache = basis.gov_cache
 
     windows: list[FcbiWindow] = []
     cumulative_burn: list[Optional[float]] = []
@@ -1005,31 +1110,34 @@ def fcbi_lambda_sensitivity(sa, target: Optional[str] = None,
     population are invariant and reported once; only C and W move with lambda,
     exposing whether a near-critical-burn conclusion is robust to the half-weight
     constant (Q2/Q4).  A structural failure (invalid target, no float-path basis)
-    fails the whole set with a reason; an invalid lambda within the set fails only
-    that point (W3-07).  Never raises."""
-    base = _fcbi(sa, DEFAULT_LAMBDA, target)
-    if base.reason:                                   # structural failure -> fail set
+    fails the whole set with a reason; an out-of-range lambda within the set fails
+    only that point (W3-07/W4-05).  The λ-independent distance basis is enumerated
+    ONCE and reused across every λ (W4-04) — not re-enumerated per point.  Never
+    raises."""
+    basis = _prepare_fcbi_basis(sa, target)           # ONE enumeration (W4-04)
+    if basis.reason:                                  # structural failure -> fail set
         return LambdaSensitivity(cumulative_b=None,
-                                 target_auto_resolved=base.target_auto_resolved,
-                                 reason=base.reason)
+                                 target_auto_resolved=basis.auto_resolved,
+                                 reason=basis.reason)
+    base = _fcbi_from_basis(basis, DEFAULT_LAMBDA)
     cb = base.cumulative_burn[-1] if base.cumulative_burn else None
     last = next((w for w in reversed(base.windows) if not w.basis_change), None)
     cov = last.coverage if last is not None else None
     qb = last.quarantine_burn if last is not None else 0.0
     points: list[LambdaPoint] = []
     for lam in lams:
-        if not (math.isfinite(lam) and lam > 0):      # per-point failure (W3-07)
+        invalid = _invalid_lambda_reason(lam)         # per-point failure (W3-07/W4-05)
+        if invalid:
             points.append(LambdaPoint(lam=lam, status="failed", cumulative_c=None,
-                                      cumulative_w=None,
-                                      reason=f"invalid lambda {lam!r}"))
+                                      cumulative_w=None, reason=invalid))
             continue
-        f = _fcbi(sa, lam, target)
+        f = _fcbi_from_basis(basis, lam)              # reuse the shared basis (W4-04)
         cw = f.cumulative_weighted[-1] if f.cumulative_weighted else None
         cc = f.cumulative_proximity[-1] if f.cumulative_proximity else None
         points.append(LambdaPoint(lam=lam, status="ok", cumulative_c=cc,
                                   cumulative_w=cw, depth_capped=f.depth_capped))
     return LambdaSensitivity(cumulative_b=cb, coverage=cov, quarantine_burn=qb,
-                             target_auto_resolved=base.target_auto_resolved,
+                             target_auto_resolved=basis.auto_resolved,
                              points=points)
 
 

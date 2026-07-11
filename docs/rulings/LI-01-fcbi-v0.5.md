@@ -159,15 +159,30 @@ per-run capture, as noted:
    a target-date change between updates triggers the basis-change rule (§O7.9).
 2. **Path method** — exact MFP enumeration via the float-path module (§2.1);
    algorithm/source/version documented in ARCHITECTURE.md and the briefing.
-3. **Depth rule** — the raw top-10 cutoff is replaced by a **lazy best-first
-   enumerator** (`iter_float_paths`, v0.5.4) with a **PROVEN** early-stop: the min
-   reference float over discrete activities that can reach m and are not yet on a
-   yielded path lower-bounds every not-yet-enumerated path, so once that
+3. **Depth rule** — the raw top-10 cutoff is replaced by a lazy enumerator
+   (`iter_float_paths`) that streams **EXACTLY** the reference `float_paths`
+   sequence (same paths, same order) one at a time, with a **PROVEN** early-stop:
+   the min reference float over discrete activities that can reach m and are not
+   yet used lower-bounds every not-yet-enumerated path's margin, so once that
    frontier's weight (at the fixed, λ-invariant `FCBI_CONV_LAMBDA`, W3-02) falls
-   below `FCBI_CONV_TOL` every omitted path is immaterial — no monotonicity
-   assumption (W3-01/05).  `FCBI_PATHS_MAX` caps a pathological wide near-critical
-   fan (then `depth_capped`, provisional).  Activities on none of the enumerated
-   paths are unresolved (O6), never own-float.
+   below `FCBI_CONV_TOL` every omitted path is immaterial.  The bound needs **no
+   monotonicity** of the native-rel order — that order is genuinely **non-monotone**
+   (a later path can expose a lower-float branch that was hidden behind a
+   since-consumed activity), and the frontier's soundness instead rests on being
+   evaluated against `float_paths`'s **own** cumulative used set.  Because
+   `kernel_weight(d, λ)` increases in λ, a frontier proven immaterial at
+   `FCBI_CONV_LAMBDA` is immaterial at every λ ≤ it, so the weighting λ is capped
+   at `FCBI_CONV_LAMBDA` (W4-05) to keep the resolved basis valid.  `FCBI_PATHS_MAX`
+   caps a pathological wide near-critical fan **exactly** at the (MAX+1)-th path
+   (then `depth_capped`, provisional; W4-07).  Activities on none of the enumerated
+   paths are unresolved (O6), never own-float.  **Provenance:** the v0.5.4 best-first
+   / priority-queue variant of this enumerator was **WITHDRAWN** in wave-4 — it
+   cached feeders against a stale used set and only handled a rising rel, so it
+   diverged from `float_paths` (wrong path splices → wrong distances, and a frontier
+   read off a corrupted used set that dropped material-weight activities; W4-01/02).
+   Correctness over performance (governed constraint): the enumerator is now the
+   reference algorithm streamed, with the cost bounded by the sound frontier and the
+   cap, not by weakening the enumeration (§ wave-4 disposition).
 4. **Multiple targets** — v1 profiles a single target; summing across targets is
    prohibited without an explicit allocation rule (double-counting).  Standing
    disclosure.
@@ -353,10 +368,46 @@ dispositioned; the one headline blocker did not reproduce on the real code.
 
 Wave-3 regressions added; suite green: **199 passed, 1 skipped**.
 
-**v0.5.4 follow-up (W3-05 closed):** the convergence machinery was rebuilt on a
-lazy best-first generator with a **proven** frontier bound (no monotonicity
-assumption), closing both the performance defect and the unproven-bound concern
-(see the W3-05 row above).  Remaining disclosure: the generic `MetricResult.value`
-is the scalar B, with C always carried in the narrative (Q1 mitigation, not a
-strict never-B-alone guarantee at the framework-value level).  Suite after
-v0.5.4: **202 passed, 1 skipped**.
+**v0.5.4 follow-up (W3-05 closed) — later CORRECTED in v0.5.5:** the convergence
+machinery was rebuilt on a lazy best-first generator with a frontier bound.  Wave-4
+subsequently showed that generator was **not** equivalent to `float_paths` (see the
+wave-4 disposition below); it was withdrawn and the enumerator re-based on the exact
+reference sequence in v0.5.5.  The frontier bound is retained but its soundness is
+now correctly grounded on `float_paths`'s own used set.  Remaining disclosure: the
+generic `MetricResult.value` is the scalar B, with C always carried in the narrative
+(Q1 mitigation, not a strict never-B-alone guarantee at the framework-value level).
+
+## Wave-4 review — fourth reviewer (Codex GPT-5.6 Pro), loop closed (v0.5.5)
+
+A fourth independent review targeted the v0.5.4 enumerator and its frontier.  Its
+central claim — that `iter_float_paths` was **not** exactly equivalent to the
+reference `float_paths` — **reproduced** against the real imported functions in one
+process (the mandated "reproduce before modifying" step), overturning the v0.5.4
+equivalence claim (the earlier 120-network check was insufficient; two concrete
+counterexamples give divergent per-activity distances).  Both blockers are now
+permanent regressions.  Governed constraint honoured: **correctness over
+performance** — the enumerator was re-based on the reference algorithm rather than
+kept as a faster-but-divergent oracle.
+
+| ID | Severity | Finding | Disposition |
+|----|----------|---------|-------------|
+| **W4-01** | BLOCKER | The best-first iterator spliced a feeder onto the wrong tail (an all-8h FS-only net: iter path 3 `A04,A13,A14,A18,A20,T` vs reference `A04,A13,A14,T`), giving A18 a spurious `d=0` instead of `29.625`.  Root cause: lazy revalidation only re-pushed on a *rising* rel and fixed the tail at push time, but consuming an activity can make a feeder's rel *fall* and reroute its walk. | **Reproduced, then Fixed.**  `iter_float_paths` was rewritten to stream `float_paths`'s **exact** round structure (re-scan every found path, recompute every feeder under the current `used`, same `(rel, code)` selection and first-seen tie-break).  `d(A18)=29.625` restored.  Regression: `test_w4_01_counterexample_regression`; corpus `test_w4_03_iter_exactly_matches_float_paths_corpus`. |
+| **W4-02** | BLOCKER | The frontier certificate could omit a material-weight activity: the iterator split `A01,A06,A08,A16,T` into two wrong paths, omitted A06/A08 (`d=None`), and the frontier — read off the **corrupted** used set — falsely declared convergence (`depth_capped=False`) while dropping weight 0.354. | **Reproduced, then Fixed.**  With the exact enumeration the frontier is evaluated on `float_paths`'s **own** cumulative used set (yielded per path); A06/A08 now resolve at `d=15` (weight 0.354).  Frontier soundness proven and property-tested (below).  Regression: `test_w4_02_counterexample_regression`. |
+| **W4-03** | MAJOR | The equivalence test was **circular** — it built the "reference" distance map from the iterator itself, so it could never catch a divergence. | **Fixed.**  The test now builds the oracle **directly** from `float_paths`; adds a 500-DAG seeded corpus asserting byte-for-byte path-sequence identity and resolved-distance agreement, a 500-DAG frontier-soundness property (0 material omissions on uncapped runs), determinism, and both blocker counterexamples.  `test_w4_03_*`. |
+| **W4-04** | MAJOR | The λ-sensitivity set re-enumerated float paths per λ (≈ `(len(lams)+1)·n_sched` enumerations); the `_walk` re-scan was also needlessly triangular. | **Fixed.**  `_prepare_fcbi_basis` computes the λ-independent distance/governance caches **once**; `_fcbi_from_basis` weights them per λ (a 2-schedule set now does **2** enumerations, verified by `test_w4_04_sensitivity_reuses_one_basis`).  The enumerator adds two provably-equivalent per-round optimisations (feeder memo by pred; attachment-activity dedup), cutting the wide-fan cost without changing any result.  (The reference re-scan's residual O(N²) on a pathological wide near-critical fan is accepted under the correctness-first mandate; such a fan is capped/provisional, and the common far-off case is milliseconds.) |
+| **W4-05** | MAJOR | The weighting λ was unbounded above; a λ larger than the convergence reference `FCBI_CONV_LAMBDA` invalidates the frontier (an omitted path immaterial at λ=10 can be material at λ>10). | **Fixed.**  λ must be finite and in `(0, FCBI_CONV_LAMBDA]`; λ>10 (and non-finite/≤0) → NOT EVALUATED, or a failed sensitivity point (only that point).  `test_w4_05_lambda_range_enforced` covers −1, 0, NaN, Inf, 3, 5, 10, 10.000001, 20. |
+| **W4-06** | MAJOR | An explicit target only had to be terminal in **some** update (`any`), and auto-resolution looked at a single schedule — a target could change basis across the series undetected. | **Fixed.**  A **stable target basis** is required: an explicit target must be a terminal finish milestone in **every** update (`all`); auto-resolution takes the **intersection** of per-update terminal-finish-milestone codes (latest-finishing preferred); an empty intersection or a target absent from an update → NOT EVALUATED (target-basis discontinuity).  `test_w4_06_*`. |
+| **W4-07** | MINOR | The depth cap fired one path early/late relative to the intended boundary. | **Fixed.**  The cap fires **exactly** when a `(MAX+1)`-th path exists (generator one-path lookahead, checked before the exhaustion shortcut and before folding the extra path in): MAX−1 and MAX → not capped, MAX+1 and MAX+2 → capped.  `test_w4_07_exact_cap_boundary`. |
+
+**Frontier soundness (now proven, W4-02).**  Every not-yet-enumerated path's unique
+members are a subset of the still-unused activities, so a future path's branch margin
+(a min of member floats) is ≥ the min reference float over reachable, discrete,
+unused activities — the frontier value.  Hence every omitted path's distance ≥ the
+frontier distance, and if the frontier weight (at `FCBI_CONV_LAMBDA`) is below
+`FCBI_CONV_TOL` every omitted path is immaterial.  This holds **only** because the
+used set is `float_paths`'s true trajectory; the v0.5.4 defect was precisely a
+frontier read off a divergent enumeration's used set.  Because `2^(-d/λ)` increases
+in λ, immateriality at `FCBI_CONV_LAMBDA` implies it for every λ ≤ that reference,
+which is why the weighting λ is capped there (W4-05).
+
+Wave-4 regressions added; suite green: **212 passed, 1 skipped**.

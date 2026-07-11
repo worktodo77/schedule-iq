@@ -43,9 +43,11 @@ DEFAULT_BAND_DAYS = 10.0      # near-critical band, working days
 KERNEL_PATHS_N = 10           # top-N float paths feeding the criticality kernel
 
 # -- FCBI v0.5 (LI-01 governed revision) constants --------------------------
-                              # (v0.5.4) enumeration is now a lazy best-first
-                              # generator (iter_float_paths) with a PROVEN frontier
-                              # bound — no doubling/restart.  Activities on no
+                              # (v0.5.5) enumeration streams the EXACT reference
+                              # float_paths sequence (iter_float_paths) with a PROVEN
+                              # frontier bound read off float_paths's own used set —
+                              # the v0.5.4 best-first variant was withdrawn (it was not
+                              # float_paths-equivalent; wave-4).  Activities on no
                               # enumerated path are DISTANCE UNRESOLVED -> quarantine
                               # (O6), never assigned their own total float (O1).
 FCBI_CONV_TOL = 0.01         # convergence tolerance on the omitted weight: once

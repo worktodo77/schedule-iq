@@ -359,18 +359,24 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
         d_i = min over enumerated float paths containing i of
               (that path's margin to m  -  the driving path's margin to m)
 
-    The driving path has the globally minimum margin, so d_i >= 0 always — a
-    driver's negative float never makes d negative.  Returns
-    ``(distance_by_code, driving_margin_days, target_margin_days)``.  Activities
-    on NO enumerated path are ABSENT from the map: the caller quarantines them
-    as DISTANCE UNRESOLVED (never own-float fallback, O1/O7.3)."""
+    The reference is the DRIVING path's margin (``paths[0]``, the walk's rank-1
+    least-float spine — ruling O1 says "the driving path's margin," a fixed
+    reference, not the global minimum).  The ``max(0.0, ...)`` clamp then keeps
+    d >= 0 even for an off-driving-path feeder that is more negative than the
+    spine (e.g. a branch pushed negative by a non-target constraint): such a
+    feeder simply clamps to d = 0 rather than repricing the true driver.  This
+    satisfies both mandatory O1 consequences at once — driving-path activities
+    have d = 0, AND a driver's negative float never makes any d negative.
+    Returns ``(distance_by_code, driving_margin_days, target_margin_days)``.
+    Activities on NO enumerated path are ABSENT from the map: the caller
+    quarantines them as DISTANCE UNRESOLVED (never own-float fallback, O1/O7.3)."""
     if target_code is None:
         return {}, None, None
     paths = float_paths(schedule, target_uid=target_code, n=FCBI_PATHS_N,
                         band_days=None)
     if not paths:
         return {}, None, None
-    driving_margin = min(p.rel_float_days for p in paths)
+    driving_margin = paths[0].rel_float_days       # rank-1 driving path (O1 reference)
     dist: dict[str, float] = {}
     for p in paths:
         d = max(0.0, p.rel_float_days - driving_margin)
@@ -440,10 +446,15 @@ def _basis_change_reasons(cs, target_code: Optional[str]) -> list[str]:
     l_by = {a.code: a for a in cs.later.activities.values()}
     te, tl = e_by.get(target_code), l_by.get(target_code)
     if te is not None and tl is not None:
-        de = te.constraint_date or te.early_finish or te.finish
-        dl = tl.constraint_date or tl.early_finish or tl.finish
-        if de is not None and dl is not None and de != dl:
-            reasons.append(f"target completion date moved {_dstr(de)} -> {_dstr(dl)}")
+        # REQUIREMENT basis only (imposed constraint date, else the contract
+        # baseline finish) — NEVER the forecast early_finish/finish.  A window is
+        # requirement-induced only when the imposed target date moves; a moving
+        # *forecast* on an unconstrained completion milestone is ordinary
+        # execution erosion and must stay in the operational trend (ruling O7.9).
+        de = te.constraint_date or te.baseline_finish
+        dl = tl.constraint_date or tl.baseline_finish
+        if de != dl:                              # incl. constraint added/removed
+            reasons.append(f"target completion date basis moved {_dstr(de)} -> {_dstr(dl)}")
     elif (te is None) != (tl is None):
         reasons.append("target milestone present in only one update of the pair")
     es, ls = cs.earlier.settings, cs.later.settings
@@ -486,9 +497,15 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
         earlier, later = cs.earlier, cs.later
         e_by_code = {a.code: a for a in earlier.activities.values()}
         l_by_code = {a.code: a for a in later.activities.values()}
-        dist_e, _dmarg_e, tmarg_e = dist_cache[id(earlier)]
-        dist_l, _dmarg_l, tmarg_l = dist_cache[id(later)]
-        governed = gov_cache[id(earlier)]
+        # defensive .get: a ChangeSet whose endpoints are not in sa.schedules
+        # (malformed input) recomputes rather than raising ("never raises")
+        dist_e, _dmarg_e, tmarg_e = dist_cache.get(id(earlier)) or \
+            _target_distance(earlier, target_code)
+        dist_l, _dmarg_l, tmarg_l = dist_cache.get(id(later)) or \
+            _target_distance(later, target_code)
+        governed = gov_cache.get(id(earlier))
+        if governed is None:
+            governed = _governed_codes(earlier, target_code)
         bc_reasons = _basis_change_reasons(cs, target_code)
         basis_change = bool(bc_reasons)
 
@@ -505,23 +522,28 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
             la = l_by_code.get(code)
             if ea.is_loe_or_summary or code == target_code or la is None:
                 continue
-            # completion-omission diagnostic (ruling O5): needs prior state only
+            # completion-omission diagnostic (ruling O5): ALWAYS record a
+            # completer so a heavy-completion month cannot look benign, even when
+            # its prior float is unknown (prior fields left None in that case).
             if la.completed and not ea.completed:
+                pos = neg = w_prior = None
+                moved = 0.0
                 if ea.total_float_hours is not None:
                     d_prior = dist_e.get(code)
                     w_prior = kernel_weight(d_prior, lam) if d_prior is not None else None
                     tf_prior = ea.total_float_hours / REFERENCE_HPD
                     pos = tf_prior if tf_prior >= 0 else None
                     neg = -tf_prior if tf_prior < 0 else None
-                    moved = 0.0
                     if la.total_float_hours is not None:
-                        dd = (la.total_float_hours - ea.total_float_hours) / REFERENCE_HPD
+                        dh = la.total_float_hours - ea.total_float_hours
+                        if abs(dh) <= tier1_tol_hours:   # Tier-1 tolerance (O4)
+                            dh = 0.0
+                        dd = dh / REFERENCE_HPD
                         moved = -dd if dd < 0 else 0.0
-                    completion.append(CompletionOmission(
-                        code, ea.name, pos, neg, w_prior, moved))
-                    comp_n += 1
-                    comp_pos += pos or 0.0
-                    comp_neg += neg or 0.0
+                completion.append(CompletionOmission(code, ea.name, pos, neg, w_prior, moved))
+                comp_n += 1
+                comp_pos += pos or 0.0
+                comp_neg += neg or 0.0
                 continue
             if la.completed:                          # complete at both -> out of pop
                 continue

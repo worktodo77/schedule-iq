@@ -126,6 +126,16 @@ acceptable-coverage threshold is invented.  ADR-0004 stays intact: if
 tool-of-record output cannot establish governance, the contribution is
 unresolved → quarantine.
 
+**Enforcement scope (disclosed).**  Predicates (1), (2), (3), and (6) are
+computationally enforced from tool-of-record data.  Predicate (4)'s *alternative
+terminal* case is enforced implicitly — an activity whose only route leads to a
+terminal other than m is on no enumerated path to m, so it is distance-unresolved
+→ quarantine — while *external/open-ended successor* detection and predicate
+(5)'s *resource-leveling* basis await the CPM engine (ADR-0007) and are O7.6
+documented captures; the *expected-finish* half of (5) is enforced per activity.
+This partial enforcement is conservative (it quarantines, never over-includes)
+and is carried as a standing disclosure in the briefing.
+
 **Verified (P7).**  A→M(constrained)→completion: A carries no constraint of its
 own, yet predicate (3) routes A's burn to quarantine (governance traced through
 M) and the coverage ratio reflects it.
@@ -222,3 +232,27 @@ separately.  P9: unequal windows (21 d, ~90 d) carry burn-rate normalization.
 - **Removed surfaces.**  `FcbiWindow.fcbi_pct`, the `fcbi`/`fcbi_recovery`
   scalar fields, the >100% narrative in `li_wiring.py`, and the "normalized
   burn above 100%" language in the matrix row.
+
+---
+
+## Post-implementation review — second reviewer, loop closed
+
+An independent second-reviewer pass (same protocol as the LHL v0.4.5 cycle) was
+run against the shipped implementation and these rulings.  Five findings were
+raised, reproduced, and dispositioned; the loop is **formally closed**.
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| **F1** | BLOCKER | `_basis_change_reasons` fell back to the target's *forecast* (`early_finish`/`finish`) when it had no constraint date, so ordinary execution slippage on an unconstrained completion milestone falsely tripped a basis-change and restarted the cumulative — inverting O7.9's execution-erosion vs requirement-change distinction. | **Fixed.**  The target-date trigger now reads the **requirement basis only** (`constraint_date`, else `baseline_finish`); a moving forecast no longer fires.  Regression: `test_fcbi_forecast_slip_is_not_a_basis_change` (with a constraint-move control that still fires). |
+| **F2** | MAJOR | `_target_distance` used the **global minimum** margin across all enumerated paths as the driver reference, so an off-driving-path feeder pushed negative by a non-target constraint became the reference and gave the true rank-1 driver d > 0, w < 1 — violating O1's mandatory "driving-path d = 0" and biasing C/W. | **Fixed.**  The reference is now the **rank-1 driving path** (`paths[0].rel_float_days`); the existing `max(0, …)` clamp keeps d ≥ 0 for a more-negative feeder.  Both O1 consequences now hold together.  Regression: `test_fcbi_offpath_negative_feeder_preserves_driver`. |
+| **F3** | MINOR | The completion-omission diagnostic (O5) was gated on prior float being known, dropping a completer with unknown prior float from the count and list — the exact "benign heavy-completion month" O5 exists to prevent. | **Fixed.**  Completers are now **always** recorded and counted; prior float/weight fields are left `None` when unavailable.  Regression: `test_fcbi_completer_with_unknown_prior_still_disclosed`. |
+| **F4** | NIT | The completion `moved` value skipped the Tier-1 hour tolerance (O4). | **Fixed.**  Tolerance now applied before the hour→day conversion in the completion path too. |
+| **F5** | NIT/latent | `dist_cache`/`gov_cache` keyed by `id(schedule)` could `KeyError` on a malformed `ChangeSet` whose endpoints are not in `sa.schedules` (unreachable via `analyze_series`, but breaks the "never raises" contract). | **Fixed.**  Cache lookups now fall back to recomputation instead of raising. |
+
+The reviewer independently reproduced P1, P7, the worked-example anchor, and the
+driver-in-negative-float case, and verified O1–O7 semantics (distance
+nonnegativity, B/C/W and recovery separation, start-of-window timing and the
+sensitivity set, Tier-1 tolerance, remaining-work population, propagated
+governance, coverage, and the fixed-reference conversion / burn-rate) with no
+further defect.  Suite after fixes: **176 passed, 1 skipped** (3 new
+post-review regression tests).

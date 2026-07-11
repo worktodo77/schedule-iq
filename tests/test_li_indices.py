@@ -322,6 +322,68 @@ def test_fcbi_worked_example_anchor_v05():
     assert w.n_severity == pytest.approx(4.0) and w.n_deepening == pytest.approx(4.0)
 
 
+def test_fcbi_forecast_slip_is_not_a_basis_change():
+    """Post-review regression (finding F1).  A moving *forecast* on an
+    unconstrained completion milestone is ordinary execution erosion and must
+    stay in the operational trend; only a moving *requirement* basis (constraint
+    date / rebaseline) is a basis-change window (O7.9).  A false trip would also
+    restart the cumulative and discard previously accumulated burn."""
+    def bld(dd, atf, ef):
+        r = [Relationship("A", "T"), Relationship("B2", "T")]
+        return _s(dd, [_a("A", "A", atf), _a("B2", "B2", 0.0), _m("T", "T", atf, ef=ef)], r)
+    # unconstrained target whose forecast slips 6d then 10d across two windows
+    res = _fcbi([bld(datetime(2025, 1, 6, 8), 0.0, _DFIN),
+                 bld(datetime(2025, 2, 6, 8), -6.0, _DFIN + timedelta(days=6)),
+                 bld(datetime(2025, 3, 6, 8), -10.0, _DFIN + timedelta(days=10))], target="T")
+    assert not any(w.basis_change for w in res.windows)      # pure erosion
+    assert all(c is not None for c in res.cumulative_burn)   # nothing segmented out
+    assert res.cumulative_burn[-1] > res.cumulative_burn[0]  # burn accumulates
+    # control: a genuine constraint-date move still fires the basis-change gate
+    def con(dd, cdate):
+        return _s(dd, [_a("A", "A", 0.0),
+                       _m("T", "T", 0.0 if cdate == _DFIN else -10.0,
+                          constraint=ConstraintType.MANDATORY_FINISH, cdate=cdate)],
+                  [Relationship("A", "T")])
+    cw = _fcbi([con(datetime(2025, 1, 6, 8), _DFIN),
+                con(datetime(2025, 2, 6, 8), _DFIN - timedelta(days=10))], target="T").windows[0]
+    assert cw.basis_change and cw.requirement_margin_change == pytest.approx(10.0)
+
+
+def test_fcbi_offpath_negative_feeder_preserves_driver():
+    """Post-review regression (finding F2).  An off-driving-path feeder pushed
+    negative by a non-target constraint must NOT become the distance reference:
+    the true rank-1 driver keeps d=0 / w=1 (O1's mandatory 'driving-path d=0'),
+    so C is not silently biased down by a quarantined activity."""
+    rels = [Relationship("A", "T"), Relationship("B", "C"), Relationship("C", "T")]
+    def bld(dd, atf, btf):
+        return _s(dd, [_a("A", "A", atf),
+                       _a("B", "B", btf, constraint=ConstraintType.FINISH_ON_OR_BEFORE),
+                       _a("C", "C", 10.0), _m("T", "T", 0.0)], rels)
+    w = _fcbi([bld(datetime(2025, 1, 6, 8), 0.0, -5.0),
+               bld(datetime(2025, 2, 6, 8), -2.0, -5.0)], target="T").windows[0]
+    byc = {b.code: b for b in w.top_burners}
+    assert byc["A"].distance_days == pytest.approx(0.0)      # driver stays the driver
+    assert byc["A"].weight == pytest.approx(1.0)
+    assert w.burn_proximity == pytest.approx(1.0)            # C not biased by feeder
+
+
+def test_fcbi_completer_with_unknown_prior_still_disclosed():
+    """Post-review regression (finding F3).  A completer whose prior float is
+    unknown is still counted and disclosed in the omission diagnostic (O5's
+    purpose: a heavy-completion month must never look benign), with prior fields
+    left None rather than the completer dropped entirely."""
+    r = [Relationship("B", "T"), Relationship("L", "T")]
+    e = _s(datetime(2025, 1, 6, 8),
+           [_a("B", "B", None, tf_hours=None), _a("L", "L", 2.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8),
+           [_a("B", "B", None, tf_hours=None, status=ActivityStatus.COMPLETED, rem=0,
+               af=datetime(2025, 1, 20, 17)), _a("L", "L", 2.0), _m("T", "T", 0.0)], r)
+    w = _fcbi([e, l], target="T").windows[0]
+    assert w.completed_in_window == 1
+    co = {c.code: c for c in w.completion_omission}
+    assert "B" in co and co["B"].prior_pos_float_days is None   # prior unknown, still shown
+
+
 def test_fcbi_retired_surfaces_absent():
     """The retired FCBI% (old Eq. 3) and its D=0 sentinel are gone (O2)."""
     w = _fcbi([_p2(datetime(2025, 1, 6, 8), 10.0),

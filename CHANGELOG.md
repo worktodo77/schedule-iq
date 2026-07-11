@@ -3,6 +3,46 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-01 FCBI v0.5.6 (wave-5 peer-review; provenance/API/test hardening)
+
+**NOT number-changing.**  A fifth independent adversarial review accepted the
+v0.5.5 core (exact `float_paths` equivalence, frontier soundness, λ ∈ (0, 10],
+stable-terminal-target enforcement, one-basis λ-sensitivity, exact cap, and the
+correctness-first performance tradeoff).  v0.5.6 is pragmatic hardening only — no
+change to the FCBI path-distance/frontier methodology or to any canonical number.
+
+- **Series-integrity guard (Item 1, defensive):** `_validate_fcbi_series_integrity`
+  (used by `_prepare_fcbi_basis`) checks the change-set sequence is structurally
+  consistent with `sa.schedules` — window count, per-window project id / data date /
+  target presence / forward date order, and `source_sha256` when present on both.
+  It does NOT require object identity (semantically identical clones pass and stay
+  numerically identical); a clearly inconsistent series is NOT EVALUATED with an
+  audit reason.  Canonical workflow behaviour is unchanged.
+- **Target UID continuity (Item 2, provenance):** a target whose CODE stays stable
+  and terminal but whose internal UID moves across updates (re-import, migration,
+  delete-and-recreate) is still evaluated, now flagged PROVISIONAL with
+  `target_uid_changed` / `target_uid_history` / `target_continuity_note` and an
+  interpretation warning.  A moved UID is NOT treated as a changed target — the
+  numbers match the stable-UID run.
+- **λ input type hardening (Item 3, API):** `_invalid_lambda_reason` rejects
+  non-real and `bool` λ before any arithmetic; `run_li_indices` guards its
+  legacy-kernel λ selection the same way.  The public entry point never raises on
+  any λ input type (None, str, bool, complex, containers, non-finite).
+- **Corpus reproducibility (Item 4, tests):** the randomized equivalence corpus
+  builds relationships in sorted order (stable across `PYTHONHASHSEED`), adds a
+  250-DAG mixed-topology corpus (all four relationship types, ± lags, LOE, parallel
+  finish milestones, None/negative float, shared merges, deep chains) comparing
+  path count / sequence / `rel_float_days` / `rel_float_hours` / distance map /
+  determinism / no-duplicate-signatures, and a subprocess hash-seed reproducibility
+  check.  W4 counterexamples retained.
+- **Enumeration instrumentation (Item 5, optional):** `_target_distance` gained an
+  optional `stats` dict recording `paths_enumerated` / `convergence_stopped` /
+  `depth_capped` / `stop_reason` — observational only, no result change, no new
+  work-budget cap; the exact enumerator is untouched.
+- The v0.4 RF kernel (PCI/CDI/RDI/BWI) and all canonical FCBI anchors are unchanged.
+
+Suite: 225 passed, 1 skipped.
+
 ## Unreleased — LI-01 FCBI v0.5.5 (wave-4 peer-review; enumerator correctness)
 
 **Check-affecting for the topologies where the withdrawn v0.5.4 enumerator

@@ -411,3 +411,29 @@ in λ, immateriality at `FCBI_CONV_LAMBDA` implies it for every λ ≤ that refe
 which is why the weighting λ is capped there (W4-05).
 
 Wave-4 regressions added; suite green: **212 passed, 1 skipped**.
+
+## Wave-5 review — fifth reviewer, core ACCEPTED; v0.5.6 hardening only
+
+A fifth independent adversarial review exercised the v0.5.5 enumerator, frontier,
+λ range, target-stability rule, prepared-basis refactor, and cap across ~35,000
+adversarial networks (equivalence) and ~10,000 uncapped networks (frontier
+soundness, 15,335 omitted activities checked).  **The core methodology is accepted
+and is NOT reopened:** exact `float_paths` equivalence, frontier soundness,
+λ ∈ (0, 10], stable-terminal-target enforcement, one-basis λ-sensitivity, and the
+exact path cap all survived; the correctness-first performance tradeoff is accepted.
+
+The wave produced only **pragmatic, non-methodology hardening** (v0.5.6).  None of
+the below is a release blocker or a defect in the FCBI arithmetic — the numbers are
+unchanged on every canonical series.
+
+| Item | Class | Disposition |
+|------|-------|-------------|
+| **1 — Series-integrity guard** | Defensive software hardening | The `id()`-keyed distance cache assumed the canonical construction (each ChangeSet built from the same Schedule objects in `sa.schedules`).  Added `_validate_fcbi_series_integrity(sa, target_code)`, used by `_prepare_fcbi_basis`: it checks window count = schedules−1 and that each window joins `schedules[i] → schedules[i+1]` by project id, data date, target-code presence, forward date order, and `source_sha256` **when present on both**.  It does NOT require Python object identity — semantically identical clones pass and stay numerically identical; an ordinary cache miss is not a failure (the loop recomputes such endpoints).  A clearly inconsistent series is NOT EVALUATED with an audit reason.  This is a consistency guard, not a methodology gate. |
+| **2 — Target UID continuity** | Nonblocking provenance disclosure | The target CODE is enforced stable + terminal in every update (W4-06), but its internal UID can legitimately move (re-import, migration, delete-and-recreate).  A moved UID no longer needs to be silent nor a rejection: the run continues, is flagged **PROVISIONAL**, and carries `target_uid_changed` / `target_uid_history` / `target_continuity_note` plus an interpretation warning to confirm the milestones denote the same contractual completion.  A UID change is explicitly NOT treated as proof the target changed — the numbers are identical to the stable-UID run. |
+| **3 — λ input type hardening** | API robustness | `_invalid_lambda_reason` now rejects non-`Real` and `bool` inputs (bool subclasses int, so `True`/`False` would else pass as 1/0) BEFORE any arithmetic, and `run_li_indices` guards its legacy-kernel λ selection the same way (the v0.4 kernel is NOT bounded by 10 — any finite positive λ is valid there).  The public entry point never raises on any λ input type. |
+| **4 — Corpus reproducibility** | Test quality | The randomized equivalence corpus now builds relationships in `sorted` order (stable across `PYTHONHASHSEED`), adds a 250-DAG **mixed-topology** corpus (FS/SS/FF/SF, ± lags, LOE nodes, parallel non-terminal finish milestones, None/negative float, shared merges, deep chains), and compares path count, code sequence, `rel_float_days`, `rel_float_hours`, the full resolved distance map, determinism, and absence of duplicate path signatures.  A subprocess test proves byte-identical output under different hash seeds.  The W4 blocker counterexamples are retained permanently. |
+| **5 — Enumeration instrumentation** | Optional audit metadata | The exact enumerator is NOT replaced.  `_target_distance` gained an optional `stats` dict (default `None`) recording `paths_enumerated` / `convergence_stopped` / `depth_capped` / `stop_reason` — purely observational, no effect on the result, no new work-budget cap. |
+
+v0.5.6 hardening added; suite green: **225 passed, 1 skipped**.  FCBI v0.5.6 is
+non-number-changing provenance and API hardening only; the accepted v0.5.5
+path-distance and frontier methodology is unchanged.

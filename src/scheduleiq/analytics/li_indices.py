@@ -32,6 +32,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from numbers import Real
 from typing import Optional
 
 from ..ingest.model import ActivityType, ConstraintType, Schedule
@@ -327,6 +328,15 @@ class FcbiResult:
     target_code: Optional[str] = None
     target_auto_resolved: bool = False       # True => analyst did not select m (O7.1)
     depth_capped: bool = False               # any window hit the path cap (REV-08)
+    # -- target UID continuity (v0.5.6 provenance disclosure) ------------------
+    # The target CODE is enforced stable + terminal across every update (W4-06);
+    # its internal activity UID can still legitimately move (re-import, migration,
+    # delete-and-recreate).  A moved UID does NOT reject the run — it flags the
+    # result provisional pending analyst confirmation that the milestones denote
+    # the same contractual completion (it is NOT proof the target changed).
+    target_uid_changed: bool = False
+    target_uid_history: list[str] = field(default_factory=list)
+    target_continuity_note: str = ""
     interpretation: str = ""
     reason: str = ""
     scope_note: str = (
@@ -417,7 +427,8 @@ def _dstr(x: Optional[datetime]) -> str:
     return x.strftime("%Y-%m-%d") if x else "—"
 
 
-def _target_distance(schedule: Schedule, target_code: Optional[str]
+def _target_distance(schedule: Schedule, target_code: Optional[str],
+                     stats: Optional[dict] = None
                      ) -> tuple[dict[str, float], Optional[float], Optional[float], bool]:
     """Per-activity nonnegative target-specific distance d_i (ruling O1):
 
@@ -463,8 +474,21 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
     EXACTLY when a ``(MAX+1)``-th path exists (the generator's one-path lookahead):
     ``MAX`` paths → not capped, ``MAX+1`` → ``depth_capped`` (provisional).  NOTE:
     the driving-path *identity* still follows the tool-of-record native-calendar
-    float walk (ADR-0004)."""
+    float walk (ADR-0004).
+
+    Optional ``stats`` (v0.5.6, audit instrumentation only — no effect on the
+    result): if a dict is passed it is filled with ``paths_enumerated``,
+    ``convergence_stopped`` (frontier proved the remainder immaterial),
+    ``depth_capped``, and ``stop_reason`` (``"empty"`` | ``"exhausted"`` |
+    ``"frontier"`` | ``"resolved"`` | ``"capped"``).  Purely observational; the
+    accepted enumerator and frontier are untouched."""
+    def _rec(reason: str, n: int, converged: bool, capped: bool):
+        if stats is not None:
+            stats.update(paths_enumerated=n, convergence_stopped=converged,
+                         depth_capped=capped, stop_reason=reason)
+
     if target_code is None:
+        _rec("empty", 0, False, False)
         return {}, None, None, False
     tgt = _find_by_code(schedule, target_code)
     # activities that can REACH m (forward), for the sound frontier lower bound
@@ -483,14 +507,18 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
     driving_margin: Optional[float] = None
     n_paths = 0
     depth_capped = False
+    stop_reason = "exhausted"                        # generator ran dry
+    converged = False
     for _native_rel, fp, used_snapshot in iter_float_paths(schedule,
                                                            target_uid=target_code):
         n_paths += 1
         if n_paths > FCBI_PATHS_MAX:                # a (MAX+1)-th path exists -> cap
             depth_capped = True                     # (do NOT fold it in; W4-07)
+            stop_reason = "capped"
             break
         if driving_margin is None:
             if fp.rel_float_hours is None:         # driving spine has no discrete float
+                _rec("empty", n_paths, False, False)
                 return {}, None, None, False
             driving_margin = fp.rel_float_hours / REFERENCE_HPD
         if fp.rel_float_hours is not None:
@@ -509,12 +537,17 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
                if (act := schedule.activities.get(uid)) is not None
                and not act.is_loe_or_summary and act.total_float_hours is not None]
         if not rem:
-            break                                  # everything material resolved
+            stop_reason = "resolved"               # everything material resolved
+            break
         frontier_d = max(0.0, min(rem) / REFERENCE_HPD - driving_margin)
         if kernel_weight(frontier_d, FCBI_CONV_LAMBDA) < FCBI_CONV_TOL:
-            break                                   # all omitted paths immaterial (proven)
+            converged = True                        # all omitted paths immaterial (proven)
+            stop_reason = "frontier"
+            break
     if driving_margin is None:                      # no paths at all
+        _rec("empty", n_paths, False, False)
         return {}, None, None, False
+    _rec(stop_reason, n_paths, converged, depth_capped)
     tmargin = (tgt.total_float_hours / REFERENCE_HPD
                if tgt is not None and tgt.total_float_hours is not None else None)
     return dist, driving_margin, tmargin, depth_capped
@@ -700,23 +733,104 @@ def _basis_change_reasons(cs, target_code: Optional[str]) -> list[str]:
     return reasons
 
 
-def _invalid_lambda_reason(lam: float) -> str:
-    """Ruling O7.3 / W4-05: the FCBI weighting λ must be finite and in
+def _invalid_lambda_reason(lam) -> str:
+    """Ruling O7.3 / W4-05: the FCBI weighting λ must be a real number in
     ``(0, FCBI_CONV_LAMBDA]``.  The convergence frontier is proven immaterial only
     at the fixed reference λ = ``FCBI_CONV_LAMBDA``; because ``2**(-d/λ)`` increases
     in λ for d ≥ 0, an omitted-path bound proven at that reference holds for every
     λ ≤ it but NOT for a larger λ — a larger weighting λ would make frontier-omitted
     paths material and invalidate the resolved distance basis.  Returns ``""`` when
-    valid, else a reason (the ruling never raises — REV-12)."""
-    if not (math.isfinite(lam) and lam > 0):
+    valid, else a reason.
+
+    Type-hardened (v0.5.6): non-real inputs (``None``, ``str``, ``complex``,
+    containers) and ``bool`` (which subclasses ``int``, so ``True``/``False`` would
+    otherwise slip through as 1/0) are rejected BEFORE any arithmetic, so the
+    public never-raises contract (REV-12) holds for any input type, not only for
+    finite floats."""
+    if isinstance(lam, bool) or not isinstance(lam, Real):
+        return (f"invalid lambda {lam!r}: the FCBI half-weight constant must be a "
+                "real numeric value in working days")
+    value = float(lam)
+    if not math.isfinite(value) or value <= 0:
         return (f"invalid lambda {lam!r}: the FCBI half-weight constant must be a "
                 "finite positive number of working days")
-    if lam > FCBI_CONV_LAMBDA:
+    if value > FCBI_CONV_LAMBDA:
         return (f"invalid lambda {lam!r}: the FCBI half-weight constant must be "
                 f"<= the convergence reference lambda ({FCBI_CONV_LAMBDA:g} working "
                 "days); a larger lambda would make frontier-omitted paths material "
                 "and invalidate the resolved distance basis (ruling O7.3; W4-05)")
     return ""
+
+
+def _validate_fcbi_series_integrity(sa, target_code) -> str:
+    """Defensive audit guard (v0.5.6): confirm the change-set sequence is
+    structurally consistent with ``sa.schedules`` before the FCBI basis trusts its
+    ``id()``-keyed distance cache.  Returns ``""`` when coherent, else a NOT
+    EVALUATED audit reason.
+
+    This is a **software** consistency guard, NOT a methodology gate.  The canonical
+    ScheduleIQ workflow builds every ChangeSet from the same Schedule objects held in
+    ``sa.schedules`` (``analyze_series``), so it always passes; this only catches
+    internal misuse — a hand-assembled, mis-ordered, or mismatched series.  It does
+    NOT require Python object identity: semantically identical clones pass (compared
+    by cheap, stable identifiers).  It adds NO network hashing — a ``source_sha256``
+    is compared only when already present on both sides.  An ordinary cache miss
+    (endpoint object not in ``sa.schedules``) is NOT a failure; the weighting loop
+    recomputes such endpoints defensively."""
+    schedules = getattr(sa, "schedules", [])
+    changesets = getattr(sa, "changesets", [])
+    # 1. exactly one window per consecutive schedule pair
+    expected = max(0, len(schedules) - 1)
+    if len(changesets) != expected:
+        return (f"internal series integrity: {len(changesets)} change-set window(s) "
+                f"for {len(schedules)} schedule(s) (expected {expected}) — the "
+                "windows do not correspond to the schedule sequence — NOT EVALUATED")
+
+    def _match(endpoint, sched, side):
+        # cheap, stable identifiers; require agreement where BOTH carry a value
+        if endpoint.project_id != sched.project_id:
+            return (f"window {side} project_id {endpoint.project_id!r} != schedule "
+                    f"{sched.project_id!r}")
+        if endpoint.data_date != sched.data_date:
+            return (f"window {side} data date {_dstr(endpoint.data_date)} != schedule "
+                    f"{_dstr(sched.data_date)}")
+        if (endpoint.source_sha256 and sched.source_sha256
+                and endpoint.source_sha256 != sched.source_sha256):
+            return f"window {side} source hash differs from the corresponding schedule"
+        if target_code is not None and _find_by_code(endpoint, target_code) is None:
+            return f"window {side} is missing the selected target {target_code!r}"
+        return ""
+
+    for i, cs in enumerate(changesets):
+        # 2. the i-th window must join schedules[i] -> schedules[i+1]
+        msg = (_match(cs.earlier, schedules[i], f"{i} earlier")
+               or _match(cs.later, schedules[i + 1], f"{i} later"))
+        if msg:
+            return f"internal series integrity: {msg} — NOT EVALUATED"
+        # 3. a window must move forward in data date (order sanity)
+        de, dl = cs.earlier.data_date, cs.later.data_date
+        if de is not None and dl is not None and dl < de:
+            return (f"internal series integrity: window {i} data dates out of order "
+                    f"({_dstr(de)} -> {_dstr(dl)}) — NOT EVALUATED")
+    return ""
+
+
+def _target_uid_continuity(scheds, target_code) -> tuple[bool, list, str]:
+    """Provenance disclosure (v0.5.6, W5-item-2): track the selected target's
+    internal UID across updates.  The target CODE is already enforced stable and
+    terminal in every update (W4-06); a moving UID (re-import, migration,
+    delete-and-recreate, source re-identification) does NOT reject the run and is
+    NOT proof the target changed — it flags the result provisional pending analyst
+    confirmation that the milestones denote the same contractual completion.
+    Returns ``(changed, uid_history, note)``."""
+    history = [a.uid for s in scheds
+               if (a := _find_by_code(s, target_code)) is not None]
+    changed = len(set(history)) > 1
+    note = ("selected target code remained stable and terminal, but its internal "
+            "activity identifier changed across updates "
+            f"({' -> '.join(history)}); confirm the milestones represent the same "
+            "contractual completion definition") if changed else ""
+    return changed, history, note
 
 
 @dataclass
@@ -733,6 +847,10 @@ class _FcbiBasis:
     dist_cache: dict
     gov_cache: dict
     reason: str = ""
+    # target UID continuity (v0.5.6 provenance) — see _target_uid_continuity
+    target_uid_changed: bool = False
+    target_uid_history: list = field(default_factory=list)
+    target_continuity_note: str = ""
 
 
 def _prepare_fcbi_basis(sa, target: Optional[str] = None) -> _FcbiBasis:
@@ -754,10 +872,17 @@ def _prepare_fcbi_basis(sa, target: Optional[str] = None) -> _FcbiBasis:
                       "milestone m across the series — select it explicitly, ruling "
                       "O7.1; target-basis discontinuity — W4-06)")
         return _FcbiBasis(scheds, changesets, None, auto_resolved, {}, {}, reason=reason)
+    # defensive series-integrity guard (v0.5.6, Item 1) — audit, not methodology
+    integrity = _validate_fcbi_series_integrity(sa, target_code)
+    if integrity:
+        return _FcbiBasis(scheds, changesets, target_code, auto_resolved, {}, {},
+                          reason=integrity)
+    uid_changed, uid_history, uid_note = _target_uid_continuity(scheds, target_code)
     dist_cache = {id(s): _target_distance(s, target_code) for s in scheds}
     gov_cache = {id(s): _governed_codes(s, target_code) for s in scheds}
     return _FcbiBasis(scheds, changesets, target_code, auto_resolved,
-                      dist_cache, gov_cache)
+                      dist_cache, gov_cache, target_uid_changed=uid_changed,
+                      target_uid_history=uid_history, target_continuity_note=uid_note)
 
 
 def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
@@ -792,6 +917,9 @@ def _fcbi_from_basis(basis: _FcbiBasis, lam: float,
     auto_resolved = basis.auto_resolved
     dist_cache = basis.dist_cache
     gov_cache = basis.gov_cache
+    uid_changed = basis.target_uid_changed            # provenance (v0.5.6, Item 2)
+    uid_history = basis.target_uid_history
+    uid_note = basis.target_continuity_note
 
     windows: list[FcbiWindow] = []
     cumulative_burn: list[Optional[float]] = []
@@ -1021,6 +1149,8 @@ def _fcbi_from_basis(basis: _FcbiBasis, lam: float,
                           cumulative_weighted=cumulative_weighted, lam=lam,
                           target_code=target_code, target_auto_resolved=auto_resolved,
                           depth_capped=any_depth_capped,
+                          target_uid_changed=uid_changed, target_uid_history=uid_history,
+                          target_continuity_note=uid_note,
                           reason=f"no target-specific distance to {target_code} could "
                                  "be resolved from enumerated float paths in any "
                                  "window (no float-path basis)")
@@ -1067,6 +1197,10 @@ def _fcbi_from_basis(basis: _FcbiBasis, lam: float,
                  "before this is expert work product (O7.1)." if auto_resolved else "")
               + (" PROVISIONAL: float-path enumeration hit the depth ceiling without "
                  "converging (O7.3)." if any_depth_capped else "")
+              + (f" PROVISIONAL: selected target code remained stable, but its internal "
+                 "activity identifier changed across updates — confirm that the "
+                 "milestones represent the same contractual completion definition."
+                 if uid_changed else "")
               + " Headline is the (B, C) pair — B is a gross activity-day aggregate "
               "(not project float consumed); C carries proximity; W = B·C is the "
               "derived single-number diagnostic.")
@@ -1075,7 +1209,8 @@ def _fcbi_from_basis(basis: _FcbiBasis, lam: float,
                       cumulative_proximity=cumulative_proximity, top_burners=top,
                       lam=lam, target_code=target_code,
                       target_auto_resolved=auto_resolved, depth_capped=any_depth_capped,
-                      interpretation=interp)
+                      target_uid_changed=uid_changed, target_uid_history=uid_history,
+                      target_continuity_note=uid_note, interpretation=interp)
 
 
 # -- lambda sensitivity set (Q4/Q2 settled): recompute C and W at multiple lambda
@@ -1468,8 +1603,14 @@ def run_li_indices(sa, lam: float = DEFAULT_LAMBDA,
     """
     scheds = getattr(sa, "schedules", [])
     # the shared v0.4 kernel (PCI/CDI/RDI/BWI) cannot divide by a non-positive λ;
-    # fall back to the default there while FCBI reports the invalid-λ reason itself
-    kern_lam = lam if (math.isfinite(lam) and lam > 0) else DEFAULT_LAMBDA
+    # fall back to the default there while FCBI reports the invalid-λ reason itself.
+    # Type-hardened (v0.5.6): guard the finiteness test against non-real / bool λ so
+    # the public entry point never raises on a bad LI-01 λ.  NOTE the v0.4 kernel is
+    # NOT bounded by FCBI_CONV_LAMBDA — any finite positive λ (incl. > 10) is valid
+    # here, so this uses its own predicate, not the FCBI-specific range check.
+    kern_lam = (lam if (isinstance(lam, Real) and not isinstance(lam, bool)
+                        and math.isfinite(float(lam)) and lam > 0)
+                else DEFAULT_LAMBDA)
     kernels = {id(s): _build_kernel(s, kern_lam) for s in scheds}
     return LiIndicesResult(
         fcbi=_fcbi(sa, lam, fcbi_target),        # raw λ: FCBI reports invalid-λ itself

@@ -768,7 +768,9 @@ def _oracle_distance(schedule, target, big_n=256):
 def _random_dag(rng, n_acts):
     """A seeded random single-sink DAG: tasks A0..A{n-1} in topological order with
     FS edges only to a later task or the terminal milestone T (so every task
-    reaches T), random working-day floats spanning negative to large."""
+    reaches T), random working-day floats spanning negative to large.  Relationship
+    creation order is deterministic (sorted targets) so the fixture is stable across
+    PYTHONHASHSEED (Item 4)."""
     acts = [_m("T", "T", 0.0)]
     codes = [f"A{i}" for i in range(n_acts)]
     for c in codes:
@@ -779,21 +781,63 @@ def _random_dag(rng, n_acts):
         tgts = {rng.choice(later)}                       # >=1 successor -> reaches T
         for _ in range(rng.randint(0, 2)):
             tgts.add(rng.choice(later))
-        rels += [Relationship(c, t) for t in tgts]
+        rels += [Relationship(c, t) for t in sorted(tgts)]   # stable order (Item 4)
     return _s(datetime(2025, 1, 6, 8), acts, rels)
 
 
+def _random_mixed_dag(rng, n_acts):
+    """A seeded random single-sink DAG exercising the FULL topology surface (Item 4):
+    FS/SS/FF/SF relationships, positive and negative lags, negative / None / large
+    floats, LOE nodes (excluded from margins), parallel non-terminal finish
+    milestones, deep feeder chains, and shared merges — every task still reaches the
+    terminal milestone T.  Deterministic given ``rng`` (sorted edge order)."""
+    acts = [_m("T", "T", 0.0)]
+    codes = [f"A{i}" for i in range(n_acts)]
+    reltypes = [RelType.FS, RelType.SS, RelType.FF, RelType.SF]
+    for i, c in enumerate(codes):
+        r = rng.random()
+        if r < 0.12:                                     # LOE node (excluded from margin)
+            acts.append(_a(c, c, round(rng.uniform(-10.0, 90.0), 2),
+                           atype=ActivityType.LOE))
+        elif r < 0.24:                                   # parallel NON-terminal finish mile
+            acts.append(_m(c, c, round(rng.uniform(-5.0, 60.0), 2)))
+        elif r < 0.32:                                   # unmeasurable float
+            acts.append(_a(c, c, None, tf_hours=None))
+        else:
+            acts.append(_a(c, c, round(rng.uniform(-15.0, 110.0), 2)))
+    rels = []
+    for i, c in enumerate(codes):
+        later = codes[i + 1:] + ["T"]
+        tgts = {rng.choice(later)}
+        for _ in range(rng.randint(0, 3)):               # richer fan-out / shared merges
+            tgts.add(rng.choice(later))
+        for t in sorted(tgts):
+            rt = reltypes[rng.randrange(len(reltypes))]
+            lag = rng.choice([0.0, 8.0, -8.0, 16.0, -16.0])
+            rels.append(Relationship(c, t, rt, lag))
+    return _s(datetime(2025, 1, 6, 8), acts, rels)
+
+
+def _path_signature(paths):
+    return [tuple(p.codes) for p in paths]
+
+
 def _assert_iter_equals_float_paths(schedule, target, big_n=128):
-    """iter_float_paths yields EXACTLY float_paths's paths, in the same order (same
-    node sequence AND branch margin) — the core wave-4 fix (W4-01)."""
+    """iter_float_paths yields EXACTLY float_paths's paths, in the same order — same
+    path COUNT, node sequence, rel_float_days AND rel_float_hours — and never emits a
+    duplicate path signature (the core wave-4 fix, W4-01; Item-4 comparison set)."""
     ref = _float_paths(schedule, target_uid=target, n=big_n, band_days=None)
     got = []
     for _rel, fp, _used in _iter_fp(schedule, target_uid=target):
         got.append(fp)
         if len(got) >= big_n:
             break
-    assert [p.codes for p in got] == [p.codes for p in ref]
+    assert len(got) == len(ref)                                   # path count
+    assert [p.codes for p in got] == [p.codes for p in ref]       # code sequence
+    assert [p.rel_float_days for p in got] == [p.rel_float_days for p in ref]
     assert [p.rel_float_hours for p in got] == [p.rel_float_hours for p in ref]
+    sigs = _path_signature(got)
+    assert len(sigs) == len(set(sigs))                            # no duplicate paths
 
 
 def test_w4_01_counterexample_regression():
@@ -897,6 +941,238 @@ def test_w4_03_determinism():
         seq2 = [fp.codes for _r, fp, _u in _iter_fp(s, target_uid="T")]
         assert seq1 == seq2
         assert _tdist(s, "T")[0] == _tdist(s, "T")[0]
+
+
+# ============================================ v0.5.6 hardening (wave-5 items)
+# ---- Item 4: mixed-topology corpus + hash-seed reproducibility -----------
+def test_v056_mixed_topology_corpus():
+    """Item 4: a 250-DAG mixed-topology corpus (FS/SS/FF/SF relationships, +/- lags,
+    LOE nodes, parallel non-terminal finish milestones, None/negative float, shared
+    merges, deep chains) — the iterator stays byte-for-byte float_paths (count,
+    sequence, rel_float_days/hours, no duplicate signatures) and the frontier makes
+    ZERO material omissions on uncapped runs."""
+    rng = _random.Random(31337)
+    material_omissions = 0
+    for _ in range(250):
+        s = _random_mixed_dag(rng, rng.randint(4, 11))
+        _assert_iter_equals_float_paths(s, "T")
+        oracle, _p = _oracle_distance(s, "T")
+        dist, _dm, _tm, capped = _tdist(s, "T")
+        for code, d in dist.items():
+            assert oracle.get(code) == pytest.approx(d, abs=1e-9), (code, d)
+        if not capped:
+            for code, d_ref in oracle.items():
+                if code not in dist and _kw(d_ref, _CL) >= _CT:
+                    material_omissions += 1
+    assert material_omissions == 0
+
+
+def test_v056_corpus_stable_across_hashseed():
+    """Item 4: the randomized corpus is reproducible across PYTHONHASHSEED.  The
+    fixture builds relationships in sorted order, so set-iteration hash randomization
+    cannot change the network, the enumerated path sequence, or the distance map.
+    Proven by building the SAME seeded mixed corpus in subprocesses under different
+    PYTHONHASHSEED values and comparing float_paths output + distance maps."""
+    tests_dir = os.path.dirname(os.path.abspath(__file__))
+    prog = (
+        "import sys; sys.path.insert(0, %r)\n" % tests_dir +
+        "import random, test_li_indices as t\n"
+        "rng = random.Random(2026)\n"
+        "lines = []\n"
+        "for _ in range(30):\n"
+        "    s = t._random_mixed_dag(rng, rng.randint(5, 10))\n"
+        "    paths = t._float_paths(s, target_uid='T', n=128, band_days=None)\n"
+        "    dist = t._tdist(s, 'T')[0]\n"
+        "    lines.append('|'.join(','.join(p.codes) for p in paths))\n"
+        "    lines.append(repr(sorted((k, round(v, 6)) for k, v in dist.items())))\n"
+        "print('\\n'.join(lines))\n")
+
+    def run(seed):
+        env = dict(os.environ, PYTHONHASHSEED=str(seed))
+        r = subprocess.run([sys.executable, "-c", prog], capture_output=True,
+                           text=True, env=env)
+        assert r.returncode == 0, r.stderr
+        return r.stdout
+
+    a, b, c = run(0), run(1), run(524287)
+    assert a.strip() and a == b == c
+
+
+# ---- Item 1: SeriesAnalysis integrity validator --------------------------
+def _two_update_series(pid="P"):
+    r = [Relationship("D", "T"), Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("D", "D", 0.0), _a("A", "A", 3.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("D", "D", 0.0), _a("A", "A", -2.0), _m("T", "T", 0.0)], r)
+    e.project_id = l.project_id = pid
+    return e, l
+
+
+def test_v056_series_integrity_canonical_accepted():
+    """Item 1: a canonical SeriesAnalysis (changesets built from the same schedule
+    objects) passes the integrity guard unchanged."""
+    from scheduleiq.analytics.li_indices import _validate_fcbi_series_integrity
+    e, l = _two_update_series()
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    assert _validate_fcbi_series_integrity(sa, "T") == ""
+    assert run_li_indices(sa, fcbi_target="T").fcbi.reason == ""
+
+
+def test_v056_series_integrity_clones_accepted_and_identical():
+    """Item 1: semantically identical DEEP-COPIED changeset endpoints (the wave-5
+    object-identity mismatch) are accepted, and the numbers are identical to the
+    canonical run — object identity is NOT required, only structural coherence."""
+    import copy
+    e, l = _two_update_series()
+    canon = run_li_indices(SeriesAnalysis(schedules=[e, l],
+                                          changesets=[compare(e, l)]),
+                           fcbi_target="T").fcbi
+    e2, l2 = copy.deepcopy(e), copy.deepcopy(l)
+    cloned = run_li_indices(SeriesAnalysis(schedules=[e, l],
+                                           changesets=[compare(e2, l2)]),
+                            fcbi_target="T").fcbi
+    assert cloned.reason == ""
+    assert cloned.cumulative_burn == canon.cumulative_burn
+    assert cloned.cumulative_weighted == canon.cumulative_weighted
+    assert [b.contribution for b in cloned.top_burners] == \
+           [b.contribution for b in canon.top_burners]
+
+
+def test_v056_series_integrity_mismatched_project_rejected():
+    """Item 1: a changeset endpoint whose project_id differs from the corresponding
+    schedule is rejected as an internal-series-integrity failure (NOT EVALUATED)."""
+    e, l = _two_update_series()
+    e_wrong, _l2 = _two_update_series(pid="OTHER")            # different project id
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e_wrong, l)])
+    res = _fcbi_via_sa(sa, "T")
+    assert "internal series integrity" in res.reason and "NOT EVALUATED" in res.reason
+
+
+def test_v056_series_integrity_bad_date_order_rejected():
+    """Item 1: a window whose endpoints run backward in data date is rejected."""
+    e, l = _two_update_series()
+    # schedules in order [l(Feb), e(Jan)] with a Feb->Jan window: correspondence
+    # holds but the window moves backward in time -> rejected
+    sa = SeriesAnalysis(schedules=[l, e], changesets=[compare(l, e)])
+    res = _fcbi_via_sa(sa, "T")
+    assert "internal series integrity" in res.reason and "NOT EVALUATED" in res.reason
+
+
+def test_v056_series_integrity_window_count_rejected():
+    """Item 1: a missing (or duplicated) changeset window is rejected by the count
+    check — the windows must correspond one-to-one to consecutive schedule pairs."""
+    e, l = _two_update_series()
+    m = _s(datetime(2025, 3, 6, 8),
+           [_a("D", "D", 0.0), _a("A", "A", -5.0), _m("T", "T", 0.0)],
+           [Relationship("D", "T"), Relationship("A", "T")])
+    # 3 schedules but only 1 window (should be 2) -> missing window
+    sa = SeriesAnalysis(schedules=[e, l, m], changesets=[compare(e, l)])
+    res = _fcbi_via_sa(sa, "T")
+    assert "internal series integrity" in res.reason and "NOT EVALUATED" in res.reason
+    # duplicated window (2 windows for 2 schedules) -> rejected
+    sa2 = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l), compare(e, l)])
+    assert "internal series integrity" in _fcbi_via_sa(sa2, "T").reason
+
+
+def _fcbi_via_sa(sa, target):
+    return run_li_indices(sa, fcbi_target=target).fcbi
+
+
+# ---- Item 2: target UID continuity warning -------------------------------
+def _uid_series(uid_e, uid_l):
+    """Two updates whose target CODE 'T' is a terminal finish milestone in both, but
+    whose internal UID is uid_e then uid_l (relationships wire to the milestone's
+    UID)."""
+    e = _s(datetime(2025, 1, 6, 8),
+           [_a("A", "A", 5.0), _m(uid_e, "T", 0.0)], [Relationship("A", uid_e)])
+    l = _s(datetime(2025, 2, 6, 8),
+           [_a("A", "A", 0.0), _m(uid_l, "T", 0.0)], [Relationship("A", uid_l)])
+    return SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+
+
+def test_v056_target_uid_stable_no_warning():
+    """Item 2: same target code AND same UID across updates -> no continuity flag."""
+    fcbi = _fcbi_via_sa(_uid_series("T", "T"), "T")
+    assert fcbi.reason == ""
+    assert fcbi.target_uid_changed is False
+    assert fcbi.target_continuity_note == ""
+    assert "internal activity identifier changed" not in fcbi.interpretation
+
+
+def test_v056_target_uid_changed_is_provisional():
+    """Item 2: same stable+terminal target code but a CHANGED internal UID does NOT
+    reject the run — it is evaluated, flagged provisional, and carries a
+    continuity warning requiring analyst confirmation."""
+    fcbi = _fcbi_via_sa(_uid_series("T1", "T2"), "T")
+    assert fcbi.reason == ""                              # still evaluated
+    assert fcbi.target_uid_changed is True
+    assert fcbi.target_uid_history == ["T1", "T2"]
+    assert fcbi.target_continuity_note
+    assert "PROVISIONAL" in fcbi.interpretation
+    assert "internal activity identifier changed" in fcbi.interpretation
+
+
+def test_v056_target_uid_change_not_treated_as_target_change():
+    """Item 2: a UID change is NOT proof the target changed — the numbers match the
+    same-UID run exactly (only the provisional continuity flag differs)."""
+    same = _fcbi_via_sa(_uid_series("T", "T"), "T")
+    moved = _fcbi_via_sa(_uid_series("T1", "T2"), "T")
+    assert moved.cumulative_burn == same.cumulative_burn
+    assert moved.cumulative_weighted == same.cumulative_weighted
+
+
+def test_v056_target_code_change_still_governed():
+    """Item 2: existing target-stability governance still applies — a target that
+    becomes intermediate or disappears in an update is NOT EVALUATED (the UID
+    disclosure never softens the code-level W4-06 rules)."""
+    # target 'T' becomes non-terminal in update 2 (reaches another finish milestone)
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _m("T", "T", 0.0)],
+           [Relationship("A", "T")])
+    l = _s(datetime(2025, 2, 6, 8),
+           [_a("A", "A", 0.0), _m("T", "T", 0.0), _m("C", "C", 0.0)],
+           [Relationship("A", "T"), Relationship("T", "C")])   # T -> C: T not terminal
+    assert "NOT EVALUATED" in _fcbi([e, l], target="T").reason
+    # target disappears in update 2
+    l2 = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0)], [])
+    assert "NOT EVALUATED" in _fcbi([e, l2], target="T").reason
+
+
+# ---- Item 3: lambda input type hardening ---------------------------------
+def test_v056_lambda_input_type_hardening():
+    """Item 3: run_li_indices never raises on ANY lambda input type (None, str,
+    bool, complex, containers, non-finite, out-of-range); 3/5/10 are valid, every
+    other listed value is invalid-with-a-reason."""
+    from scheduleiq.analytics.li_indices import _invalid_lambda_reason
+    r = [Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    valid = [3, 5, 10, 3.0, 5.0, 10.0]
+    invalid = [None, "5", True, False, 2 + 3j, [5], {"l": 5}, float("nan"),
+               float("inf"), float("-inf"), 0, 0.0, -5.0, 10.000001, 20.0]
+    for lam in valid:
+        assert _invalid_lambda_reason(lam) == ""
+        assert run_li_indices(sa, fcbi_target="T", lam=lam).fcbi.reason == ""   # no raise
+    for lam in invalid:
+        assert _invalid_lambda_reason(lam) != ""
+        res = run_li_indices(sa, fcbi_target="T", lam=lam).fcbi                 # no raise
+        assert "invalid lambda" in res.reason
+
+
+# ---- Item 5: optional enumeration instrumentation ------------------------
+def test_v056_target_distance_stats_instrumentation():
+    """Item 5: the optional stats hook records audit counters without changing the
+    result (paths_enumerated / convergence_stopped / depth_capped / stop_reason)."""
+    # far-off-critical fan: frontier stops after the driver
+    acts = [_m("T", "T", 0.0), _a("D", "D", 0.0)] + \
+           [_a(f"F{i}", f"F{i}", 80.0 + i) for i in range(30)]
+    rels = [Relationship("D", "T")] + [Relationship(f"F{i}", "T") for i in range(30)]
+    s = _s(datetime(2025, 1, 6, 8), acts, rels)
+    stats = {}
+    dist_a, _dm, _tm, cap_a = _tdist(s, "T", stats)
+    dist_b, _dm2, _tm2, cap_b = _tdist(s, "T")           # without stats: same result
+    assert dist_a == dist_b and cap_a == cap_b
+    assert stats["convergence_stopped"] is True and stats["depth_capped"] is False
+    assert stats["stop_reason"] == "frontier" and stats["paths_enumerated"] >= 1
 
 
 def test_w4_04_sensitivity_reuses_one_basis(monkeypatch):

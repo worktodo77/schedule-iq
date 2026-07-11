@@ -23,7 +23,7 @@ from scheduleiq.ingest.model import (Activity, ActivityStatus,      # noqa: E402
 from scheduleiq.compare.diff import compare                         # noqa: E402
 from scheduleiq.trend.series import SeriesAnalysis, analyze_series  # noqa: E402
 from scheduleiq.analytics.li_indices import (                       # noqa: E402
-    kernel_weight, run_li_indices)
+    kernel_weight, run_li_indices, fcbi_lambda_sensitivity)
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures")
 BASELINE = os.path.join(FIX, "demo_baseline.xer")
@@ -541,6 +541,78 @@ def test_fcbi_unmeasurable_and_milestone_and_recovery_quarantine():
             _m("M", "M", 0.0, constraint=ConstraintType.MANDATORY_FINISH), _m("T", "T", 0.0)], rr)
     wr = _fcbi([er, lr], target="T").windows[0]
     assert wr.recov_quarantine > 0
+
+
+# ---- settled open questions (principal decisions Q1-Q7) ------------------
+def test_fcbi_population_coverage_block():
+    """Q3/Q6 settled: population coverage reported over the whole candidate
+    population (not just movers), distinct from eligible-burn coverage."""
+    r = [Relationship("D", "T"), Relationship("A", "T"), Relationship("G", "M"),
+         Relationship("M", "T"), Relationship("U", "T")]
+    def bld(dd, a_tf, u_tf):
+        return _s(dd, [_a("D", "D", 0.0), _a("A", "A", a_tf), _a("G", "G", 2.0),
+                       _m("M", "M", 0.0, constraint=ConstraintType.MANDATORY_FINISH),
+                       _a("U", "U", u_tf), _m("T", "T", 0.0)], r)
+    w = _fcbi([bld(datetime(2025, 1, 6, 8), 5.0, 3.0),
+               bld(datetime(2025, 2, 6, 8), 0.0, None)], target="T").windows[0]
+    assert w.candidate_pop == 4                          # D, A, G, U (tasks)
+    assert w.tf_evaluability == pytest.approx(0.75)      # U unmeasurable at end
+    assert w.population_eligibility == pytest.approx(0.5)  # G governed, U unmeasurable
+    assert w.pop_exclusions                              # reasons recorded
+
+
+def test_fcbi_adaptive_convergence():
+    """Q6/REV-08 settled: enumeration converges (not depth_capped) when the
+    omitted-weight bound falls below tolerance, even with many off-critical
+    feeders; and the depth ceiling is disclosed rather than implied converged."""
+    n = 60
+    rels = [Relationship("D", "T")] + [Relationship(f"F{i}", "T") for i in range(n)]
+    def bld(dd, d_tf):
+        acts = ([_a("D", "D", d_tf)]
+                + [_a(f"F{i}", f"F{i}", 50.0 + i) for i in range(n)]
+                + [_m("T", "T", 0.0)])
+        return _s(dd, acts, rels)
+    res = _fcbi([bld(datetime(2025, 1, 6, 8), 0.0),
+                 bld(datetime(2025, 2, 6, 8), -2.0)], target="T")
+    assert not res.depth_capped                          # converged early
+    assert res.windows[0].burn_gross == pytest.approx(2.0)
+
+
+def test_fcbi_target_auto_resolved_is_provisional():
+    """Q1/O7.1 settled: an auto-resolved target flags the run PROVISIONAL (m must
+    be analyst-confirmed for work product)."""
+    r = [Relationship("A", "C")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _m("C", "C", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("C", "C", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    res = run_li_indices(sa).fcbi                        # no explicit target
+    assert res.target_auto_resolved
+    assert "PROVISIONAL" in res.interpretation
+
+
+def test_fcbi_lambda_sensitivity_set():
+    """Q2/Q4 settled: a λ∈{3,5,10} sensitivity set; B is λ-invariant, C/W move."""
+    r = [Relationship("D", "T"), Relationship("A", "T")]
+    def bld(dd, a_tf):
+        return _s(dd, [_a("D", "D", 0.0), _a("A", "A", a_tf), _m("T", "T", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[bld(datetime(2025, 1, 6, 8), 5.0),
+                                   bld(datetime(2025, 2, 6, 8), 0.0)],
+                        changesets=[compare(bld(datetime(2025, 1, 6, 8), 5.0),
+                                            bld(datetime(2025, 2, 6, 8), 0.0))])
+    ls = fcbi_lambda_sensitivity(sa, target="T")
+    assert [p.lam for p in ls.points] == [3.0, 5.0, 10.0]
+    assert ls.cumulative_b is not None                  # single λ-invariant B
+    cs = [p.cumulative_c for p in ls.points]
+    assert cs[0] < cs[1] < cs[2]                         # C rises with λ (A at d=5)
+
+
+def test_fcbi_headline_is_b_and_c_pair():
+    """Q1 settled: the headline framing is the (B, C) pair with W derived."""
+    r = [Relationship("D", "T"), Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("D", "D", 0.0), _a("A", "A", 5.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("D", "D", -3.0), _a("A", "A", 2.0), _m("T", "T", 0.0)], r)
+    res = _fcbi([e, l], target="T")
+    assert "(B, C) pair" in res.interpretation
 
 
 def test_fcbi_retired_surfaces_absent():

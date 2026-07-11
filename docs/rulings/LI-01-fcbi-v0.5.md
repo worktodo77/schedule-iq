@@ -24,8 +24,12 @@ target m − the driving path's margin to m)*.  Consequences, all mandatory and
 all implemented:
 
 - Driving-path activities have **d = 0**.
-- A **negative driver float never makes d negative** (the driving path is the
-  global-minimum-margin reference, so every other path's margin ≥ it).
+- A **negative driver float never makes d negative** — the reference is the
+  **rank-1 driving path** (the tool-of-record float walk) and the `max(0, ·)`
+  clamp keeps d ≥ 0 for any off-path feeder more negative than the spine
+  (treated as co-critical, d = 0; not the global minimum — see the REV-05
+  reconciliation in the wave-2 review).  Margins are on a fixed reference-hours,
+  discrete-members-only basis (REV-02/07).
 - The **own-total-float fallback is ABOLISHED**.  An activity on no enumerated
   path is *distance unresolved* and goes to the O6 quarantine — **never**
   assigned its absolute total float as a distance.
@@ -155,9 +159,12 @@ per-run capture, as noted:
    a target-date change between updates triggers the basis-change rule (§O7.9).
 2. **Path method** — exact MFP enumeration via the float-path module (§2.1);
    algorithm/source/version documented in ARCHITECTURE.md and the briefing.
-3. **Depth rule** — the raw top-10 cutoff is replaced by a convergence
-   enumeration (`FCBI_PATHS_N = 50`); activities on none of the enumerated paths
-   are unresolved (O6), never own-float.
+3. **Depth rule** — the raw top-10 cutoff is replaced by an **adaptive
+   convergence** enumeration (start `FCBI_PATHS_N0 = 25`, double until the max
+   possible omitted weight < `FCBI_CONV_TOL`, ceiling `FCBI_PATHS_MAX`);
+   reaching the ceiling without converging sets `depth_capped` (window
+   provisional).  Activities on none of the enumerated paths are unresolved
+   (O6), never own-float.
 4. **Multiple targets** — v1 profiles a single target; summing across targets is
    prohibited without an explicit allocation rule (double-counting).  Standing
    disclosure.
@@ -282,7 +289,7 @@ with regression tests; two are doc reconciliations and one is disputed.
 | **REV-05** | MAJOR | O1 prose ("global minimum" reference) contradicted the post-F2 implementation (rank-1 reference). | **Fixed (doc).** Rulings/proposal now state the rank-1 driving-path reference with the clamp. **Disputed:** the reviewer's alternative (quarantine a more-negative feeder) is rejected — clamping a super-critical feeder to d = 0 (co-critical) is simpler and defensible. |
 | **REV-06** | MAJOR | Basis signature ignored constraint *type*, `constraint2`, `must_finish_by`, `baseline_finish`, `critical_definition`/`actual_dates`, and fired on a stale date when type was NONE. | **Fixed.** Requirement-basis signature compares constraint type + date (primary and secondary), project must-finish-by and baseline, and the added settings; stale dates under type NONE are ignored. |
 | **REV-07** | MAJOR | LOE/summary nodes could set a path margin. | **Fixed.** `rel_float_hours` uses discrete members only. |
-| **REV-08** | MAJOR | `FCBI_PATHS_N=50` was labelled "convergence" but is a hard cap. | **Fixed (honesty).** Relabelled a cap; `depth_capped` is surfaced per window and on the result so a cap-limited enumeration is disclosed, not implied converged. A full adaptive convergence loop is deferred (documented). |
+| **REV-08** | MAJOR | `FCBI_PATHS_N=50` was labelled "convergence" but is a hard cap. | **Fixed (v0.5.2).** Wave-2 relabelled a cap + surfaced `depth_capped`; the **principal then directed building the full adaptive convergence loop** (`_target_distance` enumerates 25→50→… until the max possible omitted weight < `FCBI_CONV_TOL`, ceiling `FCBI_PATHS_MAX`), so a cap-limited run is disclosed as provisional, not implied converged. |
 | **REV-09** | MAJOR | The cross-window aggregate burner stored the first window's d/w against a summed contribution — arithmetically incoherent when printed. | **Fixed.** Aggregates now carry an **effective weight** (Σc·w / Σc) so consumption × weight == contribution; deterministic `(-contribution, -consumption, code)` ordering; basis-change windows excluded. |
 | **REV-10** | MAJOR | Completion "moved" is endpoint-derived (null-vs-zero exporter-sensitive) and the list was capped at 15. | **Partially fixed.** The full completer list is now returned (counts were already complete). "moved" is documented as an endpoint-derived, exporter-sensitive supplement; prior float/weight remain the primary completion signal. |
 | **REV-11** | MAJOR | Incomplete members with missing float were invisible, so coverage read 100% of *scored* burn. | **Fixed.** `unmeasurable_count` is reported per window; coverage is explicitly eligible-**burn** coverage. |
@@ -298,3 +305,26 @@ seven open-question recommendations are folded into the briefing
 (`docs/LI-01-v0.5-briefing.md`), including its sharp observation that the O7.6
 weight-ratio ≥ 2 criterion is mathematically identical to |Δd| ≥ λ (so the "OR"
 was redundant — now stated as one criterion).
+
+## Settled decisions — open questions Q1–Q7 (principal: Alex Bachowski, v0.5.2)
+
+The seven open methodology questions were adjudicated by the principal. Recorded
+here as binding; the briefing carries the same set.
+
+| Q | Decision | Implementation |
+|---|---|---|
+| **Q1 headline** | The FCBI headline is the **(B, C) pair** — B is the cumulative curve, C annotated at each point; **W = B·C** is the derived single-number diagnostic. B is never reported alone. | Interpretation/wiring lead with B and C together and label W derived; ruling O2 unchanged. |
+| **Q2 λ** | Keep **λ = 5** working days as the house default; state it as "≈5 reference working days of driver-relative path-margin separation"; **require a λ ∈ {3,5,10} sensitivity set** in contested/expert use; it is a professional convention, not a calibrated constant. | `fcbi_lambda_sensitivity(sa, target, lams=(3,5,10))` returns B (λ-invariant) plus C/W per λ. |
+| **Q3 materiality** | **Single** criterion `|d_record − d_logic| ≥ λ` (the weight-ratio ≥ 2 form is identical); report the absolute contribution delta `c·|Δw|` alongside. Full dual-pass awaits the CPM engine. | Recorded (O7.6); dual-pass is a documented capture. |
+| **Q4 headline curve** | Resolved with Q1 — **(B, C) pair**, W available. (Codex preferred cumulative W; the principal chose the O2-aligned pair.) | As Q1. |
+| **Q5 N / ΔN⁺** | A **distinct severity strip** beside (B, C); never folded into the kernel or the headline. | Already so (`n_severity`, `n_deepening`). |
+| **Q6 coverage** | Report a **full population-coverage block** beside eligible-burn coverage: candidate-population count, TF-evaluability, population-eligibility, and an exclusion-reason breakdown. | `candidate_pop`, `pop_tf_evaluable`, `pop_eligible`, `pop_exclusions`, and `tf_evaluability` / `population_eligibility` properties. |
+| **Q7 multiple targets** | **Strict no-sum rule** now: never sum across targets; v2 shows separate target profiles + a shared-activity overlap disclosure; a combined scalar, if ever needed, uses **one-hot** allocation to a predeclared primary target, never fractional weights. | Recorded as the v2 roadmap rule (O7.4). |
+
+Two review judgment calls were also confirmed by the principal: **keep the
+distance clamp** (a feeder more critical than the tool-of-record rank-1 driver is
+treated as co-critical d = 0, not quarantined — Codex's REV-05 alternative
+rejected), and **build the adaptive convergence loop** rather than settle for the
+cap-plus-flag (REV-08).
+
+Suite after settlement: **191 passed, 1 skipped** (5 new decision regressions).

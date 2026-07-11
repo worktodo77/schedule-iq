@@ -3,6 +3,33 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-01 FCBI v0.5.2 (settled open questions)
+
+The seven open methodology questions were adjudicated by the principal; recorded
+in `docs/rulings/LI-01-fcbi-v0.5.md` (settled-decisions table).  Code-affecting:
+
+- **Headline (Q1/Q4):** the FCBI headline is the **(B, C) pair** — B is the
+  cumulative curve, C annotated; W = B·C is the derived single-number diagnostic,
+  never B alone.
+- **λ sensitivity (Q2):** new `fcbi_lambda_sensitivity(sa, target, lams=(3,5,10))`
+  reports C/W across λ (B is λ-invariant), so a near-critical-burn conclusion is
+  shown robust to the half-weight constant.
+- **Population coverage (Q6):** a full block beside eligible-burn coverage —
+  `candidate_pop`, `pop_tf_evaluable`, `pop_eligible`, `pop_exclusions`, and the
+  `tf_evaluability` / `population_eligibility` fractions — so burn coverage is
+  never read as data completeness.
+- **Target mandate (Q1/O7.1):** an auto-resolved target flags the run PROVISIONAL
+  (m must be analyst-confirmed for work product).
+- **Adaptive convergence (Q6/REV-08):** `_target_distance` now enumerates
+  25→50→… until the max possible omitted weight < `FCBI_CONV_TOL` (ceiling
+  `FCBI_PATHS_MAX`), replacing the hard cap; a ceiling hit sets `depth_capped`
+  (provisional).
+- **Materiality (Q3):** the single criterion `|d_record − d_logic| ≥ λ` (the
+  weight-ratio form was redundant).
+- Confirmed: keep the distance clamp (REV-05); no-sum across targets (Q7).
+
+Suite: 191 passed, 1 skipped.
+
 ## Unreleased — LI-01 FCBI v0.5.1 (wave-2 peer-review hardening)
 
 Independent second peer review (different provider) of the v0.5.0 branch raised

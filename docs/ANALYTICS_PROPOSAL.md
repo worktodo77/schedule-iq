@@ -503,6 +503,20 @@ The decomposition still cuts by the responsibility overlay and yields a
 top-burners table; the cumulative **B** curve over operational windows is "the
 float story of the project in one line."
 
+**Settled reporting conventions (v0.5.2).**  The **headline is the (B, C) pair** —
+the cumulative B curve with C annotated at each point; W = B·C is the derived
+single-number diagnostic, and B is never shown alone.  The **target m must be
+analyst-selected** for work product; an auto-resolved terminal milestone flags
+the run provisional.  Report a **λ ∈ {3, 5, 10} sensitivity set** (C and W move
+with λ; B is λ-invariant) in contested use.  Report a **population-coverage
+block** — candidate count, TF-evaluability, population-eligibility, exclusion
+reasons — beside the eligible-burn coverage, so a burn figure is never mistaken
+for data completeness.  Path enumeration is **adaptively converged** (deepen
+until the max possible omitted weight is immaterial); a depth-ceiling hit marks
+the window provisional.  Materiality of record-network vs logic-only distance is
+the single test `|d_record − d_logic| ≥ λ`.  Multiple targets are **never
+summed** — separate profiles with a shared-activity overlap disclosure.
+
 ### 9.2 LHL — Logic Half-Life
 Survival analysis on relationships: each relationship ever observed has a
 lifespan (updates until deleted or modified); Kaplan-Meier over the series

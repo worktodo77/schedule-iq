@@ -42,10 +42,17 @@ DEFAULT_BAND_DAYS = 10.0      # near-critical band, working days
 KERNEL_PATHS_N = 10           # top-N float paths feeding the criticality kernel
 
 # -- FCBI v0.5 (LI-01 governed revision) constants --------------------------
-FCBI_PATHS_N = 50             # depth-convergence enumeration for the distance
-                              # basis (ruling O7.3): activities on none of these
-                              # paths are DISTANCE UNRESOLVED -> quarantine (O6),
+FCBI_PATHS_N0 = 25            # initial enumeration depth for the adaptive
+                              # convergence rule (ruling O7.3): enumerate deeper
+                              # until the MAX POSSIBLE OMITTED WEIGHT < tolerance,
+                              # doubling each round.  Activities on no enumerated
+                              # path are DISTANCE UNRESOLVED -> quarantine (O6),
                               # never assigned their own total float (O1).
+FCBI_CONV_TOL = 0.01         # convergence tolerance on the omitted weight: once
+                              # the next (unenumerated) path could contribute at
+                              # most this weight, deeper paths are immaterial.
+FCBI_PATHS_MAX = 512         # hard safety ceiling; reaching it WITHOUT meeting the
+                              # tolerance sets depth_capped (window is provisional).
 REFERENCE_HPD = 8.0           # fixed reference hours/day for the calendar-neutral
                               # hour->day conversion (ruling O7.7); supersedes any
                               # per-activity or "dominant calendar" basis for FCBI.
@@ -232,11 +239,22 @@ class FcbiWindow:
 
     # -- target governance and coverage (ruling O6) --------------------------
     target_code: Optional[str]
-    coverage: Optional[float]               # eligible c / (eligible c + quarantined c)
+    coverage: Optional[float]               # ELIGIBLE-BURN coverage: eligible c /
+                                            # (eligible c + quarantined c) — a burn
+                                            # measure, NOT data completeness
     coverage_reason: str                    # labelled reason when coverage is N/A
     quarantine_burn: float                  # sum of quarantined c
     quarantine: list[QuarantineEntry] = field(default_factory=list)
     recov_quarantine: float = 0.0           # quarantined recovery (mirror, REV-15)
+
+    # -- population coverage (Q6 settled by principal): over the whole burn-
+    # candidate population (incomplete, non-LOE, non-target, discrete TASK
+    # activities present at both endpoints), NOT just movers — so eligible-burn
+    # coverage is never mistaken for data completeness or population eligibility
+    candidate_pop: int = 0
+    pop_tf_evaluable: int = 0               # candidates with float at both endpoints
+    pop_eligible: int = 0                   # candidates eligible (resolved, ungoverned)
+    pop_exclusions: dict = field(default_factory=dict)   # reason -> count
 
     # -- completion-omission diagnostic (ruling O5) --------------------------
     completed_in_window: int = 0
@@ -263,6 +281,20 @@ class FcbiWindow:
     # enumeration hit the path cap with burn still unresolved (ruling O7.3; REV-08)
     depth_capped: bool = False
     top_burners: list[Burner] = field(default_factory=list)
+
+    @property
+    def tf_evaluability(self) -> Optional[float]:
+        """Share of the candidate population whose float is measurable at both
+        endpoints — a data-completeness diagnostic, distinct from burn coverage."""
+        return (self.pop_tf_evaluable / self.candidate_pop
+                if self.candidate_pop else None)
+
+    @property
+    def population_eligibility(self) -> Optional[float]:
+        """Share of the candidate population eligible for the target basis
+        (resolved distance, ungoverned) — distinct from eligible-BURN coverage."""
+        return (self.pop_eligible / self.candidate_pop
+                if self.candidate_pop else None)
 
 
 @dataclass
@@ -367,7 +399,8 @@ def _dstr(x: Optional[datetime]) -> str:
     return x.strftime("%Y-%m-%d") if x else "—"
 
 
-def _target_distance(schedule: Schedule, target_code: Optional[str]
+def _target_distance(schedule: Schedule, target_code: Optional[str],
+                     lam: float = DEFAULT_LAMBDA
                      ) -> tuple[dict[str, float], Optional[float], Optional[float], bool]:
     """Per-activity nonnegative target-specific distance d_i (ruling O1):
 
@@ -382,23 +415,42 @@ def _target_distance(schedule: Schedule, target_code: Optional[str]
     on a **fixed reference hours/day basis** over **discrete members only**
     (``FloatPath.rel_float_hours``): a calendar-neutral distance that is not
     repriced by native calendar length (ruling O7.7; REV-02) and cannot be set
-    by a level-of-effort node (ruling O7.3; REV-07).  A path with no discrete
-    member carrying a stored float contributes no distance (its members stay
-    unresolved -> quarantine).  NOTE (disclosed limitation): the driving-path
-    *identity* still follows the tool-of-record native-calendar float walk
-    (ADR-0004); on a mixed-calendar merge the reference-basis rank-2 path could
-    be marginally more critical, in which case the clamp treats it as co-critical
-    (d = 0).  Returns ``(dist_by_code, driving_margin_ref_days, target_margin_ref_days,
-    depth_capped)`` where ``depth_capped`` flags that enumeration hit the path
-    cap (ruling O7.3; REV-08)."""
+    by a level-of-effort node (ruling O7.3; REV-07).
+
+    **Adaptive convergence (ruling O7.3; REV-08).**  Enumeration depth starts at
+    ``FCBI_PATHS_N0`` and DOUBLES until the *max possible omitted weight* — the
+    weight the next, unenumerated path could carry (paths come out least-float
+    first, so the next margin is at least the current maximum) — falls below
+    ``FCBI_CONV_TOL``, or the network is exhausted.  Reaching ``FCBI_PATHS_MAX``
+    without meeting the tolerance sets ``depth_capped`` (the window is
+    provisional, not implied converged).  Returns
+    ``(dist_by_code, driving_margin_ref_days, target_margin_ref_days, depth_capped)``.
+    NOTE (disclosed limitation): the driving-path *identity* still follows the
+    tool-of-record native-calendar float walk (ADR-0004); on a mixed-calendar
+    merge the reference-basis rank-2 path could be marginally more critical, in
+    which case the clamp treats it as co-critical (d = 0)."""
     if target_code is None:
         return {}, None, None, False
-    paths = float_paths(schedule, target_uid=target_code, n=FCBI_PATHS_N,
-                        band_days=None)
-    if not paths:
-        return {}, None, None, False
-    depth_capped = len(paths) >= FCBI_PATHS_N
-    # reference-basis margin of the rank-1 driving path (discrete members only)
+    n = FCBI_PATHS_N0
+    paths: list = []
+    converged = False
+    while True:
+        paths = float_paths(schedule, target_uid=target_code, n=n, band_days=None)
+        if not paths:
+            return {}, None, None, False
+        driving_h0 = paths[0].rel_float_hours
+        margins = [p.rel_float_hours for p in paths if p.rel_float_hours is not None]
+        if len(paths) < n or driving_h0 is None or not margins:
+            converged = True                      # network exhausted / nothing to refine
+            break
+        d_next = max(0.0, (max(margins) - driving_h0) / REFERENCE_HPD)
+        if kernel_weight(d_next, lam) < FCBI_CONV_TOL:
+            converged = True                      # omitted weight immaterial (O7.3)
+            break
+        if n >= FCBI_PATHS_MAX:
+            break                                 # ceiling hit WITHOUT converging
+        n = min(n * 2, FCBI_PATHS_MAX)
+    depth_capped = not converged
     driving_h = paths[0].rel_float_hours
     if driving_h is None:                          # no discrete member on the spine
         return {}, None, None, depth_capped
@@ -581,7 +633,7 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
                           "requires one selected completion milestone m — select it "
                           "explicitly, ruling O7.1)")
 
-    dist_cache = {id(s): _target_distance(s, target_code) for s in scheds}
+    dist_cache = {id(s): _target_distance(s, target_code, lam) for s in scheds}
     gov_cache = {id(s): _governed_codes(s, target_code) for s in scheds}
 
     windows: list[FcbiWindow] = []
@@ -598,9 +650,9 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
         l_by_code = {a.code: a for a in later.activities.values()}
         # defensive .get: endpoints absent from sa.schedules recompute, not raise
         dist_e, _dmarg_e, tmarg_e, cap_e = dist_cache.get(id(earlier)) or \
-            _target_distance(earlier, target_code)
+            _target_distance(earlier, target_code, lam)
         dist_l, _dmarg_l, tmarg_l, _cap_l = dist_cache.get(id(later)) or \
-            _target_distance(later, target_code)
+            _target_distance(later, target_code, lam)
         # UNION governance over BOTH endpoints so a constraint/expected-finish
         # ADDED mid-window still quarantines what it governs (ruling O6; REV-04)
         gov_e = gov_cache.get(id(earlier))
@@ -626,6 +678,8 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
         r_cw = q_burn = rq_burn = 0.0
         comp_pos = comp_neg = 0.0
         comp_n = unmeasurable = 0
+        candidate_pop = pop_tf_evaluable = pop_eligible = 0
+        pop_exclusions: dict = {}
 
         for code, ea in e_by_code.items():
             la = l_by_code.get(code)
@@ -653,9 +707,43 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
                 continue
             if la.completed:                          # complete at both -> out of pop
                 continue
-            if ea.total_float_hours is None or la.total_float_hours is None:
-                unmeasurable += 1                     # not weight-resolvable (REV-11)
+
+            # non-target zero-duration milestones are markers, not remaining WORK
+            # (REV-17): excluded from B/C AND from the candidate population;
+            # their margin movement is disclosed separately
+            if ea.is_milestone:
+                if (ea.total_float_hours is not None
+                        and la.total_float_hours is not None):
+                    dh = la.total_float_hours - ea.total_float_hours
+                    if abs(dh) <= tier1_tol_hours:
+                        dh = 0.0
+                    mv = dh / REFERENCE_HPD
+                    if mv != 0.0:
+                        milestone_changes.append(QuarantineEntry(
+                            code, ea.name, abs(mv),
+                            "milestone margin change (excluded from B — not remaining work)"))
                 continue
+
+            # ---- burn-candidate task: population coverage (Q6, settled) -------
+            candidate_pop += 1
+            d_start = dist_e.get(code)
+            both_floats = (ea.total_float_hours is not None
+                           and la.total_float_hours is not None)
+            if not both_floats:                       # not weight-resolvable (REV-11)
+                unmeasurable += 1
+                pop_exclusions["float unmeasurable at an endpoint"] = \
+                    pop_exclusions.get("float unmeasurable at an endpoint", 0) + 1
+                continue
+            pop_tf_evaluable += 1
+            if d_start is None:
+                pop_exclusions["distance unresolved"] = \
+                    pop_exclusions.get("distance unresolved", 0) + 1
+            elif code in governed:
+                pop_exclusions["governed (non-target basis)"] = \
+                    pop_exclusions.get("governed (non-target basis)", 0) + 1
+            else:
+                pop_eligible += 1
+
             # Tier-1 tolerance applied in HOURS before the hour->day conversion (O4)
             delta_h = la.total_float_hours - ea.total_float_hours
             if abs(delta_h) <= tier1_tol_hours:
@@ -666,15 +754,6 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
             if c <= 0 and rec <= 0:
                 continue
 
-            # non-target zero-duration milestones are markers, not remaining WORK:
-            # excluded from B/C, disclosed as milestone-margin change (REV-17/O5)
-            if ea.is_milestone:
-                milestone_changes.append(QuarantineEntry(
-                    code, ea.name, (c if c > 0 else -rec),
-                    "milestone margin change (excluded from B — not remaining work)"))
-                continue
-
-            d_start = dist_e.get(code)
             eligible, reason = _eligibility(code, ea, d_start, governed)
             if not eligible:
                 if c > 0:
@@ -748,6 +827,8 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
             target_code=target_code, coverage=coverage, coverage_reason=cover_reason,
             quarantine_burn=q_burn, quarantine=quarantine[:25],
             recov_quarantine=rq_burn,
+            candidate_pop=candidate_pop, pop_tf_evaluable=pop_tf_evaluable,
+            pop_eligible=pop_eligible, pop_exclusions=pop_exclusions,
             completed_in_window=comp_n, completed_prior_pos=comp_pos,
             completed_prior_neg=comp_neg, completed_prior_share=comp_share,
             completion_omission=completion,          # full list (REV-10)
@@ -790,26 +871,75 @@ def _fcbi(sa, lam: float = DEFAULT_LAMBDA, target: Optional[str] = None,
     # current-segment cumulative B: the last window's value (None if the latest
     # window is a basis-change restart — do NOT revive a prior segment, REV-03)
     total_b = cumulative_burn[-1] if cumulative_burn else 0.0
+    total_w = cumulative_weighted[-1] if cumulative_weighted else 0.0
+    last_c = next((w.burn_proximity for w in reversed(windows)
+                   if not w.basis_change and w.burn_proximity is not None), None)
     n_op = sum(1 for w in windows if not w.basis_change)
     n_bc = len(windows) - n_op
     lead = top[0].code if top else "n/a"
-    seg_txt = (f"current operational segment B = {total_b:.1f} gross activity-days"
-               if total_b is not None else
-               "latest window is a basis-change restart (current-segment B not yet "
-               "accumulated)")
+    # headline = the (B, C) pair (Q1 settled); W is the derived diagnostic
+    if total_b is not None:
+        seg_txt = (f"current operational segment B = {total_b:.1f} gross activity-days"
+                   + (f", latest C = {last_c:.2f} burn-weighted proximity"
+                      if last_c is not None else "")
+                   + (f" (W = B·C = {total_w:.1f})" if total_w else ""))
+    else:
+        seg_txt = ("latest window is a basis-change restart (current-segment B not "
+                   "yet accumulated)")
     interp = (f"Operational float burn to {target_code}: {seg_txt} across {n_op} "
               f"operational window(s)"
               + (f" ({n_bc} basis-change window(s) segmented out)" if n_bc else "")
               + (f"; largest single burner {lead}." if top else ".")
-              + (" Target auto-resolved — analyst should confirm m (O7.1)."
-                 if auto_resolved else "")
-              + " B is a gross activity-day aggregate (not project float consumed); "
-              "see C and the endpoint-timing sensitivity set for the weighted view.")
+              + (" PROVISIONAL: target auto-resolved — the analyst must confirm m "
+                 "before this is expert work product (O7.1)." if auto_resolved else "")
+              + (" PROVISIONAL: float-path enumeration hit the depth ceiling without "
+                 "converging (O7.3)." if any_depth_capped else "")
+              + " Headline is the (B, C) pair — B is a gross activity-day aggregate "
+              "(not project float consumed); C carries proximity; W = B·C is the "
+              "derived single-number diagnostic.")
     return FcbiResult(windows=windows, cumulative_burn=cumulative_burn,
                       cumulative_weighted=cumulative_weighted, top_burners=top,
                       lam=lam, target_code=target_code,
                       target_auto_resolved=auto_resolved, depth_capped=any_depth_capped,
                       interpretation=interp)
+
+
+# -- lambda sensitivity set (Q4/Q2 settled): recompute C and W at multiple lambda
+# so a conclusion is not an artifact of one half-weight constant (analogous to the
+# endpoint-timing sensitivity set).  B is lambda-invariant and reported once.
+@dataclass
+class LambdaPoint:
+    lam: float
+    cumulative_c: Optional[float]     # latest operational-window C at this lambda
+    cumulative_w: Optional[float]     # current-segment cumulative W at this lambda
+
+
+@dataclass
+class LambdaSensitivity:
+    cumulative_b: Optional[float]     # lambda-invariant gross burn (reported once)
+    points: list = field(default_factory=list)      # list[LambdaPoint]
+    reason: str = ""
+
+
+def fcbi_lambda_sensitivity(sa, target: Optional[str] = None,
+                            lams=(3.0, 5.0, 10.0)) -> LambdaSensitivity:
+    """Recompute FCBI C and W across ``lams`` (default 3/5/10 working days).  B is
+    lambda-invariant so it is reported once; C and W move with lambda, exposing
+    whether a near-critical-burn conclusion is robust to the half-weight constant
+    (Q2/Q4).  Never raises; a per-lambda failure is skipped with the reason kept
+    on the result when nothing computed."""
+    base = _fcbi(sa, DEFAULT_LAMBDA, target)
+    if base.reason and not base.windows:
+        return LambdaSensitivity(cumulative_b=None, reason=base.reason)
+    cb = base.cumulative_burn[-1] if base.cumulative_burn else None
+    points: list[LambdaPoint] = []
+    for lam in lams:
+        f = _fcbi(sa, lam, target)
+        cw = f.cumulative_weighted[-1] if f.cumulative_weighted else None
+        c = next((w.burn_proximity for w in reversed(f.windows)
+                  if not w.basis_change and w.burn_proximity is not None), None)
+        points.append(LambdaPoint(lam=lam, cumulative_c=c, cumulative_w=cw))
+    return LambdaSensitivity(cumulative_b=cb, points=points)
 
 
 # ==========================================================================

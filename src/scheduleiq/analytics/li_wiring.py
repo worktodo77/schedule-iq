@@ -48,6 +48,10 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
         c_txt = (f"{last.burn_proximity:.2f}" if last.burn_proximity is not None
                  else "N/A")
         cov_txt = (f"{last.coverage:.0%}" if last.coverage is not None else "N/A")
+        pe = last.population_eligibility
+        te = last.tf_evaluability
+        pop_txt = ((f"; population eligibility {pe:.0%}" if pe is not None else "")
+                   + (f", TF-evaluability {te:.0%}" if te is not None else ""))
         interp += (f"  Latest operational window: B={last.burn_gross:.1f} gross "
                    f"activity-days, C={c_txt} burn-weighted proximity, eligible-burn "
                    f"coverage {cov_txt}"
@@ -55,8 +59,7 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
                       if last.n_severity else "")
                    + (f"; {last.quarantine_burn:.1f}d quarantined"
                       if last.quarantine_burn else "")
-                   + (f"; {last.unmeasurable_count} population member(s) unmeasurable"
-                      if last.unmeasurable_count else "") + ".")
+                   + pop_txt + ".")
     elif last is not None and last.basis_change:
         rq = (f"{last.requirement_margin_change:+.1f}d requirement-induced margin change"
               if last.requirement_margin_change is not None else "requirement-induced")

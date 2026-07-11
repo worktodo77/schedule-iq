@@ -30,24 +30,31 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
     ri = run_li_indices(sa)
     rr = run_li_record(sa)
 
-    # LI-01 FCBI ----------------------------------------------------------
+    # LI-01 FCBI (v0.5 governed: value = cumulative operational gross burn B) --
     f = ri.fcbi
-    interp = f.interpretation
-    finds = [Finding(b.code if hasattr(b, "code") else str(b),
-                     getattr(b, "name", ""),
-                     f"burn {getattr(b, 'consumption_days', getattr(b, 'c', 0)):.1f}d x "
-                     f"w {getattr(b, 'weight', 0):.2f} = "
-                     f"{getattr(b, 'contribution', 0):.1f}"
-                     + (" [constraint-flagged]" if getattr(b, "constraint_flagged", False) else ""))
+    interp = f.interpretation or f.reason
+    finds = [Finding(getattr(b, "code", str(b)), getattr(b, "name", ""),
+                     f"burn {getattr(b, 'consumption_days', 0):.1f}d  "
+                     f"d={getattr(b, 'distance_days', 0):.1f}  "
+                     f"w={getattr(b, 'weight', 0):.2f}  "
+                     f"c*w={getattr(b, 'contribution', 0):.2f}")
              for b in f.top_burners]
-    cum = f.cumulative[-1] if f.cumulative else 0.0
-    for w in f.windows:
-        pct = getattr(w, "fcbi_pct", None)
-        if pct is not None and pct > 100:
-            interp += ("  A normalized burn above 100% is real: erosion continued "
-                       "beyond the positive float available (paths driven deeper "
-                       "into negative float).")
-            break
+    # cumulative OPERATIONAL burn B (basis-change windows segmented out, O7.9)
+    cum = next((c for c in reversed(f.cumulative_burn) if c is not None), 0.0)
+    last = f.windows[-1] if f.windows else None
+    if last is not None:
+        c_txt = (f"{last.burn_proximity:.2f}" if last.burn_proximity is not None
+                 else "N/A")
+        cov_txt = (f"{last.coverage:.0%}" if last.coverage is not None else "N/A")
+        interp += (f"  Latest window: B={last.burn_gross:.1f} gross activity-days, "
+                   f"C={c_txt} burn-weighted proximity, eligible-burn coverage {cov_txt}"
+                   + (f", N={last.n_severity:.1f}d negative-float severity"
+                      if last.n_severity else "")
+                   + (f"; {last.quarantine_burn:.1f}d quarantined"
+                      if last.quarantine_burn else "")
+                   + (f"; BASIS-CHANGE window ({'; '.join(last.basis_change_reasons)})"
+                      if last.basis_change else "") + ".")
+        interp += "  " + f.scope_note
     r = _res(by_id, "LI-01", cum, interp, finds)
     if r:
         out.append(r)

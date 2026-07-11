@@ -615,6 +615,124 @@ def test_fcbi_headline_is_b_and_c_pair():
     assert "(B, C) pair" in res.interpretation
 
 
+# ---- wave-3 review (GPT-5.6 Pro W3-01..10) regressions -------------------
+def test_fcbi_w3_01_hidden_low_margin_branch_resolved():
+    """W3-01 (disputed, guarded): a low-margin branch reachable only through a
+    higher-margin parent (R->Q->X, with P->X at the merge) is RESOLVED, not
+    omitted — float_paths enumerates it early, so the convergence bound holds."""
+    acts = ([_m("T", "T", 0.0), _a("D", "D", 0.0), _a("X", "X", 50.0),
+             _a("P", "P", 40.0), _a("Q", "Q", 41.0), _a("R", "R", 5.0)]
+            + [_a(f"F{i}", f"F{i}", 60.0 + i) for i in range(24)])
+    rels = ([Relationship("D", "T"), Relationship("X", "D"), Relationship("P", "X"),
+             Relationship("Q", "X"), Relationship("R", "Q")]
+            + [Relationship(f"F{i}", "D") for i in range(24)])
+    from scheduleiq.analytics.li_indices import _target_distance
+    dist, _dm, _tm, capped = _target_distance(
+        _s(datetime(2025, 1, 6, 8), acts, rels), "T")
+    assert dist.get("R") == pytest.approx(5.0)          # resolved, not omitted
+    assert not capped
+
+
+def test_fcbi_w3_02_b_lambda_invariant():
+    """W3-02: the distance basis is λ-independent, so B and coverage are identical
+    at every λ (the sensitivity set reports one invariant B)."""
+    n = 40
+    def bld(dd, u_tf):
+        acts = ([_m("T", "T", 0.0), _a("D", "D", 0.0)]
+                + [_a(f"F{i}", f"F{i}", 10.0 + i * 0.5) for i in range(n)]
+                + [_a("U", "U", u_tf)])
+        rels = ([Relationship("D", "T")]
+                + [Relationship(f"F{i}", "T") for i in range(n)] + [Relationship("U", "T")])
+        return _s(dd, acts, rels)
+    sa = SeriesAnalysis(schedules=[bld(datetime(2025, 1, 6, 8), 30.0),
+                                   bld(datetime(2025, 2, 6, 8), 25.0)],
+                        changesets=[compare(bld(datetime(2025, 1, 6, 8), 30.0),
+                                            bld(datetime(2025, 2, 6, 8), 25.0))])
+    bs = {run_li_indices(sa, fcbi_target="T", lam=lam).fcbi.cumulative_burn[-1]
+          for lam in (3.0, 5.0, 10.0)}
+    assert len(bs) == 1                                 # B invariant across λ
+    ls = fcbi_lambda_sensitivity(sa, target="T")
+    assert ls.cumulative_b is not None and ls.coverage is not None
+
+
+def test_fcbi_w3_03_cumulative_c_identity():
+    """W3-03: cumulative C = W_cum / B_cum, so W_cum = B_cum · C_cum is exact
+    (the headline no longer prints a false equality)."""
+    def w(dd, af):
+        return _s(dd, [_a("DR", "DR", 0.0, od=30), _a("A", "A", af, od=30), _m("T", "T", 0.0)],
+                  [Relationship("DR", "T"), Relationship("A", "T")])
+    res = _fcbi([w(datetime(2025, 1, 6, 8), 80.0), w(datetime(2025, 1, 20, 8), 40.0),
+                 w(datetime(2025, 2, 6, 8), 0.0)], target="T")
+    cb, cw, cc = (res.cumulative_burn[-1], res.cumulative_weighted[-1],
+                  res.cumulative_proximity[-1])
+    assert cw == pytest.approx(cb * cc)
+    assert "cumulative C" in res.interpretation
+
+
+def test_fcbi_w3_04_explicit_target_validated():
+    """W3-04: an explicit target is validated (terminal finish milestone); a task
+    or intermediate is NOT EVALUATED, not silently accepted."""
+    r = [Relationship("A", "Q"), Relationship("Q", "C")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _a("Q", "Q", 0.0), _m("C", "C", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _a("Q", "Q", 0.0), _m("C", "C", 0.0)], r)
+    assert "NOT EVALUATED" in _fcbi([e, l], target="Q").reason      # task
+    assert _fcbi([e, l], target="C").reason == ""                   # valid terminal
+
+
+def test_fcbi_w3_06_and_09_depth_cap(monkeypatch):
+    """W3-06: a cap at the LATER endpoint propagates to depth_capped.  W3-09: a
+    network with exactly MAX paths is NOT falsely capped (one-path lookahead)."""
+    import scheduleiq.analytics.li_indices as li
+    monkeypatch.setattr(li, "FCBI_PATHS_MAX", 5)
+    monkeypatch.setattr(li, "FCBI_PATHS_N0", 5)
+    # W3-06: later endpoint has many equal feeders -> caps
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], [Relationship("A", "T")])
+    lacts = [_a("A", "A", -2.0)] + [_a(f"G{i}", f"G{i}", 3.0 + i * 0.1) for i in range(8)] + [_m("T", "T", 0.0)]
+    l = _s(datetime(2025, 2, 6, 8), lacts, [Relationship("A", "T")] + [Relationship(f"G{i}", "T") for i in range(8)])
+    assert _fcbi([e, l], target="T").depth_capped
+    # W3-09: exactly 5 paths -> not capped
+    acts = [_m("T", "T", 0.0), _a("D", "D", 0.0)] + [_a(f"F{i}", f"F{i}", 5.0 + i) for i in range(4)]
+    rels = [Relationship("D", "T")] + [Relationship(f"F{i}", "T") for i in range(4)]
+    _dist, _dm, _tm, capped = li._target_distance(_s(datetime(2025, 1, 6, 8), acts, rels), "T")
+    assert not capped
+
+
+def test_fcbi_w3_07_sensitivity_status():
+    """W3-07: the sensitivity set fails as a whole on an invalid target and fails
+    only the offending point on an invalid λ (status/reason retained)."""
+    r = [Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    assert fcbi_lambda_sensitivity(sa, target="NOPE").reason        # whole set fails
+    ls = fcbi_lambda_sensitivity(sa, target="T", lams=(3.0, 0.0, 5.0))
+    bad = [p for p in ls.points if p.lam == 0.0][0]
+    assert bad.status == "failed" and bad.reason
+
+
+def test_fcbi_w3_08_endpoint_type_change_excluded():
+    """W3-08: a task that becomes LOE/milestone at the later endpoint is excluded
+    from B and disclosed as a type-change exclusion."""
+    r = [Relationship("A", "T"), Relationship("D", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 0.0), _a("D", "D", 0.0), _m("T", "T", 0.0)], r)
+    la = _a("A", "A", -5.0)
+    la.atype = ActivityType.LOE
+    l = _s(datetime(2025, 2, 6, 8), [la, _a("D", "D", -1.0), _m("T", "T", 0.0)], r)
+    w = _fcbi([e, l], target="T").windows[0]
+    assert "A" not in {b.code for b in w.top_burners}
+    assert "activity type changed at endpoint" in w.pop_exclusions
+
+
+def test_fcbi_w3_10_milestone_margin_signed():
+    """W3-10: a non-target milestone's margin change keeps its sign (recovery vs
+    erosion distinguishable)."""
+    r = [Relationship("MM", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_m("MM", "MM", 5.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_m("MM", "MM", 10.0), _m("T", "T", 0.0)], r)   # +5 recovery
+    mm = _fcbi([e, l], target="T").windows[0].milestone_margin_changes[0]
+    assert mm.signed_delta_days == pytest.approx(5.0)
+
+
 def test_fcbi_retired_surfaces_absent():
     """The retired FCBI% (old Eq. 3) and its D=0 sentinel are gone (O2)."""
     w = _fcbi([_p2(datetime(2025, 1, 6, 8), 10.0),

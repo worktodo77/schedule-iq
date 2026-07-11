@@ -3,6 +3,36 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-01 FCBI v0.5.3 (wave-3 peer-review hardening)
+
+Third independent peer review (GPT-5.6 Pro) raised 10 findings on the v0.5.2
+head, mostly on the new subsystems; dispositions in the rulings wave-3 table.
+
+- **λ-invariant distance basis (W3-02, blocker):** convergence is now judged at a
+  fixed `FCBI_CONV_LAMBDA = 10`, not the weighting λ, so B, coverage, and the
+  eligible population are identical at every λ (the sensitivity set reports one
+  invariant B).
+- **Cumulative proximity (W3-03, blocker):** `cumulative_proximity` C^cum =
+  W^cum/B^cum so the headline identity `W = B·C` is exact (the old code printed a
+  false equality using the latest-window C).
+- **W3-01 (blocker) disputed — not reproduced:** on the real `float_paths` the
+  reviewer's topology enumerates in monotone margin order and the low-margin
+  branch is resolved, never omitted; a monotonicity guard now marks the run
+  provisional if the assumption is ever violated.
+- **Explicit-target validation (W3-04):** an explicit target is validated as a
+  terminal finish milestone (task/intermediate → NOT EVALUATED).
+- **Depth-cap propagation (W3-06):** both endpoints' `depth_capped` count; a
+  one-path lookahead stops an exactly-at-ceiling network being falsely capped
+  (W3-09).
+- **Sensitivity status (W3-07):** per-λ status/reason/provisional retained; the
+  set fails whole on a structural error, per-point on an invalid λ.
+- **Endpoint type change (W3-08):** a task→LOE/milestone conversion is excluded
+  from B and disclosed; **signed** milestone margin change (W3-10).
+- Follow-up (documented): a proven convergence bound + incremental enumerator
+  (W3-05 performance) targeted for v0.5.4.
+
+Suite: 199 passed, 1 skipped.
+
 ## Unreleased — LI-01 FCBI v0.5.2 (settled open questions)
 
 The seven open methodology questions were adjudicated by the principal; recorded

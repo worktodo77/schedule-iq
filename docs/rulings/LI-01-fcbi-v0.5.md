@@ -161,10 +161,12 @@ per-run capture, as noted:
    algorithm/source/version documented in ARCHITECTURE.md and the briefing.
 3. **Depth rule** — the raw top-10 cutoff is replaced by an **adaptive
    convergence** enumeration (start `FCBI_PATHS_N0 = 25`, double until the max
-   possible omitted weight < `FCBI_CONV_TOL`, ceiling `FCBI_PATHS_MAX`);
-   reaching the ceiling without converging sets `depth_capped` (window
-   provisional).  Activities on none of the enumerated paths are unresolved
-   (O6), never own-float.
+   possible omitted weight, judged at the **fixed** `FCBI_CONV_LAMBDA` so the
+   basis is λ-invariant (W3-02), falls below `FCBI_CONV_TOL`; ceiling
+   `FCBI_PATHS_MAX`).  A one-path lookahead distinguishes exhaustion from the
+   ceiling (W3-09), and a monotonicity guard (W3-01) plus the ceiling both set
+   `depth_capped` (window provisional).  Activities on none of the enumerated
+   paths are unresolved (O6), never own-float.
 4. **Multiple targets** — v1 profiles a single target; summing across targets is
    prohibited without an explicit allocation rule (double-counting).  Standing
    disclosure.
@@ -328,3 +330,29 @@ rejected), and **build the adaptive convergence loop** rather than settle for th
 cap-plus-flag (REV-08).
 
 Suite after settlement: **191 passed, 1 skipped** (5 new decision regressions).
+
+## Wave-3 review — third reviewer (GPT-5.6 Pro), loop closed (v0.5.3)
+
+A third independent pass raised ten findings against the v0.5.2 head, most on the
+new subsystems (adaptive convergence, population coverage, λ-sensitivity).  All
+dispositioned; the one headline blocker did not reproduce on the real code.
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| **W3-01** | BLOCKER | Claimed the convergence stopping bound is unsound because `float_paths` is not margin-monotone (a low-margin branch emitted only after a higher-margin parent). | **Disputed — not reproduced.**  On the actual `float_paths`, the reviewer's exact topology enumerates in monotone margin order and the low-margin branch (R→Q→X, margin 5) is resolved at rank 2, never omitted (the reviewer's throwaway harness diverged from the real greedy feeder search).  Guarded by `test_fcbi_w3_01_hidden_low_margin_branch_resolved`; a **monotonicity guard** now marks the run provisional if `float_paths` ever violates the assumption, so the bound is sound regardless. |
+| **W3-02** | BLOCKER | λ was threaded into `_target_distance`'s convergence, so the resolved set and B changed with the weighting λ — B was not λ-invariant. | **Fixed.**  The distance basis is now **λ-INDEPENDENT**: convergence is judged at a fixed `FCBI_CONV_LAMBDA = 10`, not the weighting λ.  B, coverage, and the eligible population are identical at every λ; the sensitivity reports one invariant B.  Regression: `test_fcbi_w3_02_b_lambda_invariant`. |
+| **W3-03** | BLOCKER | The headline paired cumulative B and W with the *latest window's* C and printed a false `W = B·C`. | **Fixed.**  A cumulative-proximity series `C^cum = W^cum / B^cum` is computed and used in the headline, so `W^cum = B^cum · C^cum` is exact; `LambdaPoint.cumulative_c` is likewise cumulative.  Regression: `test_fcbi_w3_03_cumulative_c_identity`. |
+| **W3-04** | MAJOR | An explicit target bypassed all validation (a task or intermediate milestone was accepted). | **Fixed.**  Explicit targets are validated as terminal finish milestones exactly like auto-resolved ones; an invalid one returns NOT EVALUATED. |
+| **W3-05** | MAJOR | Every convergence depth reruns `float_paths` from scratch; the ceiling probe (513 feeders) did not complete quickly. | **Partially fixed / disclosed.**  λ-independence removes the per-λ re-enumeration in the sensitivity set (distance basis reused).  The single-run enumeration remains bounded by `FCBI_PATHS_MAX`; a best-first incremental enumerator is a documented follow-up.  Very wide near-critical fans mark the run provisional (`depth_capped`). |
+| **W3-06** | MAJOR | The later endpoint's `depth_capped` was discarded (only the earlier used). | **Fixed.**  `win_capped = cap_e or cap_l`, propagated to the window and result. |
+| **W3-07** | MAJOR | `fcbi_lambda_sensitivity` discarded per-λ reasons/provisional/coverage and returned failures as blank/zero points. | **Fixed.**  `LambdaPoint` carries `status`/`reason`/`depth_capped`; the set fails as a whole on a structural failure (invalid target) and per-point on an invalid λ; coverage/quarantine reported once. |
+| **W3-08** | MAJOR | Candidate qualification tested only the earlier activity's type, so a task→LOE/milestone conversion still entered B. | **Fixed.**  A candidate must be a discrete task at BOTH endpoints; a type change is excluded from B/C and disclosed in `pop_exclusions`. |
+| **W3-09** | MINOR | A network with exactly `FCBI_PATHS_MAX` paths was falsely marked `depth_capped`. | **Fixed.**  A one-path lookahead (`n+1`) distinguishes "exactly max" (exhausted) from "more exist." |
+| **W3-10** | MINOR | Milestone margin change stored `abs(delta)`, losing erosion-vs-recovery. | **Fixed.**  New `MilestoneMarginChange` carries a `signed_delta_days`. |
+
+Wave-3 regressions added; suite green: **199 passed, 1 skipped**.  Residual
+disclosures: the convergence bound assumes (and now guards) `float_paths`
+monotonicity; a proven bound and an incremental enumerator (W3-05 performance)
+are a documented v0.5.4 follow-up; the generic `MetricResult.value` remains the
+scalar B, with C always carried in the narrative (Q1 mitigation, not a strict
+never-B-alone guarantee at the framework-value level).

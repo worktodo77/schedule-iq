@@ -70,14 +70,14 @@ _DFIN = datetime(2025, 6, 30, 17)
 
 def _a(uid, code, tf_days, *, atype=ActivityType.TASK,
        status=ActivityStatus.NOT_STARTED, constraint=ConstraintType.NONE,
-       cdate=None, od=10, rem=10, ef=_DFIN, af=None, tf_hours=None):
+       cdate=None, od=10, rem=10, ef=_DFIN, af=None, tf_hours=None, xf=None):
     return Activity(uid=uid, code=code, atype=atype, status=status,
                     total_float_hours=(tf_hours if tf_hours is not None
                                        else (None if tf_days is None else tf_days * _H)),
                     original_duration_hours=od * _H, remaining_duration_hours=rem * _H,
                     early_start=(ef - timedelta(days=od)) if ef else None,
                     early_finish=ef, actual_finish=af, constraint=constraint,
-                    constraint_date=cdate)
+                    constraint_date=cdate, expected_finish=xf)
 
 
 def _m(uid, code, tf_days=0.0, constraint=ConstraintType.NONE, cdate=None, ef=_DFIN):
@@ -382,6 +382,165 @@ def test_fcbi_completer_with_unknown_prior_still_disclosed():
     assert w.completed_in_window == 1
     co = {c.code: c for c in w.completion_omission}
     assert "B" in co and co["B"].prior_pos_float_days is None   # prior unknown, still shown
+
+
+# ---- peer-review wave 2 (Codex REV-01..17): regressions ------------------
+def test_fcbi_target_resolves_terminal_not_intermediate():
+    """REV-01: the auto-resolved target is a TERMINAL finish milestone, never a
+    constrained intermediate milestone or a task."""
+    from scheduleiq.analytics.li_indices import _resolve_fcbi_target
+    r = [Relationship("A", "M"), Relationship("M", "C")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0),
+           _m("M", "M", 0.0, constraint=ConstraintType.MANDATORY_FINISH,
+              ef=_DFIN - timedelta(days=30)), _m("C", "C", 0.0, ef=_DFIN)], r)
+    code, auto = _resolve_fcbi_target([e], None)
+    assert code == "C" and auto is True
+
+
+def test_fcbi_invalid_lambda_never_raises():
+    """REV-12: a non-positive / non-finite lambda returns a reason, never raises."""
+    r = [Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", -3.0), _m("T", "T", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    for lam in (0.0, -5.0, float("nan"), float("inf")):
+        res = run_li_indices(sa, fcbi_target="T", lam=lam).fcbi
+        assert "invalid lambda" in res.reason
+
+
+def test_fcbi_stable_series_no_false_unresolved_reason():
+    """REV-13: a fully resolvable but zero-movement window is NOT reported as a
+    distance-resolution failure."""
+    r = [Relationship("D", "T"), Relationship("A2", "T")]
+    def bld(dd):
+        return _s(dd, [_a("D", "D", 0.0), _a("A2", "A2", 5.0), _m("T", "T", 0.0)], r)
+    res = _fcbi([bld(datetime(2025, 1, 6, 8)), bld(datetime(2025, 2, 6, 8))], target="T")
+    assert res.reason == "" and res.windows[0].burn_gross == pytest.approx(0.0)
+
+
+def test_fcbi_distance_on_fixed_reference_calendar():
+    """REV-02: the distance is on the fixed 8h reference basis, not each
+    activity's native calendar (A: 40h float => d=5, not 40/10=4)."""
+    from scheduleiq.ingest.model import Calendar
+    c10 = Calendar(uid="C10", hours_per_day=10.0)
+    c8 = Calendar(uid="C8", hours_per_day=8.0, is_default=True)
+    rels = [Relationship("A", "T"), Relationship("B", "T")]
+    def bld(dd, a_h):
+        s = _s(dd, [_a("A", "A", None, tf_hours=a_h), _a("B", "B", 0.0),
+                    _m("T", "T", 0.0)], rels)
+        s.activities["A"].calendar_uid = "C10"
+        s.calendars = {"C10": c10, "C8": c8}
+        return s
+    w = _fcbi([bld(datetime(2025, 1, 6, 8), 40.0),
+               bld(datetime(2025, 2, 6, 8), 32.0)], target="T").windows[0]
+    assert {b.code: b for b in w.top_burners}["A"].distance_days == pytest.approx(5.0)
+
+
+def test_fcbi_loe_excluded_from_path_margin():
+    """REV-07: a level-of-effort node on a feeder cannot set the branch margin
+    (discrete members only) — A keeps d=10, not the LOE's 1."""
+    rels = [Relationship("D", "T"), Relationship("A", "L"), Relationship("L", "T")]
+    def bld(dd, a_tf):
+        return _s(dd, [_a("D", "D", 0.0), _a("A", "A", a_tf),
+                       _a("L", "L", 1.0, atype=ActivityType.LOE), _m("T", "T", 0.0)], rels)
+    w = _fcbi([bld(datetime(2025, 1, 6, 8), 10.0),
+               bld(datetime(2025, 2, 6, 8), 8.0)], target="T").windows[0]
+    assert {b.code: b for b in w.top_burners}["A"].distance_days == pytest.approx(10.0)
+
+
+def test_fcbi_basis_change_not_presented_as_operational():
+    """REV-03: a basis-change window does not populate the operational aggregate
+    and its cumulative restarts; the wiring reports it as basis-change, and a
+    prior segment is not revived as the headline."""
+    def con(dd, cdate, atf, ttf):
+        return _s(dd, [_a("A", "A", atf),
+                       _m("T", "T", ttf, constraint=ConstraintType.MANDATORY_FINISH,
+                          cdate=cdate)], [Relationship("A", "T")])
+    res = _fcbi([con(datetime(2025, 1, 6, 8), _DFIN, 0.0, 0.0),
+                 con(datetime(2025, 1, 20, 8), _DFIN, -5.0, 0.0),
+                 con(datetime(2025, 2, 6, 8), _DFIN - timedelta(days=10), -10.0, -10.0)],
+                target="T")
+    assert res.cumulative_burn[-1] is None          # latest is a basis-change restart
+    assert res.windows[-1].basis_change
+
+
+def test_fcbi_aggregate_burner_coherent_across_windows():
+    """REV-09: an activity burning across windows at different distances has an
+    aggregate row whose consumption * effective-weight == contribution."""
+    def bld(dd, atf):
+        return _s(dd, [_a("DR", "DR", 0.0, od=30), _a("A", "A", atf, od=30),
+                       _m("T", "T", 0.0)], [Relationship("DR", "T"), Relationship("A", "T")])
+    res = _fcbi([bld(datetime(2025, 1, 6, 8), 10.0), bld(datetime(2025, 1, 20, 8), 5.0),
+                 bld(datetime(2025, 2, 6, 8), 0.0)], target="T")
+    A = {b.code: b for b in res.top_burners}["A"]
+    assert A.consumption_days * A.weight == pytest.approx(A.contribution)
+
+
+def test_fcbi_governance_union_and_expected_finish():
+    """REV-04: a non-target constraint ADDED mid-window, and a downstream
+    expected finish, both quarantine the upstream burner (union of endpoints +
+    propagation)."""
+    r = [Relationship("A", "M"), Relationship("M", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _m("M", "M", 0.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0),
+           _m("M", "M", 0.0, constraint=ConstraintType.MANDATORY_FINISH, cdate=_DFIN),
+           _m("T", "T", 0.0)], r)
+    w = _fcbi([e, l], target="T").windows[0]
+    assert "A" in {q.code for q in w.quarantine} and w.burn_gross == pytest.approx(0.0)
+    # downstream expected finish
+    rk = [Relationship("A", "K"), Relationship("K", "T")]
+    ek = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _a("K", "K", 0.0),
+            _m("T", "T", 0.0)], rk)
+    lk = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0),
+            _a("K", "K", 0.0, xf=_DFIN), _m("T", "T", 0.0)], rk)
+    wk = _fcbi([ek, lk], target="T").windows[0]
+    assert "A" in {q.code for q in wk.quarantine}
+
+
+def test_fcbi_basis_signature_ignores_stale_none_constraint():
+    """REV-06: a stale constraint_date whose type is NONE is not a basis change;
+    a project must-finish-by move is."""
+    def stale(dd, cd):
+        return _s(dd, [_a("A", "A", 0.0),
+                       _m("T", "T", 0.0, constraint=ConstraintType.NONE, cdate=cd)],
+                  [Relationship("A", "T")])
+    w = _fcbi([stale(datetime(2025, 1, 6, 8), _DFIN),
+               stale(datetime(2025, 2, 6, 8), _DFIN + timedelta(days=1))], target="T").windows[0]
+    assert not w.basis_change
+    def mfb(dd, m):
+        s = _s(dd, [_a("A", "A", 0.0), _m("T", "T", 0.0)], [Relationship("A", "T")])
+        s.must_finish_by = m
+        return s
+    w2 = _fcbi([mfb(datetime(2025, 1, 6, 8), _DFIN),
+                mfb(datetime(2025, 2, 6, 8), _DFIN - timedelta(days=10))], target="T").windows[0]
+    assert w2.basis_change
+
+
+def test_fcbi_unmeasurable_and_milestone_and_recovery_quarantine():
+    """REV-11/15/17: unmeasurable float is counted (coverage not misread), a
+    non-target milestone is excluded from B and disclosed separately, and
+    quarantined recovery is tracked."""
+    # REV-11 unmeasurable
+    r = [Relationship("D", "T"), Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("D", "D", 0.0), _a("A", "A", 5.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("D", "D", -1.0),
+           _a("A", "A", None, tf_hours=None), _m("T", "T", 0.0)], r)
+    w = _fcbi([e, l], target="T").windows[0]
+    assert w.unmeasurable_count >= 1
+    # REV-17 milestone excluded from B, disclosed
+    rm = [Relationship("MM", "T")]
+    em = _s(datetime(2025, 1, 6, 8), [_m("MM", "MM", 5.0), _m("T", "T", 0.0)], rm)
+    lm = _s(datetime(2025, 2, 6, 8), [_m("MM", "MM", 0.0), _m("T", "T", 0.0)], rm)
+    wm = _fcbi([em, lm], target="T").windows[0]
+    assert wm.burn_gross == pytest.approx(0.0) and len(wm.milestone_margin_changes) >= 1
+    # REV-15 quarantined recovery
+    rr = [Relationship("A", "M"), Relationship("M", "T")]
+    er = _s(datetime(2025, 1, 6, 8), [_a("A", "A", -5.0),
+            _m("M", "M", 0.0, constraint=ConstraintType.MANDATORY_FINISH), _m("T", "T", 0.0)], rr)
+    lr = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0),
+            _m("M", "M", 0.0, constraint=ConstraintType.MANDATORY_FINISH), _m("T", "T", 0.0)], rr)
+    wr = _fcbi([er, lr], target="T").windows[0]
+    assert wr.recov_quarantine > 0
 
 
 def test_fcbi_retired_surfaces_absent():

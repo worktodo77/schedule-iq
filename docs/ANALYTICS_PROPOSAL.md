@@ -427,11 +427,15 @@ cross-granularity comparison claim, and structural churn is disclosed alongside.
 > d_i = min over enumerated float paths containing i of
 > (that path's margin to m − the driving path's margin to m).
 
-The driving path has the globally smallest margin, so **d_i ≥ 0 always** —
-driving-path activities have d = 0, and a driver in *negative* float never makes
-any d negative.  An activity on **no** enumerated path is *distance unresolved*
-and goes to quarantine (O6); it is **never** assigned its own total float as a
-distance.  The weight is
+The reference is the **rank-1 driving path** (the tool-of-record float walk),
+and the `max(0, ·)` clamp keeps **d_i ≥ 0 always** — driving-path activities
+have d = 0, and a driver in *negative* float never makes any d negative (an
+off-path feeder more negative than the spine simply clamps to d = 0 rather than
+repricing the true driver).  Margins are taken on a **fixed reference hours/day
+basis over discrete members only** (calendar-neutral, level-of-effort nodes
+excluded).  An activity on **no** enumerated path — or on no branch carrying a
+discrete float — is *distance unresolved* and goes to quarantine (O6); it is
+**never** assigned its own total float as a distance.  The weight is
 
 > w_i = 2^(−d_i / λ),  λ = 5 working days,  so **w ∈ (0, 1]** always
 

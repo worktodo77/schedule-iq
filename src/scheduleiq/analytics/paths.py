@@ -77,6 +77,13 @@ class FloatPath:
     constraints: list[str]
     pct_complete: float                     # length-weighted mean % complete
     rel_float_days: float = 0.0             # near-criticality of this path's own branch
+    # Branch-unique min total float in raw HOURS over DISCRETE members only
+    # (LOE/summary excluded).  None when the branch has no discrete member with a
+    # stored float.  FCBI (LI-01 v0.5) uses this for a calendar-neutral,
+    # discrete-members-only path margin (rulings O1/O7.3/O7.7); it divides by a
+    # fixed reference hours/day rather than each activity's native calendar, so a
+    # driver is not repriced by calendar length (never used by the v0.4 kernel).
+    rel_float_hours: Optional[float] = None
 
     @property
     def codes(self) -> list[str]:
@@ -372,9 +379,18 @@ def _finalize_path(schedule: Schedule, rank: int, steps: list[PathStep],
     uvals = [s.total_float_days for s in steps
              if s.activity.uid in unique_uids and s.total_float_days is not None]
     rel = min(uvals) if uvals else (mn if mn is not None else 0.0)
+    # calendar-neutral, DISCRETE-members-only branch margin in raw hours (FCBI):
+    # LOE/summary excluded so a level-of-effort node can never set the margin
+    # (ruling O7.3 discrete-members; REV-07).
+    uvals_h = [s.activity.total_float_hours for s in steps
+               if s.activity.uid in unique_uids
+               and not s.activity.is_loe_or_summary
+               and s.activity.total_float_hours is not None]
+    rel_h = min(uvals_h) if uvals_h else None
     return FloatPath(rank=rank, steps=steps, min_float_days=mn, max_float_days=mx,
                      calendars=cals, constraints=cons, pct_complete=pc,
-                     rel_float_days=rel if rel is not None else 0.0)
+                     rel_float_days=rel if rel is not None else 0.0,
+                     rel_float_hours=rel_h)
 
 
 def float_paths(schedule: Schedule, target_uid: Optional[str] = None,

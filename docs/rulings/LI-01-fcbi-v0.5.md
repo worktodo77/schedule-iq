@@ -126,15 +126,21 @@ acceptable-coverage threshold is invented.  ADR-0004 stays intact: if
 tool-of-record output cannot establish governance, the contribution is
 unresolved → quarantine.
 
-**Enforcement scope (disclosed).**  Predicates (1), (2), (3), and (6) are
-computationally enforced from tool-of-record data.  Predicate (4)'s *alternative
-terminal* case is enforced implicitly — an activity whose only route leads to a
-terminal other than m is on no enumerated path to m, so it is distance-unresolved
-→ quarantine — while *external/open-ended successor* detection and predicate
-(5)'s *resource-leveling* basis await the CPM engine (ADR-0007) and are O7.6
-documented captures; the *expected-finish* half of (5) is enforced per activity.
-This partial enforcement is conservative (it quarantines, never over-includes)
-and is carried as a standing disclosure in the briefing.
+**Enforcement scope (disclosed; strengthened in the wave-2 review below).**
+Predicates (1), (2), (3), and (6) are computationally enforced from tool-of-record
+data.  Governance (3) is traced through the network from **both** window
+endpoints (so a non-target constraint or expected finish ADDED mid-window
+quarantines what it governs), and predicate (5)'s **expected-finish** basis is
+propagated the same way (not only checked on the activity itself).  Predicate
+(4)'s *alternative terminal* is enforced for the *constrained* case (a
+constrained alternative terminal governs its ancestors via propagation) and, for
+the *unconstrained* case, is reflected implicitly in the tool-of-record float the
+activity already carries (the binding successor governs its late dates);
+*external/open-ended successor* detection and predicate (5)'s *resource-leveling*
+basis await the CPM engine (ADR-0007) and are O7.6 documented captures.  An
+incomplete population member whose float is not measurable at both endpoints is
+counted as *unmeasurable* (not silently dropped), so eligible-burn coverage is
+never mistaken for data completeness.
 
 **Verified (P7).**  A→M(constrained)→completion: A carries no constraint of its
 own, yet predicate (3) routes A's burn to quarantine (governance traced through
@@ -160,9 +166,12 @@ per-run capture, as noted:
    override, open-ends, expected finish, critical-float threshold, lag
    calendar).  Full per-run settings table is a documented capture.
 6. **Constraint classification** — late-type constraints traced for governance
-   (O6).  The record-network vs logic-only materiality rule (`d difference > λ`
-   OR `weight ratio > 2`) is adopted and documented; full dual-pass reporting is
-   a documented capture pending the CPM engine (ADR-0007).
+   (O6).  Record-network vs logic-only materiality is a **single** criterion,
+   `|d_record − d_logic| ≥ λ` (the wave-2 reviewer showed the previously-stated
+   "OR weight ratio ≥ 2" is mathematically identical, since the weight ratio is
+   `2^(|Δd|/λ)`, so the OR was redundant); the absolute contribution delta
+   `c·|w_record − w_logic|` is reported alongside the flag.  Full dual-pass
+   reporting is a documented capture pending the CPM engine (ADR-0007).
 7. **Calendar basis** — a fixed reference hours/day (`REFERENCE_HPD = 8.0`) with
    an exact conversion formula; calendar-definition changes feed the
    basis-change diagnostic.  This supersedes any "dominant calendar" language.
@@ -256,3 +265,36 @@ sensitivity set, Tier-1 tolerance, remaining-work population, propagated
 governance, coverage, and the fixed-reference conversion / burn-rate) with no
 further defect.  Suite after fixes: **176 passed, 1 skipped** (3 new
 post-review regression tests).
+
+## Wave-2 review — third reviewer (independent provider), loop closed
+
+A second independent pass (different provider) raised seventeen findings against
+the shipped branch.  Most were well-founded; all are dispositioned below.  Fixes
+land in `analytics/li_indices.py` + `analytics/paths.py` + `analytics/li_wiring.py`
+with regression tests; two are doc reconciliations and one is disputed.
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| **REV-01** | BLOCKER | Default target resolution reused the BWI heuristic and could select a constrained *intermediate* milestone (or a task), not the terminal completion m. | **Fixed.** New `_resolve_fcbi_target` selects a **terminal** finish milestone (no path to another finish milestone), never a task, and flags `target_auto_resolved` so the analyst confirms m (O7.1). |
+| **REV-02** | BLOCKER | Distance/ranking used each activity's *native* calendar days while burn used the 8h reference — driver could flip on mixed calendars. | **Fixed.** FCBI margins/distances now use a fixed-reference-hours, discrete-members-only path margin (`FloatPath.rel_float_hours`). Driver *identity* still follows the tool-of-record walk (ADR-0004), disclosed. |
+| **REV-03** | BLOCKER | Basis-change windows still populated operational B/C/top burners and the wiring presented them as operational; the headline could revive a stale segment. | **Fixed.** Basis-change windows are excluded from the operational aggregate; the wiring reports them as basis-change (requirement-induced) and never revives a prior segment. |
+| **REV-04** | BLOCKER | Governance used the earlier endpoint only; a constraint added mid-window, a downstream expected finish, and alternative terminals were not caught (over-inclusion). | **Fixed** (union of both endpoints + expected-finish propagation; unmeasurable float now counted). The over-broad "never over-includes" claim is corrected; unconstrained alternative-terminal governance is disclosed as tool-of-record-reflected. |
+| **REV-05** | MAJOR | O1 prose ("global minimum" reference) contradicted the post-F2 implementation (rank-1 reference). | **Fixed (doc).** Rulings/proposal now state the rank-1 driving-path reference with the clamp. **Disputed:** the reviewer's alternative (quarantine a more-negative feeder) is rejected — clamping a super-critical feeder to d = 0 (co-critical) is simpler and defensible. |
+| **REV-06** | MAJOR | Basis signature ignored constraint *type*, `constraint2`, `must_finish_by`, `baseline_finish`, `critical_definition`/`actual_dates`, and fired on a stale date when type was NONE. | **Fixed.** Requirement-basis signature compares constraint type + date (primary and secondary), project must-finish-by and baseline, and the added settings; stale dates under type NONE are ignored. |
+| **REV-07** | MAJOR | LOE/summary nodes could set a path margin. | **Fixed.** `rel_float_hours` uses discrete members only. |
+| **REV-08** | MAJOR | `FCBI_PATHS_N=50` was labelled "convergence" but is a hard cap. | **Fixed (honesty).** Relabelled a cap; `depth_capped` is surfaced per window and on the result so a cap-limited enumeration is disclosed, not implied converged. A full adaptive convergence loop is deferred (documented). |
+| **REV-09** | MAJOR | The cross-window aggregate burner stored the first window's d/w against a summed contribution — arithmetically incoherent when printed. | **Fixed.** Aggregates now carry an **effective weight** (Σc·w / Σc) so consumption × weight == contribution; deterministic `(-contribution, -consumption, code)` ordering; basis-change windows excluded. |
+| **REV-10** | MAJOR | Completion "moved" is endpoint-derived (null-vs-zero exporter-sensitive) and the list was capped at 15. | **Partially fixed.** The full completer list is now returned (counts were already complete). "moved" is documented as an endpoint-derived, exporter-sensitive supplement; prior float/weight remain the primary completion signal. |
+| **REV-11** | MAJOR | Incomplete members with missing float were invisible, so coverage read 100% of *scored* burn. | **Fixed.** `unmeasurable_count` is reported per window; coverage is explicitly eligible-**burn** coverage. |
+| **REV-12** | MAJOR | λ ≤ 0 / NaN / Inf raised or produced w > 1 / NaN. | **Fixed.** λ validated at the entry point (FCBI returns a reason; the shared kernel falls back to the default), never raises. |
+| **REV-13** | MAJOR | A valid zero-movement window returned the "distance unresolved" failure reason. | **Fixed.** The result distinguishes basis-resolved-but-stable from unresolved; a stable window carries no failure reason. |
+| **REV-14** | MINOR | An unresolved end distance was backfilled with the start distance. | **Fixed.** End/min timing members reuse the start weight only when the end is unresolved (no fabricated end distance); primary start-of-window scoring is unaffected. |
+| **REV-15** | MINOR | Ineligible recovery was dropped with no quarantine subtotal. | **Fixed.** `recov_quarantine` mirrors the burn quarantine subtotal. |
+| **REV-16** | MINOR | Matrix `unit: days` for a gross activity-day value. | **Fixed.** `unit: activity-days`. |
+| **REV-17** | MINOR | Non-target zero-duration milestones counted as burners (undefined). | **Fixed (governed decision).** Non-target milestones are excluded from B/C as schedule markers and disclosed in `milestone_margin_changes`. |
+
+Wave-2 regressions added; suite green: **186 passed, 1 skipped**.  The reviewer's
+seven open-question recommendations are folded into the briefing
+(`docs/LI-01-v0.5-briefing.md`), including its sharp observation that the O7.6
+weight-ratio ≥ 2 criterion is mathematically identical to |Δd| ≥ λ (so the "OR"
+was redundant — now stated as one criterion).

@@ -3,6 +3,36 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-01 FCBI v0.5.1 (wave-2 peer-review hardening)
+
+Independent second peer review (different provider) of the v0.5.0 branch raised
+17 findings; dispositions recorded in `docs/rulings/LI-01-fcbi-v0.5.md` (wave-2
+table).  Check-affecting corrections:
+
+- **Target (REV-01):** default resolution now selects a **terminal** finish
+  milestone (never a constrained intermediate or a task) and flags
+  `target_auto_resolved`; the analyst should still select m explicitly.
+- **Calendar basis (REV-02/07):** FCBI distances use a fixed-reference-hours,
+  discrete-members-only path margin (`FloatPath.rel_float_hours`) — a driver is
+  no longer repriced by native calendar length, and a level-of-effort node can
+  no longer set a path margin.
+- **Basis-change isolation (REV-03):** basis-change windows are excluded from the
+  operational aggregate and headline; the wiring labels them requirement-induced.
+- **Governance (REV-04/06):** governance is unioned across both window endpoints
+  (catches a constraint/expected-finish added mid-window) with expected-finish
+  propagation; the basis-change signature now covers constraint type, secondary
+  constraint, must-finish-by, rebaseline, and more settings, and ignores a stale
+  date under constraint type NONE.
+- **Decomposition (REV-09):** cross-window aggregate burners carry an effective
+  weight so (consumption × weight == contribution); deterministic ordering.
+- **Robustness (REV-11/12/13/15/17):** λ validated (never raises); unmeasurable
+  float counted; a stable window no longer reports a false "unresolved" reason;
+  quarantined-recovery subtotal added; non-target milestones excluded from B/C
+  and disclosed separately.
+- Matrix `unit: activity-days` (REV-16); `depth_capped` disclosed (REV-08).
+
+Suite: 186 passed, 1 skipped (wave-2 regressions added).
+
 ## Unreleased — LI-01 FCBI methodology v0.5.0 (governed revision)
 
 **Check-affecting, number-changing.**  LI-01 (FCBI — Float Criticality Burn

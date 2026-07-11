@@ -39,22 +39,34 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
                      f"w={getattr(b, 'weight', 0):.2f}  "
                      f"c*w={getattr(b, 'contribution', 0):.2f}")
              for b in f.top_burners]
-    # cumulative OPERATIONAL burn B (basis-change windows segmented out, O7.9)
-    cum = next((c for c in reversed(f.cumulative_burn) if c is not None), 0.0)
+    # current-segment cumulative OPERATIONAL burn B (basis-change windows are
+    # segmented out and restart the series — do NOT revive a prior segment, O7.9)
+    cum = f.cumulative_burn[-1] if f.cumulative_burn else 0.0
+    cum = 0.0 if cum is None else cum          # latest window is a basis-change restart
     last = f.windows[-1] if f.windows else None
-    if last is not None:
+    if last is not None and not last.basis_change:
         c_txt = (f"{last.burn_proximity:.2f}" if last.burn_proximity is not None
                  else "N/A")
         cov_txt = (f"{last.coverage:.0%}" if last.coverage is not None else "N/A")
-        interp += (f"  Latest window: B={last.burn_gross:.1f} gross activity-days, "
-                   f"C={c_txt} burn-weighted proximity, eligible-burn coverage {cov_txt}"
+        interp += (f"  Latest operational window: B={last.burn_gross:.1f} gross "
+                   f"activity-days, C={c_txt} burn-weighted proximity, eligible-burn "
+                   f"coverage {cov_txt}"
                    + (f", N={last.n_severity:.1f}d negative-float severity"
                       if last.n_severity else "")
                    + (f"; {last.quarantine_burn:.1f}d quarantined"
                       if last.quarantine_burn else "")
-                   + (f"; BASIS-CHANGE window ({'; '.join(last.basis_change_reasons)})"
-                      if last.basis_change else "") + ".")
-        interp += "  " + f.scope_note
+                   + (f"; {last.unmeasurable_count} population member(s) unmeasurable"
+                      if last.unmeasurable_count else "") + ".")
+    elif last is not None and last.basis_change:
+        rq = (f"{last.requirement_margin_change:+.1f}d requirement-induced margin change"
+              if last.requirement_margin_change is not None else "requirement-induced")
+        interp += (f"  Latest window is a BASIS-CHANGE window ("
+                   f"{'; '.join(last.basis_change_reasons)}) — excluded from the "
+                   f"operational burn trend; {rq} reported separately, not execution "
+                   "erosion.")
+    if f.target_auto_resolved:
+        interp += "  [target auto-resolved; analyst should confirm m — O7.1]"
+    interp += "  " + f.scope_note
     r = _res(by_id, "LI-01", cum, interp, finds)
     if r:
         out.append(r)

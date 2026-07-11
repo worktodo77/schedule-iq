@@ -409,21 +409,95 @@ liability), and trackable as a curve across the project.  These are
 candidates for LI-proprietary branding, as Deltek brands Logic Density™ and
 Merge Hotspot™.
 
-### 9.1 FCBI — Float Criticality Burn Index  (RJL concept, formalized)
-Float consumption weighted by how critical the float was.  Per window, for
-each activity in both updates: consumption c = max(0, −ΔTF) in working days
-(calendar-neutralized); weight w = 2^(−RF/λ), where RF = relative float of
-the least-float path through the activity (from the float-path module) and
-λ = half-weight constant (default 5 wd: float 5 days off the driving path
-counts half, 10 days counts quarter; driving-path float counts full).
-**FCBI(window) = Σ c·w**; normalized form FCBI% = share of the
-criticality-weighted float stock burned in the window.  Regained float is
-tracked separately (FCBI⁻) rather than netted, so recovery cannot mask burn.
-Decomposes exactly into a top-burners table and cuts by the responsibility
-overlay.  Guard: activities whose criticality is manufactured by constraints
-(per constraint-free criticality) are flagged in the decomposition so the
-index cannot be gamed by constraint placement.  The cumulative FCBI curve is
-"the float story of the project in one line."
+### 9.1 FCBI — Float Criticality Burn Index  (RJL concept; v0.5 governed)
+
+*Definition of record as of v0.5.0 (two-reviewer consensus 2026-07-10; rulings
+O1–O7 in [docs/rulings/LI-01-fcbi-v0.5.md](rulings/LI-01-fcbi-v0.5.md)).  The
+v0.4 basis — Σ c·w with a negative-RF over-critical premium, an own-total-float
+fallback, and the FCBI% stock ratio — is superseded and must not be quoted.*
+
+FCBI is a **within-network trend instrument** on a continuously maintained
+schedule, computed **to one selected terminal completion milestone m** (ruling
+O6): it measures how much float is being burned, and how close to critical the
+burned float was, on the way to m.  It makes no cross-project or
+cross-granularity comparison claim, and structural churn is disclosed alongside.
+
+**Target-specific distance (O1, the keystone).**  For each activity i,
+
+> d_i = min over enumerated float paths containing i of
+> (that path's margin to m − the driving path's margin to m).
+
+The driving path has the globally smallest margin, so **d_i ≥ 0 always** —
+driving-path activities have d = 0, and a driver in *negative* float never makes
+any d negative.  An activity on **no** enumerated path is *distance unresolved*
+and goes to quarantine (O6); it is **never** assigned its own total float as a
+distance.  The weight is
+
+> w_i = 2^(−d_i / λ),  λ = 5 working days,  so **w ∈ (0, 1]** always
+
+(float 5 days off the driving path counts half, 10 days a quarter; the w > 1
+"over-critical premium" of the v0.4 fallback basis is abolished).
+
+**Primary outputs — the (B, C) decomposition (O2, activity basis).**  Per
+window, over the remaining-work population (incomplete at the later update),
+with c_i = max(0, −ΔTF_i) in reference working days:
+
+- **B** = Σ c_i — *gross activity-float movement* (burn side).  B is a gross
+  activity-day aggregate that **contains replicated path float**; it is **not**
+  "project float consumed" and **not** a stock.
+- **C** = Σ(c_i · w_i) / Σ c_i — the *burn-weighted mean proximity*.  It is not
+  a concentration statistic.  When B = 0, **C is reported NOT APPLICABLE** with
+  a labelled reason, never 0.
+- **W** = B · C (= the old weighted sum Σ c·w) may be reported as a derived
+  diagnostic.  The (B, C) pair is an *interpretive decomposition* that makes
+  network-size dominance visible; it does **not** cure granularity or
+  network-size dependence (subdividing a burning activity changes B — a
+  disclosed property).
+
+The **recovery side mirrors** it — B⁻, C⁻ with identical conventions, tracked
+**separately and never netted**, so recovery cannot mask burn.  The **FCBI%**
+stock ratio (old Eq. 3) and its D = 0 sentinel are **retired**.
+
+**Negative-float severity lives beside B and C, never in the kernel.**  The
+kernel no longer rewards negative float (w ≤ 1); severity is carried by
+**N = max(0, −F_m)** (how deep the terminal margin is in negative float) and
+**ΔN⁺** (its deepening over the window), reported alongside B and C.
+
+**Weight timing (O3).**  Primary convention for both burn and recovery is
+**start-of-window**, w(d at u−1): nonanticipative, auditable from the opening
+state, and it does not reprice earlier burn at its eventual criticality.  An
+**endpoint-timing sensitivity set** (start / end / min-endpoint) is exposed —
+labelled *exactly* "endpoint-timing sensitivity set," never a "band" or
+"bounds": the true within-window value is not bracketed by these (distance can
+dip below both endpoints mid-window).  The min-endpoint member is the
+**superseded v0.4.2 min-RF** convention, kept only for sensitivity.
+
+**Governance, quarantine, coverage (O6).**  A contribution enters the primary
+result only if its eligibility predicate holds — a directed path to m; no
+non-target constraint or deadline governing its late dates, **including
+governance propagated through the network** (the A→M→completion case, probe P7);
+no alternative terminal / external successor; no leveling / expected-finish
+alternate late-date basis; and target and scheduling basis unchanged in the
+window.  Ineligible or unresolved contributions are **excluded** and reported in
+a **quarantine subtotal** (never merely flagged), with **eligible-burn coverage
+= eligible c / (eligible c + quarantined c)** (NOT APPLICABLE when the
+denominator is 0).  Per ADR-0004, if tool-of-record output cannot establish
+governance, the contribution is unresolved → quarantine.
+
+**Segmentation and scale (O7).**  A **basis-change window** (target-date change,
+rebaseline, scheduling-option change, or calendar-definition change) is excluded
+from the continuous operational-burn trend and reported separately as
+**requirement-induced margin change** (real margin loss, not execution erosion);
+the cumulative series segments and restarts after it.  Outputs carry actual data
+dates and a **burn rate** B / (working days in window) so unequal windows are
+comparable.  Hour→day conversion uses a **fixed reference hours/day**; a
+**Tier-1 numerical tolerance** (in hours, before conversion) absorbs storage/
+exporter/round-trip precision only — it is not an empirical noise filter, and no
+Tier-2 statistical deadband is implemented (it is split/merge-dependent).
+
+The decomposition still cuts by the responsibility overlay and yields a
+top-burners table; the cumulative **B** curve over operational windows is "the
+float story of the project in one line."
 
 ### 9.2 LHL — Logic Half-Life
 Survival analysis on relationships: each relationship ever observed has a

@@ -3,6 +3,43 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-01 FCBI methodology v0.5.0 (governed revision)
+
+**Check-affecting, number-changing.**  LI-01 (FCBI — Float Criticality Burn
+Index) revised under two-reviewer consensus (converged 2026-07-10); rulings
+O1–O7 recorded in `docs/rulings/LI-01-fcbi-v0.5.md`, spec rewritten in
+`docs/ANALYTICS_PROPOSAL.md` §9.1, matrix row updated.  Prior FCBI numbers on a
+matter do not carry over — the basis, outputs, and timing all changed.
+
+- **Distance basis (O1).**  RF replaced by a nonnegative target-specific
+  distance `d_i = min over enumerated paths of (path margin − driving margin)`;
+  driver d=0, never negative; own-total-float fallback abolished (unresolved →
+  quarantine); weight `w = 2^(−d/λ) ∈ (0,1]` (the w>1 over-critical premium is
+  gone).
+- **Outputs (O2).**  Primary outputs are now **B** (gross activity-day burn) and
+  **C** (burn-weighted mean proximity, NOT APPLICABLE when B=0), optional
+  **W = B·C**; recovery mirror **B⁻/C⁻** tracked separately.  **FCBI% retired**
+  (ratio and its D=0 sentinel removed).  Negative-float severity moved beside B
+  and C as **N = max(0,−F_m)** and **ΔN⁺**, never inside the kernel.
+- **Timing (O3).**  Start-of-window weighting is primary; an **endpoint-timing
+  sensitivity set** (start/end/min-endpoint) supersedes the v0.4.2 min-RF ruling
+  (supersession recorded).
+- **Noise (O4).**  Tier-1 numerical tolerance in hours before hour→day
+  conversion; no statistical deadband (Tier 2 deferred).
+- **Population/governance (O5/O6).**  Remaining-work population retained, plus a
+  completion-omission diagnostic; target eligibility predicate with **propagated
+  governance** traced through the network, a **quarantine subtotal**, and
+  **eligible-burn coverage**.
+- **Segmentation/scale (O7).**  Basis-change windows (target-date/rebaseline/
+  settings/calendar) segmented out of the operational trend as requirement-
+  induced margin change; burn-rate normalization; fixed reference hours/day.
+- **Report Card.**  LI-01 scoring marked **provisional/ungraded** pending anchor
+  recalibration (the definition change invalidates the prior [0,20,60] anchors);
+  reported informationally with its B/C decomposition, coverage, and severity.
+- **Tests.**  Probe set §P (P1–P11) added as seeded in-memory regression
+  fixtures; the v0.4 X/Y/Z exact test superseded.  The v0.4 RF kernel is
+  untouched, so PCI/CDI/RDI/BWI (LI-04/07/05/09) are unchanged.
+
 ## 0.1.0 — 2026-07-06
 
 Initial release.

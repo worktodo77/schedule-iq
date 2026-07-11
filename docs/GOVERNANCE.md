@@ -16,6 +16,15 @@ it defensible.
 - Analyst threshold overrides are per-run, live in profile files, and are
   stamped on every output ("analyst override" vs "standard default").  The
   software never silently deviates from the published defaults.
+- **Number-changing revisions of a proprietary index** (a change to its basis,
+  outputs, or timing that alters the numbers a matter would quote) additionally
+  require a **recorded ruling** in `docs/rulings/` carrying the approved rulings,
+  any supersession/retirement records, and the audited before→after on a probe
+  set — the full governance package (spec + matrix row + seeded fixtures +
+  regression tests + recorded ruling) moves together.  Prior regression anchors
+  invalidated by such a change are marked provisional/ungraded until
+  recalibrated.  See `docs/rulings/LI-01-fcbi-v0.5.md` for the LI-01 v0.5
+  precedent.
 
 ## 2. Reproducibility and audit
 

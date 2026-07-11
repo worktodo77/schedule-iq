@@ -288,6 +288,40 @@ def test_fcbi_p11_completion_omission():
     assert w.completed_in_window == 1
 
 
+def test_fcbi_worked_example_anchor_v05():
+    """The v0.5 worked-example regression anchor (supersedes X/Y/Z; the briefing
+    exhibit).  Exercises a d=0 driver, a governed->quarantined activity,
+    coverage < 100%, and the N/dN+ negative-float severity output.
+
+        DRV : TF 0 -> -4  driver, d=0, w=1        (eligible burn 4)
+        NEAR: TF 5 -> 2   near-critical, d=5, w=0.5 (eligible burn 3)
+        GOV : TF 1 -> -2  governed by GATE(MANDFIN) -> quarantined (burn 3)
+        COMP: TF 0 -> -4  target terminal -> N=4, dN+=4
+    B = 4+3 = 7 ; W = 4*1 + 3*0.5 = 5.5 ; C = 5.5/7 ; coverage = 7/(7+3) = 0.7
+    """
+    rels = [Relationship("DRV", "COMP"), Relationship("NEAR", "COMP"),
+            Relationship("GOV", "GATE"), Relationship("GATE", "COMP")]
+
+    def build(dd, drv, near, gov, comp):
+        return _s(dd, [_a("DRV", "DRV", drv), _a("NEAR", "NEAR", near),
+                       _a("GOV", "GOV", gov),
+                       _m("GATE", "GATE", 0.0, constraint=ConstraintType.MANDATORY_FINISH,
+                          ef=_DFIN - timedelta(days=2)),
+                       _m("COMP", "COMP", comp, ef=_DFIN)], rels)
+    w = _fcbi([build(datetime(2025, 3, 3, 8), 0.0, 5.0, 1.0, 0.0),
+               build(datetime(2025, 4, 7, 8), -4.0, 2.0, -2.0, -4.0)], target="COMP").windows[0]
+    byc = {b.code: b for b in w.top_burners}
+    assert byc["DRV"].distance_days == pytest.approx(0.0) and byc["DRV"].weight == pytest.approx(1.0)
+    assert byc["NEAR"].distance_days == pytest.approx(5.0)
+    assert w.burn_gross == pytest.approx(7.0)
+    assert w.burn_weighted == pytest.approx(5.5)
+    assert w.burn_proximity == pytest.approx(5.5 / 7.0)
+    assert w.coverage == pytest.approx(0.7)
+    assert w.quarantine_burn == pytest.approx(3.0)
+    assert "GOV" in {q.code for q in w.quarantine}
+    assert w.n_severity == pytest.approx(4.0) and w.n_deepening == pytest.approx(4.0)
+
+
 def test_fcbi_retired_surfaces_absent():
     """The retired FCBI% (old Eq. 3) and its D=0 sentinel are gone (O2)."""
     w = _fcbi([_p2(datetime(2025, 1, 6, 8), 10.0),

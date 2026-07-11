@@ -40,8 +40,11 @@ change to the FCBI path-distance/frontier methodology or to any canonical number
   `depth_capped` / `stop_reason` — observational only, no result change, no new
   work-budget cap; the exact enumerator is untouched.
 - The v0.4 RF kernel (PCI/CDI/RDI/BWI) and all canonical FCBI anchors are unchanged.
+- Wave-6 review returned **GO** (lock at v0.5.6); its two optional test-only
+  tightenings were applied — full-tuple equality in the instrumentation test and a
+  mixed non-real λ-sensitivity point test — no code or methodology change.
 
-Suite: 225 passed, 1 skipped.
+Suite: 226 passed, 1 skipped.
 
 ## Unreleased — LI-01 FCBI v0.5.5 (wave-4 peer-review; enumerator correctness)
 

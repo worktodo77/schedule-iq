@@ -437,3 +437,27 @@ unchanged on every canonical series.
 v0.5.6 hardening added; suite green: **225 passed, 1 skipped**.  FCBI v0.5.6 is
 non-number-changing provenance and API hardening only; the accepted v0.5.5
 path-distance and frontier methodology is unchanged.
+
+## Wave-6 review — final pass, LI-01 FCBI LOCKED at v0.5.6
+
+A sixth review, scoped to realistic production behaviour only (extreme edge cases
+out of scope), returned **GO — lock LI-01 FCBI at v0.5.6**.  No BLOCKER, MAJOR,
+MINOR, or realistic-scenario regression was found.  The reviewer confirmed each
+v0.5.6 item is correctly and minimally implemented; the integrity guard produces no
+canonical false positive (analyze_series output, None/equal data dates, missing or
+differing source hashes on legitimate re-imports/rebaselines, and differing source
+files all remain accepted); UID continuity is a nonblocking provenance disclosure;
+λ hardening never raises on any input type while the v0.4 kernel stays uncapped; and
+v0.5.6 changes no canonical number (P1 B=5/C=0.7/W=3.5; worked example
+B=7/coverage=0.7/N=4; λ-sensitivity C=0.315/0.5/0.707).  Two **optional, test-only**
+tightenings the reviewer suggested were applied (full-tuple equality in the
+instrumentation test; a mixed non-real λ-sensitivity point test) — no code or
+methodology change, and explicitly NOT a new methodology revision.  Suite after the
+tightenings: **226 passed, 1 skipped**.
+
+**LI-01 FCBI is locked at v0.5.6.**  The accepted v0.5.5 mathematical core is not
+reopened; no further methodology provisions are added for hypothetical edge cases
+absent evidence from real project schedules.  Next step (outside this locked
+methodology) is the AACE white-paper rewrite around the reader-facing form
+`FCBI = W = Σ cᵢ·2^(−dᵢ/λ)` with the mandatory `B = Σ cᵢ`, `C = W/B`, `W = B·C`
+decomposition, keeping the software-assurance detail in this repository supplement.

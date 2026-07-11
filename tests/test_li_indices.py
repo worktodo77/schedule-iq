@@ -1168,11 +1168,29 @@ def test_v056_target_distance_stats_instrumentation():
     rels = [Relationship("D", "T")] + [Relationship(f"F{i}", "T") for i in range(30)]
     s = _s(datetime(2025, 1, 6, 8), acts, rels)
     stats = {}
-    dist_a, _dm, _tm, cap_a = _tdist(s, "T", stats)
-    dist_b, _dm2, _tm2, cap_b = _tdist(s, "T")           # without stats: same result
-    assert dist_a == dist_b and cap_a == cap_b
+    res_with = _tdist(s, "T", stats)
+    res_without = _tdist(s, "T")                          # without stats: same result
+    # complete-tuple equality covers dist, driving_margin, target_margin AND cap
+    # (wave-6 optional tightening) — stats is strictly observational
+    assert res_with == res_without
     assert stats["convergence_stopped"] is True and stats["depth_capped"] is False
     assert stats["stop_reason"] == "frontier" and stats["paths_enumerated"] >= 1
+
+
+def test_v056_lambda_sensitivity_nonreal_points():
+    """Item 3 / wave-6 tightening: fcbi_lambda_sensitivity validates each requested λ
+    through the hardened helper — non-real / out-of-range points fail INDIVIDUALLY
+    (status 'failed' with a reason) while valid points stay 'ok', and the call never
+    raises even when the lams tuple mixes None / str / bool with numbers."""
+    r = [Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8), [_a("A", "A", 5.0), _m("T", "T", 0.0)], r)
+    l = _s(datetime(2025, 2, 6, 8), [_a("A", "A", 0.0), _m("T", "T", 0.0)], r)
+    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
+    ls = fcbi_lambda_sensitivity(sa, target="T", lams=(3.0, None, "5", True, 10.0, 20.0))
+    assert [p.status for p in ls.points] == \
+        ["ok", "failed", "failed", "failed", "ok", "failed"]     # order preserved
+    assert all(p.reason for p in ls.points if p.status == "failed")
+    assert ls.cumulative_b is not None                           # basis still resolved once
 
 
 def test_w4_04_sensitivity_reuses_one_basis(monkeypatch):

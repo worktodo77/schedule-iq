@@ -89,14 +89,16 @@ reproducible and cited.
    existing FRB/statistical modules), C2/SET-02.
 4. **Recalibrate** FCBI/RDI absolute-day anchors in scorecard.yaml against
    real files (flagged in spec rationales) once RJL supplies a real .xer
-   series (his task L3).  **LI-01 FCBI is now v0.5.0** (governed revision,
-   rulings O1-O7 in `docs/rulings/LI-01-fcbi-v0.5.md`): the graded value is the
-   cumulative operational gross burn **B** (not the retired weighted sum), and
-   its Report Card scoring is currently **provisional/ungraded** pending this
-   recalibration — see `scorecard.yaml` `series_curve_overrides: LI-01` and the
-   briefing `docs/LI-01-v0.5-briefing.md` (questions 1-7 await the paper
-   author).  When recalibrating, restore a `points:` curve on the **B** scale
-   and remove the `provisional` flag.
+   series (his task L3).  **LI-01 FCBI is LOCKED at v0.5.6** (governed revision,
+   rulings O1-O7 + wave-2..6 dispositions in `docs/rulings/LI-01-fcbi-v0.5.md`;
+   the open questions Q1-Q7 were settled by the principal in v0.5.2): the graded
+   value is the cumulative operational gross burn **B** (not the retired weighted
+   sum), and its Report Card scoring is currently **provisional/ungraded** pending
+   this recalibration — see `scorecard.yaml` `series_curve_overrides: LI-01` and
+   the briefing `docs/LI-01-v0.5-briefing.md`.  When recalibrating, restore a
+   `points:` curve on the **B** scale and remove the `provisional` flag.  (The
+   methodology itself is closed after six independent review waves; recalibration
+   is an anchor/scoring task, not a methodology change.)
 
 ## 5. Decisions waiting on RJL (do not build without approval)
 

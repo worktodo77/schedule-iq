@@ -1001,6 +1001,11 @@ def intervention_latency(series_analysis) -> ILResult:
 # N15 / §10.5 — MML: Measured-Mile Locator
 # --------------------------------------------------------------------------
 MML_CAPTION = "preliminary — measured-mile period selection is confirmed by the expert"
+# Sustained clean-mile conventions (Wave-4 ruling Q-F, 2026-07-12 — recorded
+# conventions, not calibrated constants; docs/rulings/LI-10-mml-v2-2026-07-12.md):
+MML_RUN_K = 2                 # clean mile = best mean over K consecutive windows
+MML_RUN_SPREAD = 0.25         # ... whose (max-min) <= this fraction of the run mean
+MML_TIGHT_SPREAD = 0.15       # all-windows spread below this => no contrast exists
 
 
 @dataclass
@@ -1019,10 +1024,15 @@ class MMLWbsResult:
     wbs_code: str
     wbs_name: str
     windows: list[MMLWindowRow] = field(default_factory=list)
+    # clean mile = the best SUSTAINED run (Q-F): the run's rows, its mean
+    # productivity, and (back-compat) its best single row
+    clean_windows: list[MMLWindowRow] = field(default_factory=list)
+    clean_productivity: Optional[float] = None
     clean_window: Optional[MMLWindowRow] = None
     impacted_window: Optional[MMLWindowRow] = None
     ratio: Optional[float] = None
     no_clean_mile: bool = False
+    no_clean_mile_reasons: list[str] = field(default_factory=list)
     reason: str = ""
 
 
@@ -1031,6 +1041,7 @@ class MMLResult:
     wbs_results: list[MMLWbsResult] = field(default_factory=list)
     caption: str = MML_CAPTION
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 def _root_wbs_uid(sched: Schedule) -> Optional[str]:
@@ -1092,10 +1103,31 @@ def _overlaps_event(start, end, events) -> bool:
 
 def measured_mile_locator(series_analysis, events: Optional[list[tuple]] = None) -> MMLResult:
     """Per top-level WBS node (children of the project node) and per update-
-    pair window, compute productivity (actual resource units consumed per
-    working hour, falling back to activity-days completed per working day
-    when a node has no resource actuals); locate the clean and most-impacted
-    windows and their contrast ratio (ANALYTICS_PROPOSAL §10.5)."""
+    pair window, compute productivity and locate the clean-mile and
+    most-impacted periods with their contrast ratio (ANALYTICS_PROPOSAL
+    §10.5).
+
+    Conventions (Wave-4 ruling Q-F, 2026-07-12 —
+    docs/rulings/LI-10-mml-v2-2026-07-12.md):
+
+    - *Basis segregation:* each trade's ratio is computed within ONE basis.
+      The resource basis (actual units consumed per working hour) is used
+      only when EVERY data-bearing window of the trade has resource
+      movement; otherwise every window uses the activity-day basis
+      (planned days completed per working day).  A resource window is never
+      compared against an activity-day window — the prior per-window
+      auto-selection produced dimensionally meaningless "contrast" ratios.
+    - *Sustained clean mile:* the clean period is the best MEAN productivity
+      over ``MML_RUN_K`` consecutive, valid, non-event windows whose spread
+      (max−min) is within ``MML_RUN_SPREAD`` of the run mean — a single
+      spike window cannot become the measured mile.  When no qualifying run
+      exists, the best single clean window is used and the degradation is
+      recorded in ``no_clean_mile_reasons``.
+    - *Event overlay:* windows overlapping a supplied delay event
+      (``events`` = (start, finish, ...) tuples, e.g. from the D6 event
+      mapper / ``sa.delay_events``) are excluded from clean-mile candidacy;
+      overlay status is disclosed either way.
+    """
     schedules = list(getattr(series_analysis, "schedules", []))
     res = MMLResult()
     if len(schedules) < 2:
@@ -1113,6 +1145,7 @@ def measured_mile_locator(series_analysis, events: Optional[list[tuple]] = None)
 
     for node in top_nodes:
         wr = MMLWbsResult(wbs_code=node.code, wbs_name=node.name)
+        raw = []            # (label, start, end, n_acts, res_prod, act_prod, evented)
         for e, l in zip(schedules, schedules[1:]):
             e_by_code = {a.code: a for a in e.activities.values()}
             cal = _default_cal(l)
@@ -1132,16 +1165,23 @@ def measured_mile_locator(series_analysis, events: Optional[list[tuple]] = None)
                                       - sum(r.actual_units for r in ea.resources))
                     if la.completed and not ea.completed:
                         act_days_completed += la.duration_days(l.cal_for(la))
-            if resource_delta > 1e-9 and work_hours > 0:
-                basis, productivity = "resource", resource_delta / work_hours
-            else:
-                basis = "activity-day fallback"
-                productivity = (act_days_completed / work_days) if work_days > 0 else None
+            res_prod = (resource_delta / work_hours
+                        if resource_delta > 1e-9 and work_hours > 0 else None)
+            act_prod = (act_days_completed / work_days) if work_days > 0 else None
+            raw.append((f"{e.label()} -> {l.label()}", e.data_date, l.data_date,
+                        n_acts, res_prod, act_prod,
+                        _overlaps_event(e.data_date, l.data_date, events)))
+
+        # -- basis segregation (Q-F): ONE basis per trade, never crossed ----
+        data_bearing = [r for r in raw if r[4] is not None or r[5] is not None]
+        use_resource = bool(data_bearing) and all(r[4] is not None
+                                                  for r in data_bearing)
+        basis = "resource" if use_resource else "activity-day fallback"
+        for label, start, end, n_acts, res_prod, act_prod, evented in raw:
             wr.windows.append(MMLWindowRow(
-                window_label=f"{e.label()} -> {l.label()}", start=e.data_date,
-                end=l.data_date, basis=basis, productivity=productivity,
-                n_activities=n_acts,
-                excluded_by_event=_overlaps_event(e.data_date, l.data_date, events)))
+                window_label=label, start=start, end=end, basis=basis,
+                productivity=(res_prod if use_resource else act_prod),
+                n_activities=n_acts, excluded_by_event=evented))
 
         valid = [w for w in wr.windows if w.productivity is not None]
         if not valid:
@@ -1150,17 +1190,75 @@ def measured_mile_locator(series_analysis, events: Optional[list[tuple]] = None)
             res.wbs_results.append(wr)
             continue
 
-        clean_candidates = [w for w in valid if not w.excluded_by_event] or valid
-        wr.clean_window = max(clean_candidates, key=lambda w: w.productivity)
+        clean_candidates = [w for w in valid if not w.excluded_by_event]
+        # -- sustained clean run (Q-F): K consecutive clean windows within
+        # the dispersion cap; best run by mean productivity -----------------
+        best_run, best_mean = None, None
+        seq = wr.windows
+        for i in range(len(seq) - MML_RUN_K + 1):
+            run = seq[i:i + MML_RUN_K]
+            if any(w.productivity is None or w.excluded_by_event for w in run):
+                continue
+            vals = [w.productivity for w in run]
+            mean = sum(vals) / len(vals)
+            spread_ok = ((max(vals) - min(vals)) <= MML_RUN_SPREAD * mean
+                         if mean > 0 else max(vals) == min(vals))
+            if not spread_ok:
+                continue
+            if best_mean is None or mean > best_mean:
+                best_run, best_mean = run, mean
+        if best_run is not None:
+            wr.clean_windows = list(best_run)
+            wr.clean_productivity = best_mean
+            wr.clean_window = max(best_run, key=lambda w: w.productivity)
+        elif clean_candidates:
+            w = max(clean_candidates, key=lambda w: w.productivity)
+            wr.clean_windows, wr.clean_productivity, wr.clean_window = [w], w.productivity, w
+            wr.no_clean_mile_reasons.append(
+                f"no sustained clean run of {MML_RUN_K} consecutive windows met "
+                f"the {MML_RUN_SPREAD:.0%} dispersion cap — single-window basis, "
+                "confirm before use")
+        else:
+            w = max(valid, key=lambda w: w.productivity)
+            wr.clean_windows, wr.clean_productivity, wr.clean_window = [w], w.productivity, w
+            wr.no_clean_mile_reasons.append(
+                "every valid window overlaps a mapped delay event — no clean "
+                "period exists; the least-impacted window is shown instead")
+
         wr.impacted_window = min(valid, key=lambda w: w.productivity)
-        if wr.clean_window.productivity and wr.clean_window.productivity > 1e-9:
+        if wr.clean_productivity and wr.clean_productivity > 1e-9:
             wr.ratio = max(0.0, min(1.0, wr.impacted_window.productivity
-                                    / wr.clean_window.productivity))
+                                    / wr.clean_productivity))
         vals = [w.productivity for w in valid]
-        spread_tight = (max(vals) - min(vals)) <= 0.15 * max(vals) if max(vals) > 0 else True
-        all_overlap_event = bool(events) and all(w.excluded_by_event for w in valid)
-        wr.no_clean_mile = spread_tight or all_overlap_event
+        top = max(vals)
+        tight = ((top - min(vals)) <= MML_TIGHT_SPREAD * top) if top > 0 else True
+        if tight:
+            wr.no_clean_mile_reasons.append(
+                f"productivity spread across windows is within "
+                f"{MML_TIGHT_SPREAD:.0%} of the best window — no material "
+                "contrast exists to measure")
+        wr.no_clean_mile = bool(wr.no_clean_mile_reasons)
         res.wbs_results.append(wr)
+
+    res.disclosures = [
+        "Basis segregation: each trade's clean/impacted comparison and ratio "
+        "are computed within ONE basis — resource units/hour only when every "
+        "data-bearing window has resource movement, else planned activity-days "
+        "completed per working day for every window; a resource window is "
+        "never compared against an activity-day window.",
+        f"Clean mile = best mean over {MML_RUN_K} consecutive, valid, "
+        f"non-event windows with (max-min) <= {MML_RUN_SPREAD:.0%} of the run "
+        "mean (recorded conventions, not calibrated constants); degradation "
+        "to a single window is flagged per trade.",
+        ("Delay-event overlay ACTIVE: "
+         f"{len(events)} event(s) supplied; overlapping windows are excluded "
+         "from clean-mile candidacy." if events else
+         "Delay-event overlay INACTIVE: no mapped delay events were supplied "
+         "(attach the D6 event-mapper output, e.g. sa.delay_events) — clean "
+         "windows are unscreened for known events."),
+        "Windows are the update cadence; period selection remains preliminary "
+        "and is confirmed by the expert.",
+    ]
     return res
 
 

@@ -780,6 +780,23 @@ Labeled preliminary: period selection is confirmed by the expert; the tool's
 contribution is exhaustively scanning every candidate period, which manual
 practice never does.
 
+*Conventions (Wave-4 ruling Q-F, 2026-07-12 —
+docs/rulings/LI-10-mml-v2-2026-07-12.md):* **basis segregation** — each
+trade's comparison is computed within ONE basis (resource units/hour only
+when every data-bearing window has resource movement, else activity-days/day
+for every window); a resource window is never compared against an
+activity-day window (the prior per-window auto-selection produced
+dimensionally meaningless ratios).  **Sustained clean mile** — the clean
+period is the best mean over 2 consecutive, valid, non-event windows whose
+spread is within 25% of the run mean (recorded conventions, not calibrated
+constants), so a single spike window cannot become the measured mile;
+degradation to a single window is flagged per trade with a named reason.
+**Event overlay** — windows overlapping mapped delay events (D6 mapper
+output attached as `sa.delay_events`) are excluded from clean candidacy;
+the overlay's active/inactive status is disclosed on every result.  The
+"no clean mile" flag now carries named reasons (tight spread / all windows
+evented / no sustained run).
+
 *Backlog: N11-N15 (PARKED pending review).  All five compute from existing
 modules; none requires the CPM engine (BWI and IL use the change register
 and float paths; MML uses resource actuals where loaded, activity-days

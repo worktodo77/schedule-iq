@@ -3,6 +3,33 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-10 MML Wave-4 revision (ruling Q-F, adjudicated 2026-07-12)
+
+**Number-changing for LI-10 (informational — no Report Card weight, but the
+per-trade contrast ratios and named clean/impacted periods move).**
+Recorded ruling docs/rulings/LI-10-mml-v2-2026-07-12.md.
+
+- **Basis segregation:** one basis per trade (resource units/hour only when
+  every data-bearing window has resource movement, else activity-days/day
+  throughout) — a resource window is never compared against an activity-day
+  window (the prior per-window auto-selection produced dimensionally
+  meaningless cross-basis "contrast" ratios; audit MML-1 probe: 0.4 from
+  1.25 units/h ÷ 0.5 act-d/d).
+- **Sustained clean mile:** best mean over 2 consecutive, valid, non-event
+  windows within a 25% dispersion cap (recorded conventions) — a single
+  spike window can no longer become the measured mile (anchor: [1.0, 1.05,
+  5.0, 0.5] → clean 1.025, not 5.0); single-window degradation is a named
+  reason.
+- **Event overlay wired:** mapped delay events (sa.delay_events, D6 mapper
+  output) now reach MML through the wiring and exclude overlapping windows
+  from clean candidacy; ACTIVE/INACTIVE status disclosed (the parameter
+  previously existed but was never supplied — dead code).
+- **no_clean_mile carries named reasons** (tight spread / all windows
+  evented / no sustained run) into the exhibit text; standing disclosures
+  added.  4 new closed-form regressions.
+
+Suite: 291 passed, 1 skipped.
+
 ## Unreleased — LI-06 BDI Wave-4 revision (ruling Q-G, adjudicated 2026-07-12)
 
 **Check-affecting / number-changing for LI-06 (scored, weight 2).**

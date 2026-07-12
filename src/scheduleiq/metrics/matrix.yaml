@@ -1031,8 +1031,8 @@ checks:
   - id: LI-10
     name: "MML — Measured-Mile Locator"
     category: "LI Proprietary Indices"
-    description: "Per trade/WBS: disruption contrast ratio (most-impacted window productivity / cleanest window productivity) with candidate periods located; flags when no clean mile exists.  Preliminary — period selection confirmed by the expert."
-    formula: "min-window productivity / max-window productivity per top-level WBS; resource-based where loaded, activity-day basis otherwise"
+    description: "Per trade/WBS: disruption contrast ratio (most-impacted window productivity / sustained clean-mile mean productivity) with candidate periods located; flags when no clean mile exists, with named reasons.  Basis is segregated per trade (resource units/hour only when every data-bearing window has resource movement, else activity-days/day for every window — bases are never compared against each other); the clean mile is the best mean over 2 consecutive non-event windows within a 25% dispersion cap (recorded conventions); windows overlapping mapped delay events are excluded from clean candidacy when events are supplied.  Preliminary — period selection confirmed by the expert."
+    formula: "min-window productivity / best sustained-run mean per top-level WBS, within ONE basis per trade (resource when complete, else activity-day); run = 2 consecutive clean windows, spread <= 25% of run mean"
     unit: ratio
     threshold: null
     direction: info

@@ -961,3 +961,127 @@ def test_bdi5_logic_change_detail_format_coupling_lock():
     cs = compare(s0, s1)
     added = [lc for lc in cs.logic_changes if lc.kind == "added"]
     assert added and added[0].detail.split()[0] == "FS"
+
+
+# ==========================================================================
+# Wave 4b — MML basis segregation + sustained clean mile + event overlay
+# (docs/rulings/LI-10-mml-v2-2026-07-12.md)
+# ==========================================================================
+from scheduleiq.ingest.model import ResourceAssignment, WbsNode         # noqa: E402
+
+
+def _mml_sched(dd, acts, wbs):
+    s = Schedule(project_id="MML", data_date=dd)
+    s.activities = {a.uid: a for a in acts}
+    s.wbs = {n.uid: n for n in wbs}
+    return s
+
+
+def _mml_wbs():
+    return [WbsNode(uid="R", parent_uid=None, code="ROOT", name="root"),
+            WbsNode(uid="W1", parent_uid="R", code="CIV", name="civil")]
+
+
+def _mml_act(uid, *, od=10, done=False, af=None, au=0.0):
+    a = Activity(uid=uid, code=uid, name=uid,
+                 status=(ActivityStatus.COMPLETED if done
+                         else ActivityStatus.NOT_STARTED),
+                 total_float_hours=40.0, original_duration_hours=od * 8.0,
+                 remaining_duration_hours=0.0 if done else od * 8.0,
+                 actual_finish=af, wbs_uid="W1")
+    if au:
+        a.resources = [ResourceAssignment(activity_uid=uid, resource_uid="r1",
+                                          actual_units=au)]
+    return a
+
+
+def test_mml_partial_resource_data_never_crosses_bases():
+    """Q-F basis segregation: the audit's MML-1 probe — resource movement in
+    window 1 only, a completion in window 2 — must NOT produce a
+    resource-vs-activity-day 'contrast'.  The trade drops to a uniform
+    activity-day basis for every window."""
+    d0, d1, d2 = (datetime(2025, 1, 6, 8), datetime(2025, 2, 3, 8),
+                  datetime(2025, 3, 3, 8))
+    wbs = _mml_wbs()
+    a0 = _mml_act("A", au=0.0)
+    a1 = _mml_act("A", au=200.0)
+    a2 = _mml_act("A", au=200.0)
+    b0, b1 = _mml_act("B"), _mml_act("B")
+    b2 = _mml_act("B", done=True, af=d2 - timedelta(days=3))
+    sa = SeriesAnalysis(schedules=[
+        _mml_sched(d0, [a0, b0], wbs), _mml_sched(d1, [a1, b1], wbs),
+        _mml_sched(d2, [a2, b2], wbs)])
+    mml = measured_mile_locator(sa)
+    wr = mml.wbs_results[0]
+    assert all(w.basis == "activity-day fallback" for w in wr.windows)
+    assert wr.clean_window.basis == wr.impacted_window.basis
+    assert any("never" in d and "compared" in d for d in mml.disclosures)
+
+
+def test_mml_full_resource_trade_uses_resource_basis():
+    d0, d1, d2 = (datetime(2025, 1, 6, 8), datetime(2025, 2, 3, 8),
+                  datetime(2025, 3, 3, 8))
+    wbs = _mml_wbs()
+    sa = SeriesAnalysis(schedules=[
+        _mml_sched(d0, [_mml_act("A", au=0.0)], wbs),
+        _mml_sched(d1, [_mml_act("A", au=100.0)], wbs),
+        _mml_sched(d2, [_mml_act("A", au=260.0)], wbs)])
+    mml = measured_mile_locator(sa)
+    wr = mml.wbs_results[0]
+    assert all(w.basis == "resource" for w in wr.windows)
+    assert wr.ratio is not None and 0.0 <= wr.ratio <= 1.0
+
+
+def test_mml_spike_window_cannot_become_the_clean_mile():
+    """Q-F sustained clean mile: productivities ~[1.0, 1.05, 5.0, 0.5] — the
+    best qualifying 2-run is (1.0, 1.05), mean 1.025; the 5.0 spike fails
+    every dispersion-capped run and must not set the clean basis."""
+    dds = [datetime(2025, 1, 6, 8) + timedelta(days=14 * i) for i in range(5)]
+    wbs = _mml_wbs()
+    # per-window completions (planned days): 10, 10.5, 50, 5 over 10-wd windows
+    specs = [("C1", 10, 1), ("C2", 10.5, 2), ("C3", 50, 3), ("C4", 5, 4)]
+    def sched(k):
+        acts = []
+        for uid, od, win in specs:
+            done = k >= win         # completed from schedule index win onward
+            acts.append(_mml_act(uid, od=od, done=done,
+                                 af=(dds[win] - timedelta(days=2) if done else None)))
+        return _mml_sched(dds[k], acts, wbs)
+    sa = SeriesAnalysis(schedules=[sched(k) for k in range(5)])
+    mml = measured_mile_locator(sa)
+    wr = mml.wbs_results[0]
+    prods = [round(w.productivity, 3) for w in wr.windows]
+    assert prods == [1.0, 1.05, 5.0, 0.5]
+    assert wr.clean_productivity == pytest.approx(1.025)     # sustained run mean
+    assert wr.clean_window.productivity == pytest.approx(1.05)
+    assert wr.impacted_window.productivity == pytest.approx(0.5)
+    assert wr.ratio == pytest.approx(0.5 / 1.025)
+    assert not wr.no_clean_mile
+
+
+def test_mml_event_overlay_excludes_windows_and_flows_from_series():
+    """Q-F event wiring: delay events attached to the series (sa.delay_events)
+    reach MML through the wiring; an evented window leaves clean-mile
+    candidacy (here the spike window), and the overlay status is disclosed."""
+    from scheduleiq.analytics.li_wiring import li_series_results
+    from scheduleiq.metrics.engine import load_matrix
+    dds = [datetime(2025, 1, 6, 8) + timedelta(days=14 * i) for i in range(5)]
+    wbs = _mml_wbs()
+    specs = [("C1", 10, 1), ("C2", 10.5, 2), ("C3", 50, 3), ("C4", 5, 4)]
+    def sched(k):
+        acts = [_mml_act(uid, od=od, done=k >= win,
+                         af=(dds[win] - timedelta(days=2) if k >= win else None))
+                for uid, od, win in specs]
+        return _mml_sched(dds[k], acts, wbs)
+    sa = SeriesAnalysis(schedules=[sched(k) for k in range(5)])
+    events = [(dds[2] + timedelta(days=1), dds[3] - timedelta(days=1), "storm")]
+    mml = measured_mile_locator(sa, events=events)
+    wr = mml.wbs_results[0]
+    assert wr.windows[2].excluded_by_event                    # the spike window
+    assert wr.clean_productivity == pytest.approx(1.025)      # unchanged best run
+    assert any("ACTIVE" in d for d in mml.disclosures)
+    # and through the wiring via sa.delay_events
+    sa.delay_events = events
+    r = next(x for x in li_series_results(sa, load_matrix())
+             if x.check.id == "LI-10")
+    assert any("ACTIVE" in f.detail for f in r.findings)

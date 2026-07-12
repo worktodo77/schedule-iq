@@ -65,7 +65,9 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
     except Exception as e:                            # pragma: no cover - defensive
         ri, ri_err = None, e
     try:
-        rr = run_li_record(sa)
+        # MML event overlay (Q-F): mapped delay events attached to the series
+        # (e.g. from the D6 event mapper) screen clean-mile candidacy.
+        rr = run_li_record(sa, events=getattr(sa, "delay_events", None))
     except Exception as e:                            # pragma: no cover - defensive
         rr, rr_err = None, e
 
@@ -311,7 +313,10 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
                 basis = cb or ib or _DASH
             finds.append(Finding(row.wbs_code, "",
                                  f"basis {basis}; ratio {_fmt(row.ratio)}"
-                                 + ("; NO CLEAN MILE" if row.no_clean_mile else "")))
+                                 + ("; NO CLEAN MILE ("
+                                    + "; ".join(row.no_clean_mile_reasons) + ")"
+                                    if row.no_clean_mile else "")))
+        finds.extend(Finding("disclosure", "", d) for d in m.disclosures)
         v = min(ratios) if ratios else None
         narrative = ((f"Strongest disruption contrast ratio {v:.2f} "
                       "(impacted / clean productivity; lower = stronger contrast).  "

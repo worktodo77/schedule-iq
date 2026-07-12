@@ -602,3 +602,231 @@ Additional gating checks for Shape 1 (on top of §5's):
 9. Which concurrency conventions go in the paper's menu, and is LI willing
    to print worked examples of each on the same fixture (the honest way to
    show the rules diverge)?
+
+---
+
+## 8. Third pass (2026-07-12): a literal MIP 3.10 — Option E tabled
+
+Direction change: §7's contractual regime is **tabled** (kept on record, not
+abandoned).  New target: a genuine tenth method for the 29R-03 taxonomy.
+Constraints given: it need not use the LI indices; it must permit
+retrospective analysis *during* execution; it must be more user-friendly
+than existing MIPs; and it must handle concurrency well.
+
+### 8.1 Taxonomy legitimacy — §1's objection narrowed
+
+§1 argued "nothing that runs during execution is a MIP."  That was right
+against §7's shape (a prospective/contemporaneous *decision mechanism*) and
+is **wrong against this one**: "retrospective" in the 29R-03 sense describes
+the analysis's relationship to the delay — analyzed after it occurred — not
+to project completion.  A window that has closed is already the past.  A
+method specified to close and analyze windows as the project proceeds is a
+retrospective observational method that happens to accrete in near-real
+time.  Placement: **Observational / Dynamic Logic / Contemporaneous As-Is
+family — a disciplined descendant of MIP 3.3**, proposed as its own MIP
+because it changes what 3.3 measures and how prescriptively, not just how
+carefully.  ("MIP 3.10" is shorthand; formal placement would carry a
+layered-taxonomy name, e.g. Observational–Dynamic–Contemporaneous/Balanced.)
+
+Strategic note: 29R-03 itself was a codification of existing practice, not
+an invention.  A credible new MIP proposal codifies what good practitioners
+already half-do, into a protocol precise enough that two analysts produce
+the same tables.  That is exactly the gap targeted below.
+
+### 8.2 What actually makes existing MIPs user-hostile (design targets)
+
+1. **Embedded discretion.**  Window boundaries, update rectification, path
+   selection, attribution narrative — every step of 3.3/3.4 contains expert
+   judgment, which is why field staff cannot run them and why opposing
+   experts running "the same method" diverge.  *Target: determinism — same
+   inputs, same output, from any practitioner.*
+2. **Net-only measurement.**  Windows methods measure net critical-path
+   movement per window; offsetting parallel delays vanish.  An owner delay
+   of 10 wd and a contractor delay of 8 wd on parallel near-critical paths
+   report as "10 wd owner window" — the 8 wd of functional concurrency is
+   invisible until someone argues it.  *Target: concurrency measured, not
+   argued.*
+3. **Unauditable outputs.**  A windows analysis concludes "the window slip
+   is attributable to X" without an arithmetic identity a non-expert can
+   check.  Cost control solved this a century ago: books must balance.
+   *Target: every day of slip booked to a named cause, rows sum to the
+   control total, residual shown explicitly.*
+4. **End-loaded execution.**  All nine MIPs are run as projects (the
+   analysis kind) after the project (the construction kind).  *Target:
+   append-only accretion — each closed window is written once; at any
+   mid-project date a complete retrospective analysis to date exists.*
+
+### 8.3 Candidate shapes considered
+
+| Shape | Verdict |
+|---|---|
+| **A. The Delay Ledger** — deterministic, balanced, dual-lens windows method (below) | **Recommended** — hits all four targets |
+| B. Dual-lens concurrency measurement bolted onto MIP 3.3 | Contained within A; viable smaller paper if A proves too big |
+| C. Daily-resolution as-built criticality (retrospective longest path at daily grain) | Strong forensically; needs as-built logic reconstruction — the opposite of field-friendly; not during-execution |
+| D. Rolling half-step (MIP 3.4 industrialized/automated) | Automation of an existing MIP, not a method; weakest novelty claim; least user-friendly mechanics |
+
+### 8.4 The recommended shape: MIP 3.10, the Delay Ledger method
+
+**Hook:** cost gets a monthly close, a trial balance, and an audit trail;
+time gets a lawsuit five years later.  The method gives the schedule a
+monthly close.  ("Double-entry delay accounting.")
+
+Protocol properties (the spec, sketched):
+
+1. **Windows = published updates.**  No boundary discretion, no window
+   shopping.  (Sub-windowing permitted only by a specified rule when a
+   window contains a re-baseline.)
+2. **Control total.**  Per window, per tracked milestone: net slip of the
+   tool-of-record forecast, in working days on the governing calendar.
+3. **Balanced decomposition.**  The window's slip is booked to cause
+   accounts: progress shortfall vs. planned pace (by path and responsible
+   party), logic/duration/constraint/calendar revisions (each edit named,
+   from the version-to-version change register), scope additions/deletions,
+   and mitigation gains (negative bookings).  **Rows must sum to the
+   control total; any gap is reported as an explicit unexplained residual
+   line** — never silently absorbed.  A large residual is itself a finding
+   (hidden constraints, resource leveling, external links).
+4. **Dual-lens measurement.**  Lens 1 (net): critical-path movement, as
+   MIP 3.3 measures today.  Lens 2 (gross): the independent movement of
+   *every* longest-path candidate within a defined near-critical band —
+   each party's delay measured on its own paths whether or not that path
+   "won" the criticality race that window.
+5. **Measured concurrency matrix** (§8.5).
+6. **Append-only accretion.**  A closed window's ledger row is immutable;
+   corrections post as adjusting entries in the current window (the
+   accounting idiom again).  Mid-project, the ledger to date *is* the
+   retrospective analysis to date.
+7. **Determinism constraints.**  All parameters (band width, tie-breakers,
+   calendar conventions, de minimis threshold) carry protocol defaults;
+   deviations must be disclosed with sensitivity shown.  Acceptance
+   criterion: two practitioners, same files → identical ledgers.
+8. **Scope boundary.**  The MIP measures and attributes to *responsibility
+   codes*; entitlement, concurrency doctrine, and quantum remain outside —
+   the same measurement/legal split 29R-03 already draws.
+
+**Two implementation levels** (this resolves the field-friendliness vs.
+rigor tension instead of compromising on it):
+
+- **Level 1 — field (no CPM engine).**  Tool-of-record dates and floats
+  only; decomposition from the change register and path movements;
+  balancing enforced with the residual line carrying whatever cannot be
+  attributed mechanically.  Runnable by a project scheduler monthly.
+- **Level 2 — expert (diagnostic CPM engine).**  Half-step recomputation
+  (progress-only vs. revisions-only reschedules) makes the
+  progress/revision split exact and shrinks the residual toward zero;
+  engine output labeled diagnostic-delta per the ANALYTICS_PROPOSAL §0
+  validation-handshake discipline.  Level 2 *audits* Level 1's ledger
+  without changing its structure — the field ledger and the expert analysis
+  are the same document at different assurance levels.
+
+**Worked micro-example (fixture-scale):**
+
+> Window 5 (DD 01-Jun → 01-Jul), milestone M-100.  Control total: +12 wd.
+>
+> | Booking | Path | Party | wd |
+> |---|---|---|---|
+> | Progress shortfall — piling | A (driving) | Subcontractor | +7 |
+> | CO-14 added scope + logic | B (near-crit) | Owner | +4 |
+> | Weather calendar exception | A | Neutral | +2 |
+> | Resequencing gain (mitigation) | A | Contractor | −1 |
+> | Unexplained residual | — | — | 0 |
+> | **Balance** | | | **+12 ✓** |
+>
+> Concurrency matrix: owner-only 3 wd · contractor-only 6 wd · literal
+> concurrent 3 wd · functional concurrent 4 wd · pacing-flagged 0 wd.
+
+A superintendent can read that table.  That is the user-friendliness claim,
+made concrete.
+
+### 8.5 Concurrency: measured, doctrine-agnostic
+
+29R-03 discusses functional vs. literal concurrency; no MIP *measures*
+either — they are identified, then argued.  The ledger outputs both as
+quantities:
+
+- **Functional concurrency**: window-level overlap — for each party, gross
+  delay booked on any band path in the window; functional overlap =
+  min(gross per party) after netting mitigation, reported per window.
+- **Literal concurrency**: calendar-interval intersection of the measured
+  delay events inside the window (from actuals: the days each driven
+  activity actually sat delayed), reported in days of true overlap.
+- **Pacing flag**: a party's slip on a path whose relative float against
+  the other party's driven path *grew* during the window is flagged as a
+  pacing candidate — descriptive only, feeding the contemporaneous-
+  declaration practice from §7.3 where the parties adopt it.
+- The matrix is handed to whatever doctrine governs (Malmaison, dominant
+  cause, apportionment, or §7's contractual election).  The method's claim
+  is narrow and defensible: *whatever rule you apply, apply it to measured
+  overlaps, not asserted ones.*
+
+### 8.6 Attack surface (honest register)
+
+1. **"Determinism meets dirty data."**  Updates with broken logic or status
+   make judgment-free analysis impossible.  Answer: a specified intake gate
+   (tool-agnostic minimum criteria; ScheduleIQ's 54-check battery is one
+   implementation) plus the rule that what cannot be mechanically
+   attributed lands in the residual line, visibly.  The method degrades
+   *loudly*, which is the design.
+2. **Band width is a parameter** (the new λ).  One dial, protocol default,
+   mandatory sensitivity disclosure.  Materially smaller surface than the
+   kernel, which is why the core method is deliberately unweighted.
+3. **The residual will be attacked** ("your books don't balance").  Better
+   an explicit residual than the silent mis-attribution every narrative
+   method commits; Level 2 exists to shrink it.
+4. **Responsibility coding remains human** — same relocation-of-fights
+   honesty as §7.3: small, early, specific disputes instead of global late
+   ones.
+5. **"Windows analysts already do this."**  Ad hoc, sometimes, invisibly —
+   never as a codified deterministic protocol with balancing rules and
+   measured concurrency.  Codification of half-practice is precisely what
+   29R-03 itself was; that rejoinder is the paper's legitimacy argument,
+   and it needs the prior-art sweep to survive (daily-windows variants,
+   concurrency-quantification papers, SCL time-slice practice notes).
+
+### 8.7 Relationship to the tabled options and the LI indices
+
+- The core method uses **no LI index**: longest path, a near-critical band,
+  working-day arithmetic, and a change register — all standard concepts,
+  fully tool-agnostic.  This maximizes MIP credibility (no proprietary
+  dependency) and keeps the disclosure decision small.
+- The LI indices become an **optional diagnostics annex**: FCBI as a
+  weighted refinement of Lens 2, PCI as the band-stability warning, RDI/IL
+  as management-conduct context.  ScheduleIQ's competitive position becomes
+  "the reference implementation of MIP 3.10 plus proprietary diagnostics on
+  top" — a *better* commercial posture than metrics-as-the-method.
+- §3 Option A (sealed as-managed record) is the ledger's natural custody
+  layer; §7 Option E is the ledger with contractual bindingness attached.
+  Nothing tabled is wasted: **the ledger is rung 0 of §7.6's ladder**, and
+  the paper sequence becomes: MIP 3.10 (method) → protocol (custody) →
+  regime (contract), each publishable alone.
+
+### 8.8 Paper implications and gating additions
+
+This is the literal new-MIP paper originally asked for, now taxonomically
+sound.  Recommended title direction: *"A Monthly Close for the Schedule:
+a Proposed Tenth Method — Deterministic, Balanced, Concurrency-Measuring
+Windows Analysis."*  CDR-track fit is exact; the closing invitation to the
+FSA subcommittee (§3 Option D's one paragraph) now has a concrete object.
+
+Gates (additive to §5): (9) prior-art sweep extension per §8.6.5;
+(10) demonstrate determinism empirically — two independent runs (different
+operators, ideally one non-expert) on the fixture set producing identical
+ledgers, reported in the paper; (11) Level-1 residual size on the real
+project series — if the no-engine residual routinely swamps the bookings,
+Level 1's field claim fails and the method needs the engine port
+(ANALYTICS_PROPOSAL §0) before print; (12) the worked example must fit on
+one page or the user-friendliness claim is self-refuting.
+
+### 8.9 Open questions for RJL (third set)
+
+10. Does the paper propose the MIP alone (Shape: method paper), or method +
+    the §3 custody protocol as its recommended practice context?
+11. Is the "delay ledger / monthly close" accounting idiom the brand, or
+    does that read as gimmick to the CDR audience?  (Alternative sober
+    name: Balanced Windows Analysis.)
+12. Level 2 requires the CPM engine port — does this paper's timeline
+    accelerate ADR-0007/ANALYTICS_PROPOSAL §0, or does the paper ship
+    Level 1 only with Level 2 described?
+13. Band-width default: fixed working days, percent of remaining duration,
+    or calendar-scaled?  (Needs a small fixture study; the default printed
+    in the paper will be quoted forever.)

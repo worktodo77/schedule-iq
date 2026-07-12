@@ -3,6 +3,48 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI wiring defect batch (Wave 0 of the LI-02..LI-10 audit)
+
+**Check-affecting for LI-03 (FRB) only, via the report/score surface.**  No
+metric-layer formula changed; the fixes repair the wiring between correct
+metric results and the exhibits/Report Card (audit:
+docs/audit/LI-02-10_audit_matrix_2026-07-12.md, findings FR1/W1/W2; Wave 0
+approved by the principal 2026-07-12).
+
+- **FR1 — LI-03 scored off nonexistent fields.**  `li_wiring` read
+  `b.bias`/`b.p10`/`b.p90` where `FRBBucket`'s fields are `bias_days`/
+  `p10_days`/`p90_days`; every `getattr` returned its default, so the wired
+  band width was a fabricated 0 and **LI-03 scored 100 on every series**
+  while the findings text asserted zero bias / zero dispersion.  The wiring
+  now reads the real fields: LI-03's value is the largest bucket's true
+  P90−P10 width, so real series with forecast dispersion WILL move (that is
+  the fix, not a side effect).  Regression pins width 8.0 wd end-to-end
+  through `li_series_results` against a closed-form two-error anchor.
+- **W1 — one None blanked all ten indices.**  Two wiring sites formatted
+  Optional values raw (`PCI {val:.3f}` on a None per-update window; BWI
+  `density {…:.2f}` on a None density row); either raised TypeError and the
+  pipeline's blanket guard then silently dropped ALL LI-01..LI-10 rows (six
+  scored members to N/A at once).  Optionals now render as an em dash, and
+  `li_series_results` isolates each index behind its own guard — a failure
+  degrades that one index to a reasoned placeholder row and the other nine
+  still report.  Canonical series are numerically unchanged.
+- **W2 — exhibits printed fabricated zeros (narrative only).**  Same
+  wrong-field `getattr` class in three more blocks: LI-05 read
+  `row.required`/`row.demonstrated` (real fields `required_pace`/
+  `demonstrated_pace` — text always read "required 0.00 vs demonstrated
+  nan"), LI-07 read `e.share` (real field `dwell_share` — every leaderboard
+  entry read "dwell share 0.0%"), LI-10 read a nonexistent `row.basis`
+  (always "?"; basis now reported from the clean/impacted windows, with a
+  cross-basis pair labelled MIXED rather than papered over).  The wiring now
+  uses direct attribute access throughout so a renamed field fails loudly —
+  and is then contained per-index by the W1 isolation.
+- 7 new wiring-path regression tests (`tests/test_li_wiring.py`) — all
+  through `li_series_results`, not the metric layer, per the audit's
+  non-circularity rule (the metric layer was never broken, which is exactly
+  why metric-layer tests missed FR1).
+
+Suite: 233 passed, 1 skipped.
+
 ## Unreleased — LI-01 FCBI v0.5.6 (wave-5 peer-review; provenance/API/test hardening)
 
 **NOT number-changing.**  A fifth independent adversarial review accepted the

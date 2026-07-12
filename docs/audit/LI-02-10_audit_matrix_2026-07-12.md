@@ -18,6 +18,23 @@ behavior is directly visible in the source and a probe adds nothing.
 
 ---
 
+> **Rulings received (principal, 2026-07-12) — triage round 1.**
+> - **Q-B (kernel cluster): RULED — build the new governed LI kernel**
+>   (nonnegative distance, no own-float fallback → unresolved is
+>   quarantined/disclosed, w ∈ (0, 1], LOE-free margins, disclosed
+>   truncation), adopted per-metric under per-metric rulings;
+>   `kernel_weight`/`relative_float_map` stay byte-identical until retired.
+>   Executed in Wave 3.
+> - **Q-C (0.0 sentinels): RULED — approved as a defect-class batch.**
+>   RDI-1 and BDI-1 become NOT EVALUATED (None + reason) through the wiring;
+>   check-affecting (previously such series scored 100).
+> - **Sequencing: APPROVED as proposed; Wave 0 authorized and implemented**
+>   (see CHANGELOG "LI wiring defect batch"; FR1/W1/W2 fixed with 7
+>   wiring-path regressions; suite 233 passed, 1 skipped).
+> - **Q-A (lineage-A port) remains OPEN** — Wave 1 stays gated on it.
+>   Q-D..Q-H are deferred to their per-metric waves, per the FCBI Q1-Q7
+>   practice.
+
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 
 **This is the single most important governance fact in this audit and gates

@@ -1647,3 +1647,103 @@ def test_bwi_b2_recoded_target_survives_by_uid():
     bwi = _w1b_bwi([s0, s1], target="MS")
     assert bwi.rows[1].density is not None           # tracked via the pinned UID
     assert bwi.rows[1].bwi == pytest.approx(1.0)
+
+
+# ==========================================================================
+# Wave 1c — ported kernel C1 LOE exclusion + mixed-path neutralization + CDI C2
+# (docs/rulings/LI-04-LI-07-kernel-loe-port-2026-07-12.md)
+# ==========================================================================
+from scheduleiq.analytics.li_indices import (                       # noqa: E402
+    relative_float_map, _build_kernel)
+from scheduleiq.analytics.paths import float_paths                  # noqa: E402
+
+
+def test_kernel_c1_loe_gets_no_rf_entry_and_pure_loe_path_dropped():
+    """C1: an LOE never earns an RF entry (kernel-wide), and a path with no
+    discrete-work member is dropped from the LI kernel path set — so a
+    single-threaded schedule with an LOE feeder branch reads PCI 1.0."""
+    rels = [Relationship("X", "T"), Relationship("L", "T")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("X", 0.0, od=10, ef=_DD0 + timedelta(days=30)),
+        _w1b_act("T", 0.0, od=0, rem=0, ef=_DD0 + timedelta(days=30),
+                 atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("L", 0.0, od=10, ef=_DD0 + timedelta(days=30),
+                 atype=ActivityType.LOE)], rels)
+    k = _build_kernel(s, 5.0)
+    assert "L" not in k.rf                          # no RF/weight for summary work
+    assert all(any(not a.is_loe_or_summary and not a.is_milestone
+                   for a in p.activities) for p in k.paths)
+    pci = run_li_indices(SeriesAnalysis(schedules=[s, s])).pci
+    assert pci.per_update[0] == pytest.approx(1.0)  # LOE branch cannot halve PCI
+
+
+def test_kernel_mixed_path_loe_neutralized_but_float_paths_unchanged():
+    """v0.4.3 neutralization: an LOE that is the lowest-float member of a
+    kept mixed path no longer drives the discrete members' RF — while the
+    shared float_paths() result itself is UNTOUCHED (its rel_float_days
+    still carries the LOE's -2, pinning that the fix is LI-kernel-local)."""
+    rels = [Relationship("L", "X"), Relationship("X", "T")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("X", 0.0, od=10, ef=_DD0 + timedelta(days=30)),
+        _w1b_act("T", 0.0, od=0, rem=0, ef=_DD0 + timedelta(days=30),
+                 atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("L", -2.0, od=10, ef=_DD0 + timedelta(days=30),
+                 atype=ActivityType.LOE)], rels)
+    raw = float_paths(s, n=10)
+    assert raw and raw[0].rel_float_days == pytest.approx(-2.0)   # shared walk unchanged
+    k = _build_kernel(s, 5.0)
+    assert k.rf["X"] == pytest.approx(0.0)          # not -2: LOE neutralized
+    assert kernel_weight(k.rf["X"], 5.0) == pytest.approx(1.0)
+    assert "L" not in k.rf
+
+
+def test_kernel_own_float_fallback_still_live_for_discrete_offpath():
+    """Scope lock: the ported ruling deliberately does NOT abolish the
+    own-total-float fallback for off-path DISCRETE activities — that is the
+    kernel-cluster revision (audit K1, Wave 3).  This pin fails when Wave 3
+    lands, flagging it as an actioned decision rather than a regression."""
+    rels = [Relationship("X", "T")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("X", 0.0, od=10, ef=_DD0 + timedelta(days=30)),
+        _w1b_act("T", 0.0, od=0, rem=0, ef=_DD0 + timedelta(days=30),
+                 atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("ORPH", 4.0, od=10, ef=_DD0 + timedelta(days=30))], rels)
+    rf = relative_float_map(s, float_paths(s, n=10))
+    assert rf.get("ORPH") == pytest.approx(4.0)     # K1 fallback: Wave-3 scope
+
+
+def test_pci_all_milestone_schedule_graceful():
+    """Lineage-A validation lock: a schedule with no discrete executable work
+    drops every kernel path and PCI degrades to None with a reason — never a
+    spurious concentration figure, never a raise."""
+    rels = [Relationship("M1", "M2")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("M1", 0.0, od=0, rem=0, ef=_DD0 + timedelta(days=5),
+                 atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("M2", 0.0, od=0, rem=0, ef=_DD0 + timedelta(days=10),
+                 atype=ActivityType.FINISH_MILESTONE)], rels)
+    pci = run_li_indices(SeriesAnalysis(schedules=[s, s])).pci
+    assert pci.per_update == [None, None]
+    assert pci.reason
+
+
+def test_cdi_c1_loe_excluded_completed_retained_and_disclosed():
+    """CDI inherits the kernel exclusion (no LOE on the leaderboard); a
+    completed discrete activity still earns retrospective dwell (C2), and
+    both conventions are disclosed on the result."""
+    rels = [Relationship("X", "T"), Relationship("D", "T")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("X", 0.0, od=10, ef=_DD0 + timedelta(days=30)),
+        _w1b_act("D", 0.0, od=10, rem=0, status=ActivityStatus.COMPLETED,
+                 As=_DD0 - timedelta(days=20), af=_DD0 - timedelta(days=6)),
+        _w1b_act("T", 0.0, od=0, rem=0, ef=_DD0 + timedelta(days=30),
+                 atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("L", 0.0, od=10, ef=_DD0 + timedelta(days=30),
+                 atype=ActivityType.LOE)], rels)
+    cdi = run_li_indices(SeriesAnalysis(schedules=[s, s])).cdi
+    codes = {e.code for e in cdi.leaderboard}
+    assert "L" not in codes                          # C1
+    assert "D" in codes                              # C2: retrospective dwell
+    text = "\n".join(cdi.disclosures)
+    assert "not discrete executable work" in text
+    assert "RETAINED" in text

@@ -84,6 +84,12 @@ class FloatPath:
     # fixed reference hours/day rather than each activity's native calendar, so a
     # driver is not repriced by calendar length (never used by the v0.4 kernel).
     rel_float_hours: Optional[float] = None
+    # Additive metadata (does NOT affect rel_float_days or any tool-of-record
+    # driving-path result): the uids of the branch unique to this path, exposed
+    # so the LI-index kernel can compute a discrete-work-only relative float
+    # without re-deriving the walk (ported kernel ruling, 2026-07-12).
+    # Consumers that ignore it are unaffected.
+    unique_uids: set = field(default_factory=set)
 
     @property
     def codes(self) -> list[str]:
@@ -390,7 +396,7 @@ def _finalize_path(schedule: Schedule, rank: int, steps: list[PathStep],
     return FloatPath(rank=rank, steps=steps, min_float_days=mn, max_float_days=mx,
                      calendars=cals, constraints=cons, pct_complete=pc,
                      rel_float_days=rel if rel is not None else 0.0,
-                     rel_float_hours=rel_h)
+                     rel_float_hours=rel_h, unique_uids=set(unique_uids))
 
 
 def float_paths(schedule: Schedule, target_uid: Optional[str] = None,

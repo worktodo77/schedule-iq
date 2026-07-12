@@ -596,6 +596,29 @@ PCI rise coinciding with logic churn suggests engineered path consolidation.
 Directly informs method selection (low-PCI projects need daily-resolution or
 split methods, not snapshot TIA) and where SRA effort matters.
 
+*Convention (v0.4.2, ported 2026-07-12):* paths with no discrete-work member
+— pure LOE/summary or bare-milestone chains — are excluded so summary
+activities cannot manufacture a spurious near-critical path and dilute the
+concentration.
+
+*Mixed-path LOE neutralization (v0.4.3, ported 2026-07-12).* The v0.4.2
+exclusion dropped paths that carry *no* discrete work but did not change how
+a *kept* mixed path's relative float was computed, so an LOE that was the
+lowest-float member of a mixed path still drove that path's relative float —
+and the relative-float basis (RF) of the discrete members on it.  The
+neutralization closes this: the LI kernel computes an **LI-specific per-path
+relative float over the path's discrete members only** (`relative_float_map`
+/ `_li_path_rel_float`), so an LOE no longer influences a discrete activity's
+RF.  This is layered on top of the enumerator — the shared `float_paths()` is
+**untouched** (it still feeds the tool-of-record driving-path analytics and
+the locked LI-01 enumerator unchanged; the LI kernel only reads its additive
+`unique_uids` metadata).  A regression test
+(`test_kernel_mixed_path_loe_neutralized_but_float_paths_unchanged`) pins the
+neutralization while asserting `float_paths()` itself is unchanged.  The
+kept-mixed-path residual inside PCI's own Herfindahl weights (which read the
+shared `rel_float_days`) remains intentionally deferred to the kernel-cluster
+revision (audit K3/Wave 3), as recorded in the v0.4.2 validation.
+
 ### 9.5 RDI — Recovery Debt Index
 Cumulative gap between promised and demonstrated pace.  Each update implies
 a required future pace to hold its forecast finish (remaining driving/near-
@@ -665,6 +688,11 @@ concentration of dwell (top-decile share).  Sharp forensic corollary: an
 activity with near-zero dwell that suddenly hosts a major claimed delay is a
 red flag; a high-dwell activity that never appears in the claim narrative is
 a gap in the other side's story.
+*Conventions (v0.4.2, ported 2026-07-12):* LOE/summary activities are
+excluded (not discrete work).  **Completed activities are retained** — CDI is
+a *retrospective* criticality-time measure (where risk dwelt over the
+project's life, including now-finished work), which is why, unlike the
+forward-looking FCBI/RDI/BWI, it does not drop completed activities.
 
 ### 10.3 IL — Intervention Latency
 How long problems stayed visible before the schedule shows a response.  For

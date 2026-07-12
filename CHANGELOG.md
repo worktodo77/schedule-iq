@@ -3,6 +3,38 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI kernel LOE exclusion PORTED (Wave 1c of the LI-02..LI-10 audit)
+
+**Check-affecting / number-changing for LI-04 (PCI) and LI-07 (CDI) on any
+series with near-critical LOE/summary activities, and for LI-05/LI-09 band
+membership where a mixed-path LOE previously dragged a discrete activity's
+RF into the band.**  LI-01 FCBI (locked) does not use this kernel and is
+numerically untouched — its full anchor suite passes unchanged.  Port of
+lineage-A rulings C1/C2 (v0.4.2) + the mixed-path neutralization (v0.4.3);
+recorded ruling docs/rulings/LI-04-LI-07-kernel-loe-port-2026-07-12.md;
+validation record imported at docs/audit/v0.4.2_validation_2026-07-09.md.
+
+- **C1 — LOE/summary excluded at the shared kernel:** no RF entry, no
+  weight, no CDI dwell, no band membership; `_build_kernel` drops paths
+  with no discrete-work member (a single-threaded schedule with an LOE
+  feeder reads PCI 1.0, and an all-milestone schedule degrades to None
+  with a reason, never a spurious concentration).
+- **Mixed-path neutralization:** each kept path's LI relative float is the
+  min total float over its unique DISCRETE members (`_li_path_rel_float`
+  over the new additive `FloatPath.unique_uids`), so an LOE no longer
+  drives a discrete activity's RF.  The shared `float_paths()` /
+  `iter_float_paths()` are byte-identical (regression-pinned alongside the
+  neutralization).
+- **C2 — CDI completed-retention documented** (§10.2, LI-07 row, standing
+  disclosures); no behavioral change.
+- NOT changed (Wave-3 kernel-cluster scope, scope-locked by test): the
+  off-path own-total-float fallback for discrete activities, the
+  negative-float w>1 premium, λ/band governance, the top-10 truncation
+  disclosure, and PCI's kept-mixed-path Herfindahl weight residual.
+- 5 new regression tests; pinned demo letters hold.
+
+Suite: 272 passed, 1 skipped.
+
 ## Unreleased — LI-05 RDI / LI-09 BWI rulings PORTED (Wave 1b of the LI-02..LI-10 audit)
 
 **Check-affecting / number-changing for LI-05 and LI-09 (both scored,

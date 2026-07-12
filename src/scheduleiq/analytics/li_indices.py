@@ -90,6 +90,59 @@ def kernel_weight(rf_days: float, lam: float = DEFAULT_LAMBDA) -> float:
     return 2.0 ** (-rf_days / lam)
 
 
+# --------------------------------------------------------------------------
+# Methodology rule (approved 2026-07-08; RDI/BWI/CDI audit, ruling C1/X1;
+# ported 2026-07-12 — docs/rulings/LI-04-LI-07-kernel-loe-port-2026-07-12.md):
+# LOE, WBS-summary, hammock, and other summary activities are not discrete
+# executable work and therefore SHALL NOT contribute to the proprietary LI
+# indices that measure criticality, float consumption, recovery, or
+# criticality-time.  They are excluded here, at the shared v0.4 kernel, so
+# every kernel/RF-map consumer (PCI, CDI, and RDI/BWI band membership)
+# inherits the exclusion; PCI additionally drops paths with no discrete-work
+# member (see _build_kernel).  RDI and BWI already exclude summary activities
+# at their own loops.  FCBI (LI-01 v0.5, locked) does NOT use this kernel —
+# its discrete-only margins are its own (rulings O1/O7.3).
+# Milestones are NOT summary activities and are retained (a finish milestone
+# is a legitimate criticality reference); they are excluded only from the
+# discrete-work path test below, where they are markers rather than work.
+# --------------------------------------------------------------------------
+def _is_discrete_work(a) -> bool:
+    """A discrete executable activity: not LOE/summary/hammock and not a
+    zero-duration milestone marker.  Used to decide whether a float path
+    carries real work for PCI (a pure LOE/milestone path is not a genuine
+    near-critical path)."""
+    return not a.is_loe_or_summary and not a.is_milestone
+
+
+def _li_path_rel_float(schedule: Schedule, p: FloatPath) -> float:
+    """LI-specific relative float of a float path, computed over the path's
+    **discrete-work** members only (ported v0.4.3 mixed-path neutralization).
+
+    ``FloatPath.rel_float_days`` comes from the shared ``float_paths()`` and is
+    the min total float over the branch UNIQUE to this path — including any LOE/
+    summary member.  When an LOE is the lowest-float member of a kept *mixed*
+    path it therefore drags the whole path (and the discrete members' RF) toward
+    criticality.  The LI kernel neutralizes that by taking the min total float
+    over the path's unique **discrete** members (LOE/summary excluded).  This is
+    an LI-index-local calculation layered on top of the enumerator; the shared
+    ``float_paths()`` result is untouched (only its additive ``unique_uids`` is
+    read).  Falls back to any discrete member, then to ``rel_float_days``, so a
+    path always yields a value.
+    """
+    uniq = p.unique_uids
+    disc_unique = [a.total_float_days(schedule.cal_for(a)) for a in p.activities
+                   if a.uid in uniq and _is_discrete_work(a)
+                   and a.total_float_days(schedule.cal_for(a)) is not None]
+    if disc_unique:
+        return min(disc_unique)
+    disc_any = [a.total_float_days(schedule.cal_for(a)) for a in p.activities
+                if _is_discrete_work(a)
+                and a.total_float_days(schedule.cal_for(a)) is not None]
+    if disc_any:
+        return min(disc_any)
+    return p.rel_float_days
+
+
 def relative_float_map(schedule: Schedule,
                        paths: list[FloatPath]) -> dict[str, float]:
     """Per-activity relative float RF, keyed by activity code.
@@ -97,21 +150,30 @@ def relative_float_map(schedule: Schedule,
     Formula
     -------
         RF(a) = min over the top-N float paths containing ``a`` of that path's
-                relative float (``FloatPath.rel_float_days``);
+                LI relative float (:func:`_li_path_rel_float` — the min total
+                float over the path's unique DISCRETE members, so an LOE on a
+                mixed path no longer drives the discrete members' criticality);
         activities on no extracted path fall back to their own total float in
         working days on their own calendar.
 
-    Activities with neither a path membership nor a stored total float are
-    omitted (their weight is undefined).
+    LOE/summary activities are excluded (methodology rule above): they receive
+    no relative float and therefore no criticality weight.  Activities with
+    neither a path membership nor a stored total float are omitted (their
+    weight is undefined).  NOTE the own-total-float fallback for off-path
+    discrete activities is deliberately UNCHANGED by the ported ruling — its
+    abolition is the separate kernel-cluster revision (audit K1, Wave 3).
     """
     rf: dict[str, float] = {}
     for p in paths:
+        li_rel = _li_path_rel_float(schedule, p)
         for a in p.activities:
+            if a.is_loe_or_summary:          # summary work carries no criticality
+                continue
             cur = rf.get(a.code)
-            if cur is None or p.rel_float_days < cur:
-                rf[a.code] = p.rel_float_days
+            if cur is None or li_rel < cur:
+                rf[a.code] = li_rel
     for a in schedule.activities.values():
-        if a.code in rf:
+        if a.is_loe_or_summary or a.code in rf:
             continue
         own = a.total_float_days(schedule.cal_for(a))
         if own is not None:
@@ -137,7 +199,14 @@ class _Kernel:
 
 
 def _build_kernel(schedule: Schedule, lam: float) -> _Kernel:
-    paths = float_paths(schedule, n=KERNEL_PATHS_N, band_days=None)
+    # float_paths() itself is unchanged (it feeds the tool-of-record driving-path
+    # analytics and the locked FCBI enumerator, and must not shift).  For the
+    # LI-index kernel we drop paths with no discrete-work member — a path that
+    # exists only because logic routes through an LOE/summary (or is a bare
+    # milestone chain) is not a genuine near-critical path and would otherwise
+    # inflate PCI's path count (ported ruling C1).
+    all_paths = float_paths(schedule, n=KERNEL_PATHS_N, band_days=None)
+    paths = [p for p in all_paths if any(_is_discrete_work(a) for a in p.activities)]
     rf = relative_float_map(schedule, paths)
     return _Kernel(paths=paths, rf=rf,
                    weight={c: kernel_weight(v, lam) for c, v in rf.items()})
@@ -391,6 +460,7 @@ class CdiResult:
     allocations: int = 0             # number of updates that allocated a unit
     interpretation: str = ""
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1353,6 +1423,16 @@ def _pci(sa, kernels: dict[int, _Kernel], lam: float) -> PciResult:
 # ==========================================================================
 # 3. CDI — Criticality Dwell Index  (§10.2, N12)
 # ==========================================================================
+def _cdi_disclosures() -> list[str]:
+    return [
+        _LOE_EXCLUSION_NOTE,
+        "Completed activities are RETAINED in CDI: it measures retrospective "
+        "criticality-time (where risk dwelt over the project's life, including "
+        "on now-finished work), unlike the forward-looking FCBI/RDI/BWI "
+        "(ruling C2, 2026-07-08; ported 2026-07-12).",
+    ]
+
+
 def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
          band_days: float) -> CdiResult:
     scheds = getattr(sa, "schedules", [])
@@ -1364,6 +1444,10 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
     allocated = 0
     for s in scheds:
         k = kernels[id(s)]
+        # LOE/summary activities were already excluded from the kernel RF map
+        # (ported rule C1), so ``k.rf`` contains only discrete work + milestone
+        # markers; the band selection below never allocates dwell to a summary
+        # activity.
         near = {code: k.weight[code] for code, rf in k.rf.items()
                 if rf <= band_days and code in k.weight}
         wsum = sum(near.values())
@@ -1379,7 +1463,8 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
                     names[code] = a.name
     if allocated == 0:
         return CdiResult(reason="no update had activities inside the near-critical "
-                                f"band (RF <= {band_days:g}d)")
+                                f"band (RF <= {band_days:g}d)",
+                         disclosures=_cdi_disclosures())
 
     board = [CdiEntry(code=c, name=names.get(c, ""),
                       dwell_share=v / allocated,
@@ -1394,7 +1479,8 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
               f"({lead.dwell_share:.0%} of the Project's dwell); the top decile "
               f"({k_top} of {n} activities) holds {top_decile:.0%}.")
     return CdiResult(leaderboard=board, top_decile_share=top_decile,
-                     allocations=allocated, interpretation=interp)
+                     allocations=allocated, interpretation=interp,
+                     disclosures=_cdi_disclosures())
 
 
 # ==========================================================================

@@ -953,8 +953,8 @@ checks:
   - id: LI-04
     name: "PCI — Path Concentration Index"
     category: "LI Proprietary Indices"
-    description: "Herfindahl concentration of criticality across the top float paths (same kernel as FCBI).  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
-    formula: "sum of squared kernel-weight shares over top-10 float paths, per update"
+    description: "Herfindahl concentration of criticality across the top float paths (same kernel family as FCBI).  Paths with no discrete-work member (pure LOE/summary or bare-milestone chains) are excluded so summary activities cannot inflate the path count; on a kept mixed path an LOE no longer drives the discrete members' relative float (the kernel takes the min total float over discrete members only).  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
+    formula: "sum of squared kernel-weight shares over the top-10 discrete-work float paths, per update (LOE/summary-only paths dropped)"
     unit: ratio
     threshold: null
     direction: info
@@ -966,7 +966,7 @@ checks:
   - id: LI-05
     name: "RDI — Recovery Debt Index"
     category: "LI Proprietary Indices"
-    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the running P50 (median, sustainable) demonstrated pace, with the running max reported as the optimistic bound.  Demonstrated pace = planned near-critical scope actually retired per calendar working-day (R1 ruling: the only basis commensurable with required pace); the companion duration-overrun ratio (actual elapsed / planned of the window's completions) is disclosed per window and per series as an efficiency diagnostic, never an accrual input.  LOE/summary activities are excluded (not discrete work).  Depends on maintained remaining durations and a project finish date (data-quality disclosures emitted when absent)."
+    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the running P50 (median, sustainable) demonstrated pace, with the running max reported as the optimistic bound.  Demonstrated pace = planned near-critical scope actually retired per calendar working-day (R1 ruling: the only basis commensurable with required pace); the companion duration-overrun ratio (actual elapsed / planned of the window's completions) is disclosed per window and per series as an efficiency diagnostic, never an accrual input.  LOE/summary activities are excluded (not discrete work); an LOE on a mixed near-critical path no longer drives the discrete members' relative float (kernel neutralization).  Depends on maintained remaining durations and a project finish date (data-quality disclosures emitted when absent)."
     formula: "sum over windows of max(0, required pace - P50 demonstrated pace) x window working days; max demonstrated reported as bound; NOT EVALUATED (no value) when no update yields a usable required pace — an uncomputable series is never reported as 0 days of debt"
     unit: days
     threshold: null
@@ -992,8 +992,8 @@ checks:
   - id: LI-07
     name: "CDI — Criticality Dwell Index"
     category: "LI Proprietary Indices"
-    description: "Each activity's share of total project criticality-time (one unit allocated per update across the near-critical band by kernel weight).  The leaderboard is the delay analysis's cast of characters."
-    formula: "accumulated kernel-weighted allocation per activity / windows allocated; scalar = top-decile share"
+    description: "Each discrete-work activity's share of total project criticality-time (one unit allocated per update across the near-critical band by kernel weight).  LOE/summary activities are excluded (not discrete work).  Completed activities are RETAINED: CDI is retrospective criticality-time (where risk dwelt over the project's life, including now-finished work), unlike the forward-looking FCBI/RDI/BWI.  The leaderboard is the delay analysis's cast of characters."
+    formula: "accumulated kernel-weighted allocation per discrete-work activity / windows allocated; scalar = top-decile share"
     unit: ratio
     threshold: null
     direction: info

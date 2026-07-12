@@ -48,6 +48,19 @@ behavior is directly visible in the source and a probe adds nothing.
 >   ruling), IL-1..6 + FRB FR2/FR3/FR4 (Wave 2, Q-D/Q-E), RDI-2, BDI-2..5,
 >   MML-1..5, CDI milestone/fallback membership (Waves 3-4).
 >   Q-D..Q-H remain open, asked per-wave per the FCBI Q1-Q7 practice.
+> - **Q-D/Q-E (Wave 2): RULED — all recommended options adopted; EXECUTED**
+>   (2026-07-12): IL1-A emergence-window scan, IL2-A KM right-censoring
+>   (subsumes IL3), IL4 population package, IL5 day-figure convention, IL6
+>   disclosures; FR2-A overdue bucket, FR3-A n≥5 scoring floor, FR4
+>   disclosures (docs/rulings/LI-08-il-v2-2026-07-12.md,
+>   docs/rulings/LI-03-frb-v2-2026-07-12.md; as-audited record imported at
+>   docs/audit/IL_FRB_audit_2026-07-10.md).  Findings IL-1..6 and
+>   FRB-FR2/FR3/FR4 are RESOLVED.  Suite after Wave 2: 279 passed,
+>   1 skipped.  Remaining open work: Wave 3 (kernel cluster K1/K2/K4/K5/K6,
+>   PCI weight residual, RDI-2, CDI milestone/fallback membership, under the
+>   Q-B new-kernel ruling) and Wave 4 (BDI-2..5, MML-1..5 — Q-F/Q-G/Q-H).
+>   An independent adversarial review of Waves 0-1c is in flight; its
+>   dispositions will be recorded here.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 

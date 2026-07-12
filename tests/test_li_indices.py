@@ -1837,3 +1837,45 @@ def test_rw2_1_zero_float_evidence_branch_contributes_no_rf():
     assert "NL" not in k.rf                          # omitted, not fabricated 0.0
     assert k.rf["A1"] == pytest.approx(0.0)          # spine unaffected
     assert k.rf["A2"] == pytest.approx(0.0)
+
+
+# ==========================================================================
+# Wave 4c — kernel constant governance (Q-H: sensitivity sets, not point
+# claims; docs/rulings/LI-kernel-constants-2026-07-12.md)
+# ==========================================================================
+def test_qh_kernel_lambda_sensitivity_set():
+    from scheduleiq.analytics.li_indices import kernel_lambda_sensitivity
+    fin = _DD0 + timedelta(days=60)
+    rels = [Relationship(f"P{i}", "T") for i in range(5)]
+    s = _w1b_sched(_DD0, [_w1b_act(f"P{i}", float(2 * i), ef=fin)
+                          for i in range(5)] +
+                   [_w1b_act("T", 0.0, od=0, rem=0, ef=fin,
+                             atype=ActivityType.FINISH_MILESTONE)], rels)
+    pts = kernel_lambda_sensitivity(SeriesAnalysis(schedules=[s, s]))
+    assert [p.lam for p in pts] == [3.0, 5.0, 10.0]
+    pcis = [p.pci_last for p in pts]
+    assert all(v is not None for v in pcis)
+    # PCI is a strict function of lambda on this staggered-float network —
+    # the set exposes it instead of a point claim
+    assert pcis[0] > pcis[1] > pcis[2]
+
+
+def test_qh_kernel_band_sensitivity_set_never_raises():
+    from scheduleiq.analytics.li_indices import (kernel_band_sensitivity,
+                                                 kernel_lambda_sensitivity)
+    fin = _DD0 + timedelta(days=60)
+    rels = [Relationship("X", "T")]
+    mk = lambda dd: _w1b_sched(dd, [_w1b_act("X", 0.0, ef=fin),
+                                    _w1b_act("Y", 15.0, ef=fin),
+                                    _w1b_act("T", 0.0, od=0, rem=0, ef=fin,
+                                             atype=ActivityType.FINISH_MILESTONE)],
+                               rels, finish=fin)
+    sa = SeriesAnalysis(schedules=[mk(_DD0), mk(_DD1)])
+    pts = kernel_band_sensitivity(sa)
+    assert [p.band_days for p in pts] == [5.0, 10.0, 20.0]
+    # Y (TF 15) joins the CDI dwell population only at band 20
+    assert pts[0].cdi_top_decile is not None
+    # empty series degrades to reasoned Nones, never raises
+    empty = kernel_band_sensitivity(SeriesAnalysis(schedules=[]))
+    assert all(p.rdi_days is None for p in empty)
+    assert kernel_lambda_sensitivity(SeriesAnalysis(schedules=[]))

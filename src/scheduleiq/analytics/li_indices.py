@@ -1891,6 +1891,68 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
 
 
 # ==========================================================================
+# v0.4-kernel constant governance (Wave-4 ruling Q-H, 2026-07-12 —
+# docs/rulings/LI-kernel-constants-2026-07-12.md).  λ = 5 working days and
+# band_days = 10 are PROFESSIONAL CONVENTIONS, not calibrated constants
+# (rubric C4): contested/expert use shows the sensitivity sets below instead
+# of a point claim.  KERNEL_PATHS_N = 10 is likewise a recorded convention —
+# note PCI's Herfindahl over at most 10 shares has floor 1/10, so scored
+# anchors below 0.1 are unreachable (re-examined with the Wave-3 kernel).
+# ==========================================================================
+@dataclass
+class KernelLambdaPoint:
+    lam: float
+    pci_last: Optional[float]          # PCI at the latest update
+    cdi_top_decile: Optional[float]    # CDI top-decile dwell share
+
+
+@dataclass
+class KernelBandPoint:
+    band_days: float
+    cdi_top_decile: Optional[float]
+    rdi_days: Optional[float]          # None => NOT EVALUATED
+    bwi_last: Optional[float]          # latest computable BWI ratio
+
+
+def kernel_lambda_sensitivity(sa, lams=(3.0, 5.0, 10.0),
+                              band_days: float = DEFAULT_BAND_DAYS
+                              ) -> list[KernelLambdaPoint]:
+    """PCI and CDI across the λ set (default {3, 5, 10} working days — the
+    FCBI Q2 pattern), exposing whether a concentration/dwell conclusion is
+    robust to the half-weight constant.  The v0.4 kernel accepts any finite
+    positive λ (it is not bounded by the FCBI convergence reference).  Never
+    raises."""
+    out: list[KernelLambdaPoint] = []
+    for lam in lams:
+        try:
+            r = run_li_indices(sa, lam=lam, band_days=band_days)
+            pci = r.pci.per_update[-1] if r.pci.per_update else None
+            out.append(KernelLambdaPoint(lam, pci, r.cdi.top_decile_share))
+        except Exception:                             # pragma: no cover - defensive
+            out.append(KernelLambdaPoint(lam, None, None))
+    return out
+
+
+def kernel_band_sensitivity(sa, bands=(5.0, 10.0, 20.0),
+                            lam: float = DEFAULT_LAMBDA
+                            ) -> list[KernelBandPoint]:
+    """CDI / RDI / BWI across the near-critical band set (default {5, 10, 20}
+    working days), exposing whether band-membership conclusions are robust to
+    the band constant.  Never raises."""
+    out: list[KernelBandPoint] = []
+    for band in bands:
+        try:
+            r = run_li_indices(sa, lam=lam, band_days=band)
+            bwi_last = next((row.bwi for row in reversed(r.bwi.rows)
+                             if row.bwi is not None), None)
+            out.append(KernelBandPoint(band, r.cdi.top_decile_share,
+                                       r.rdi.rdi_days, bwi_last))
+        except Exception:                             # pragma: no cover - defensive
+            out.append(KernelBandPoint(band, None, None, None))
+    return out
+
+
+# ==========================================================================
 # public entry point
 # ==========================================================================
 def run_li_indices(sa, lam: float = DEFAULT_LAMBDA,

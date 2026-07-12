@@ -3,6 +3,23 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI kernel constant governance (ruling Q-H, adjudicated 2026-07-12)
+
+**Additive — no canonical number changes.**  Recorded ruling
+docs/rulings/LI-kernel-constants-2026-07-12.md (rubric C4: sensitivity
+sets, not point claims).
+
+- `kernel_lambda_sensitivity(sa, lams=(3,5,10))`: PCI + CDI top-decile per
+  λ (the FCBI Q2 pattern); λ = 5 recorded as a professional convention.
+- `kernel_band_sensitivity(sa, bands=(5,10,20))`: CDI / RDI / BWI per
+  near-critical band; band = 10 recorded as a convention.
+- KERNEL_PATHS_N = 10 recorded as a convention with the disclosed PCI
+  Herfindahl floor (1/10) consequence; PCI's scored anchors are re-examined
+  with the Wave-3 kernel, per the ruling.  MML's constants were recorded in
+  the Wave-4b ruling.  2 new regressions.
+
+Suite: 293 passed, 1 skipped.
+
 ## Unreleased — LI-10 MML Wave-4 revision (ruling Q-F, adjudicated 2026-07-12)
 
 **Number-changing for LI-10 (informational — no Report Card weight, but the

@@ -76,6 +76,21 @@ behavior is directly visible in the source and a probe adds nothing.
 >   branch leaked the tail min through the shared rel_float_days fallback
 >   -> fabricated rf 0.0) FIXED with regression.  Suite: 283 passed,
 >   1 skipped.
+> - **Q-F/Q-G/Q-H (Wave 4): RULED — all recommended options adopted;
+>   EXECUTED** (2026-07-12): BDI fixed original-duration basis + LOE
+>   zero-length + explicit baseline/target params
+>   (docs/rulings/LI-06-bdi-v2-2026-07-12.md — resolves BDI-2..5); MML basis
+>   segregation + sustained clean mile + event overlay wired + named
+>   no-clean-mile reasons (docs/rulings/LI-10-mml-v2-2026-07-12.md —
+>   resolves MML-1..5); kernel constant governance via λ/band sensitivity
+>   sets + recorded conventions (docs/rulings/LI-kernel-constants-
+>   2026-07-12.md — resolves K4/K6 and discloses K5's PCI floor).  Suite
+>   after Wave 4: 293 passed, 1 skipped.  REMAINING OPEN: Wave 3 only — the
+>   new governed LI kernel under Q-B (K1 own-float fallback, K2 w>1
+>   premium, K5 truncation/convergence, PCI weight residual + scored-anchor
+>   re-exam, RDI-2 demonstrated-population gate, CDI milestone/fallback
+>   membership) — design to be presented to the principal before
+>   implementation — plus the owed independent confirmation review wave.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 

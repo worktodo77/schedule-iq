@@ -325,3 +325,280 @@ MIP, recommend **NO-GO**.
    names carry the branding (FCBI™-style, per ANALYTICS_PROPOSAL §9's
    Deltek comparison)?  One paper should establish one name.
 5. Co-authorship/AACE membership logistics for the CDR track submission.
+
+---
+
+## 7. Second pass (2026-07-12): from evidence protocol to contractual regime — "Option E"
+
+Elaboration following review of §1–6.  The direction under consideration:
+a **contractually specified metric toolbox, tracked during execution, that
+governs delay attribution when disputes arise — with delays resolved on a
+rolling basis during the project** rather than forensically at the end.
+Four pitfalls were put on the table: contract adoption; using metrics to
+assign responsibility / handle concurrency / quantify entitlement and
+quantum; gaming and guardrails; and resolution cadence.  Plus the market
+observation that owners distrust prospective 52R-06 TIA because awarded
+fragnets are often executed faster than modeled and contractor concurrent
+delay in base scope during the fragnet window goes uncounted.
+
+### 7.1 The doctrinal move that makes this coherent: measurement conventions, not machine causation
+
+"The metrics govern causal attribution" is unenforceable and unsellable as
+stated — no tribunal lets an instrument decide causation, and the CDR
+audience (heavy with lawyers) will say so in the first question.  The
+version that works is one reframe away:
+
+**Parties cannot delegate causation to a formula, but they routinely
+contract around the need to prove it — by agreeing a measurement convention
+in its place.**  Construction contracts are already full of these:
+liquidated damages replace proof of actual loss; unit-price measurement
+replaces proof of cost; deemed weather-day allowances replace proof of
+weather impact; daywork rates replace cost forensics; pain/gain-share pools
+in alliancing replace attribution entirely.  Each is enforceable because it
+is agreed ex ante, symmetric, and applied to an auditable record.
+
+**Delay is the last major quantity in the contract still resolved by
+after-the-fact causal reconstruction instead of an agreed measurement.**
+That is the paper's thesis sentence.  Option E is a *liquidated attribution
+regime*: the parties agree at award that responsibility for each window's
+slip will be **measured** per a published convention (criticality-weighted
+burn on the paths to the governing milestone, decomposed by a responsibility
+overlay, netted per an agreed concurrency rule), not litigated as
+causation-in-fact.  The metric need not be metaphysically correct about
+causation; it must be agreed, symmetric, parameter-frozen, and computed on a
+sealed record.  Law stays with the parties (they pick the rules ex ante);
+measurement goes to the instrument.
+
+Prior-art frame (must be named or reviewers will): **NEC3/NEC4 already
+resolves compensation events contemporaneously** with prospective, final
+assessments — proof the industry accepts interval-based delay resolution.
+But NEC assessment is *forecast-based and final*, which is exactly the
+pathology the owners' 52R-06 complaint describes: assessed impacts that
+never materialize are not clawed back.  Option E's differentiator is that it
+is **retrospective in character, contemporaneous in timing** (§7.2) — and
+metric-governed rather than judgment-of-the-PM-governed.  DRB/DAAB standing
+neutrals are the institutional vehicle; what they lack today is a
+quantitative substrate, which is what the sealed record supplies.
+
+### 7.2 The 52R-06 wedge: windowed true-up answers both sides' complaints
+
+The owner objection to prospective TIA is well-founded and specific:
+(a) fragnet work is often executed faster than modeled, and (b) contractor
+concurrent delay in base scope during the fragnet window goes uncounted, so
+prospective awards over-grant time and money.  The contractor objection to
+end-of-project retrospection is equally well-founded: evidence decay,
+positional hardening, expert cost, and settlement leverage games.
+
+The windowed regime is precisely the middle path, and this is the paper's
+selling wedge:
+
+- **Each window is attributed after it happens** — observed reality, not a
+  forecast.  Actual fragnet execution pace is what gets measured, and *all*
+  weighted burn in the window is decomposed — including contractor burn in
+  base scope during the fragnet period, which the binary TIA fragnet view
+  never sees.  This hands owners exactly the retrospective measurement they
+  want.
+- **But only one or two updates in arrears** — evidence fresh, personnel
+  still on site, positions not yet hardened, and the attribution ratchets
+  into interim finality.  This hands contractors the certainty and cash-flow
+  they want and never get from end-of-project forensics.
+- **52R-06 TIA is repositioned, not rejected**: TIA remains the right tool
+  for *pricing proposed changes prospectively* and granting **provisional**
+  EOT; the window close-out is the **true-up** against actuals.  The
+  confusion the owner complaint points at is using a pricing-the-future tool
+  to settle attribution-of-the-past; the regime separates the two.
+- **Mitigation must not be punished by the true-up.**  If the contractor
+  genuinely accelerated the fragnet, truing the EOT down converts its
+  mitigation into a gift to the owner.  Convention: true-down is limited by
+  the demonstrated-pace envelope (the RDI machinery) — fragnet execution
+  faster than anything the project has demonstrated is presumptively
+  acceleration/mitigation, handled under the acceleration clause rather
+  than clawed back.  This detail decides whether contractors can ever sign.
+
+### 7.3 Responsibility, concurrency, entitlement, quantum — tiered bindingness
+
+The mechanism should not try to resolve everything with equal force.
+Three tiers, contractually explicit:
+
+- **Tier 1 — TIME, binding-interim.**  Window slip attribution → EOT banked
+  / LD exposure adjusted per window, subject to a short adjudication-style
+  challenge period (e.g., 28 days), then final absent fraud or manifest
+  error (expert-determination finality standard).  "Pay now, argue later"
+  transplanted to time.
+- **Tier 2 — PROLONGATION MONEY, presumptive or pre-priced.**  Strongest
+  form: compensable-day rates pre-agreed in the contract (another
+  liquidation — precedent exists in pre-agreed prolongation rates), making
+  quantum mechanical: compensable days × rate.  Weaker form: the Tier-1
+  time allocation carries a rebuttable presumption into any later forum.
+- **Tier 3 — RESERVED.**  Disruption/loss-of-productivity, acceleration
+  claims, and cardinal-change territory expressly outside the mechanism
+  (MML and the record still feed them evidentially).
+
+**Concurrency becomes a measured overlap plus a contract-chosen rule.**
+Per window, per governing milestone path set: weighted burn per party
+(B_owner, B_contractor, B_neutral — weather/force-majeure via the existing
+deemed-day conventions).  The contract picks the allocation rule ex ante
+from a menu the paper presents without advocating doctrine: dominant-cause
+(cliff effects, not recommended), pro-rata to weighted burn shares,
+SCL-style time-but-no-money on the overlap, or Malmaison-style (EOT if
+owner burn material regardless of contractor burn; money only on the
+excess).  The doctrinal fight over concurrency does not disappear — it is
+**had once, at award, in the abstract**, when neither party knows which
+side of it they will need.  A Rawlsian veil is the best moment this
+industry will ever get to agree a concurrency rule.
+
+**Self-aware bindingness (ARR as jurisdiction gate).**  ANALYTICS_PROPOSAL
+§11.3's ARR (attribution robustness across reasonable parameter/method
+choices) gets a governance job: a window's attribution **auto-binds only
+when ARR clears a threshold**; fragile attributions escalate to the
+standing neutral instead of binding automatically.  The instrument declines
+jurisdiction when its own error bars are wide.  This single design element
+answers the "you can't let a formula decide edge cases" objection, because
+the formula's defined behavior in edge cases is to decline to decide.
+
+**Pacing.**  The most abused retrospective defense gets the regime's most
+valuable rule: pacing may only be asserted for window N if it was declared
+during window N (the protocol makes declaration cheap).  Contemporaneous
+declaration or forfeiture — retrospective pacing invention dies.  PPS
+(§11.4) then scores declared pacing for plausibility.
+
+**Where the fights relocate (honest limitation).**  Attribution decomposes
+to activities; the activity→party responsibility overlay is where disputes
+migrate.  Coding is fixed at baseline for structurally-owned activities
+(approvals, permits, owner-furnished items), assigned at window close for
+emergent events (RFI/CO linkage as default), with coding disputes on the
+neutral's fast track.  The regime does not eliminate judgment; it relocates
+disputes from *the whole project, years later, all at once* to *these three
+activities, this month*.  Small, early, specific disputes are the
+dispute-avoidance literature's definition of success — this is a feature
+and the paper should claim it as one, not hide it.
+
+### 7.4 Gaming matrix and guardrails
+
+Symmetry is the price of adoption, so the matrix must be per-party.
+
+| Vector | Party | Guardrail (existing machinery) |
+|---|---|---|
+| Preferential/soft logic, sequestered float on owner-facing paths | Contractor | LHL driving-path instability flag; change register names every edit; SMI decomposition; baseline acceptance gate (54-check battery as contractual criterion) |
+| Constraint-manufactured criticality | Either | FCBI's constraint-free-criticality guard (already implemented) |
+| Evergreen forecasting / status gaming to hide burn | Contractor | Evergreen detector; Hit Task %; retroactive-actual-change check; capsule sealing makes history unrewritable |
+| Bow-waving work against milestones | Contractor | BWI is purpose-built for exactly this |
+| Retrospective pacing invention | Contractor | Contemporaneous-declaration rule (§7.3) + PPS |
+| Slow-rolled reviews/approvals pushing burn into contractor windows | Owner | IL runs symmetrically on owner-coded activities; owner burn decomposes identically |
+| Directed dates / forced re-baselines to reset the record | Owner | DDI; re-baseline permitted only through a defined variation gate that carries the old record forward |
+| Refusing/contesting updates to stall the record | Owner | Deemed-acceptance: the update seals and the record runs regardless; update disputes go to the neutral fast-track |
+| Parameter shopping after the fact | Either | λ, band, window length, concurrency rule frozen in a contract exhibit at award; capsule already seals the spec hash |
+| Submitting a degraded schedule then relying on it | Either | **Integrity estoppel rule**: an update scoring below the report-card gate cannot be used *offensively by its author* but remains usable against them.  Quality becomes self-interested. |
+
+The last row is worth flagging as a candidate signature idea: it converts
+schedule quality from a compliance nag into a party's own litigation
+self-interest, which no spec-mandated DCMA threshold has ever achieved.
+
+### 7.5 Cadence: two-speed design
+
+Single-cadence answers are all wrong: monthly-binding is noisy and
+admin-crushing; end-of-project is the status quo being escaped.  Two speeds:
+
+- **Measurement cadence — every update (monthly).**  Metrics computed,
+  sealed, published to both parties simultaneously.  No decisions — just
+  the shared instrument panel and its early-warning triggers.  This is
+  §3 Option A running unchanged.
+- **Attribution cadence — rolling close-out, one to two updates in
+  arrears** (or quarterly on slow-burn programs).  Window N closes after a
+  settling lag (late data, corrections), attribution issues, challenge
+  period runs, then Tier-1 finality.  **De minimis rule**: window slip
+  below a materiality threshold banks into a running account resolved when
+  the account trips the threshold or at the next milestone — keeps the
+  machinery from grinding on noise.
+- **Reconciliation events — at major milestones and completion.**
+  Arithmetic/data corrections only; closed attributions reopen only for
+  fraud or manifest error.  Without this finality standard the regime is
+  just monthly homework for the eventual forensic fight.
+
+### 7.6 Adoption: the bindingness ladder (answer to pitfall #1)
+
+Nobody signs the full regime cold.  The ladder lets a contract enter at any
+rung, and each rung is independently valuable:
+
+1. **Informational** — the protocol runs, both parties see the sealed
+   record (§3 Option A exactly).  Zero contractual courage required beyond
+   a scheduling-spec exhibit, which owners already dictate routinely.
+2. **Presumptive** — a standing DRB/DAAB adopts the record as its
+   instrument panel via terms of reference; attributions are rebuttable
+   findings.  No contract amendment needed at all on projects that already
+   have a board — the softest real entry point.
+3. **Binding-for-time** — Tier 1 interim finality with challenge windows.
+4. **Full liquidated regime** — Tiers 1–2 with pre-priced compensable days.
+
+Adoption vectors, most to least promising: (a) **GC→subcontract flow-down**
+— GCs feel sub-claim pain acutely, control their subcontract forms, and can
+impose uniformly; likely the fastest real-world proving ground; (b)
+**owner-side spec insertion** sold on the 52R-06 over-award fix (§7.2 is
+the owners' own argument handed back to them); (c) **DRB/DAAB terms of
+reference** (rung 2); (d) alliancing/IPD programs already culturally
+adjacent.  The paper should present the ladder and let the market climb it;
+demanding rung 4 in print guarantees rejection as naïve.
+
+### 7.7 Legal risk register (needs a lawyer co-author — this is now firm)
+
+- **Prevention principle / time-at-large.**  If the mechanism procedurally
+  bars an EOT for genuinely owner-caused delay, LDs may become
+  unenforceable wholesale.  Mandatory fail-safe: mechanism failure or
+  ARR-declined windows fall back to conventional assessment — the regime
+  must never operate as forfeiture.
+- **Statutory adjudication coexistence (UK and similar).**  Parties cannot
+  contract out of the right to adjudicate at any time; the regime must be
+  designed so the sealed record *travels into* adjudication rather than
+  purporting to exclude it.
+- **Expert-determination finality** doctrine is the enforceability rail for
+  Tier-1 interim finality (fraud/manifest-error reopening standard);
+  strength varies by jurisdiction — US has no statutory adjudication, so
+  the mechanism rides entirely on contract + DRB enforceability there.
+- **Notice-bar / condition-precedent enforceability** (the pacing
+  declaration rule is one) varies by jurisdiction and must be drafted as a
+  measurement convention, not a forfeiture clause, in hostile
+  jurisdictions.
+
+### 7.8 Revised paper strategy
+
+Option E does not replace §5's recommendation — it **completes it and
+raises the ceiling**.  The bindingness ladder (§7.6) means the full
+framework paper *contains* Option A as rung 1.  Two viable shapes:
+
+- **Shape 1 — one framework paper (recommended):** *"The Last Unmeasured
+  Quantity: Rolling, Metric-Governed Delay Resolution"* — thesis (§7.1),
+  the wedge (§7.2), the regime (§7.3–7.5), the ladder (§7.6), with the
+  published kernel + FCBI/RDI/IL as the measurement layer and the
+  as-managed record as rung 1.  Bigger claim, more memorable, and the
+  52R-06 critique gives it a hook §3's Option A lacks.  Cost: must carry
+  the legal analysis, so a construction-lawyer co-author moves from
+  nice-to-have to prerequisite, and the λ-sensitivity + prior-art gates
+  from §5 still apply in full.
+- **Shape 2 — two papers:** A first (evidence protocol, 2027), E as the
+  follow-up once A has standing.  Safer, slower; risks someone else
+  publishing the framework framing in between.
+
+Additional gating checks for Shape 1 (on top of §5's):
+6. **Prior-art sweep extension**: NEC compensation-event literature, DRB
+   effectiveness studies, any published "contractual delay metrics" or
+   interim-binding attribution proposals (CDR and ICC/SCL corpora).
+7. **Lawyer co-author identified and willing** — without one, drop to
+   Shape 2.
+8. **Straw-man contract exhibit drafted** (2–3 pages: parameter table,
+   concurrency-rule election, challenge procedure, fail-safe clause) — if
+   the exhibit cannot be drafted short, the "field-implementable" claim
+   fails and the regime is not ready for print.
+
+### 7.9 Additional open questions for RJL
+
+6. Shape 1 (one framework paper, lawyer co-author required) or Shape 2
+   (protocol paper first)?
+7. Does LI want to *own* the standing-neutral computation role the regime
+   creates (the "record administrator" — a recurring-revenue service line),
+   and does saying so in print help adoption or taint neutrality?
+8. §7's regime uses ARR and PPS from the §11 "provocative" set (as
+   governance gates, not accusations) — does that change §11's PARKED
+   status?
+9. Which concurrency conventions go in the paper's menu, and is LI willing
+   to print worked examples of each on the same fixture (the honest way to
+   show the rules diverge)?

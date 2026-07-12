@@ -830,3 +830,166 @@ one page or the user-friendliness claim is self-refuting.
 13. Band-width default: fixed working days, percent of remaining duration,
     or calendar-scaled?  (Needs a small fixture study; the default printed
     in the paper will be quoted forever.)
+
+---
+
+## 9. Fourth pass (2026-07-12): the unoccupied method space — beyond descendants of the nine
+
+§8's Delay Ledger is a disciplined descendant of MIP 3.3.  This pass widens
+the aperture: what methods exist *outside* the family tree of the nine?
+The systematic route is to enumerate the assumptions all nine MIPs share —
+each broken assumption is an unoccupied room in the taxonomy's house.
+
+### 9.1 Six assumptions every existing MIP shares
+
+| # | Shared assumption | What breaking it yields |
+|---|---|---|
+| 1 | **Deterministic point-estimate output.**  Every MIP produces a single attribution number with no error bar.  Delay analysis may be the only quantitative forensic discipline with no concept of confidence interval. | Probabilistic / interval attribution (§9.2-F1) |
+| 2 | **Single method, single analyst.**  No MIP is an ensemble; disagreement *between* methods is treated as embarrassment, never as measurement. | Ensemble / convergence protocols (folded into F1) |
+| 3 | **The schedule testifies about itself.**  As-built = the actual dates the schedule's own author entered.  No MIP specifies independent evidence for the as-built. | Evidence-fused as-built reconstruction (F3) |
+| 4 | **Activity/logic is the unit of analysis.**  No MIP reasons about crews, workfaces, locations, or production flow — the things field delay is actually made of. | Production-evidence methods (F2) |
+| 5 | **The plan network is treated as the causal model.**  Collapsed as-built pretends as-built logic is a causal graph; no MIP separates "the plan's logic" from "what actually caused what." | Event-graph causal method (F4) |
+| 6 | **End-loaded execution.**  (Already broken by §8's append-only accretion.) | — covered |
+
+### 9.2 The four new families
+
+**F1 — Uncertainty-quantified attribution ("delay analysis with error
+bars").**  Three implementations of one idea, cheapest first:
+
+- *Bracket method*: compute each party's best-case and worst-case
+  attribution under the same published measurement rules; output is a
+  bounded interval per party, not a point.  The gap between brackets is the
+  genuinely arguable zone — parties litigate the gap, not the whole
+  project.  Settlement-forcing by construction, observational-cheap.
+- *Ensemble convergence*: run k cheap methods (e.g., 3.2 + 3.3 + selected
+  3.7 windows) under a defined convergence protocol; agreement = robust
+  attribution, divergence localizes the contested windows for deep
+  analysis.  Codifies the triangulation tribunals already implicitly
+  reward.
+- *Probabilistic but-for (PBF)*: delay-event register + as-built model with
+  uncertainty distributions on contested logic/durations (priors calibrated
+  empirically from the project's own forecast track record — the FRB
+  machinery); Monte Carlo collapse yields a *distribution* of but-for
+  completion per event set.  Attribution via expected criticality-days or a
+  **Shapley-value allocation across events** — cooperative game theory's
+  principled answer to joint causation, which handles concurrency *by
+  construction*: literally and functionally concurrent events share credit
+  per marginal contribution across orderings, and P(concurrent) is itself
+  an output per window.
+
+The forensic argument for F1 is the strongest in this memo: **Daubert's
+third factor asks for a method's known or potential error rate, and no
+existing delay method can answer the question.**  F1 is the first that can.
+Taxonomically it is not a tenth MIP but a new layer — output type
+(point / interval / distribution) — orthogonal to observational vs. modeled.
+
+**F2 — Production-evidence methods ("delay measured where it happens").**
+Two implementations:
+
+- *Workface Availability Method (WAM)* — the field-native one.  For each
+  driving/near-critical activity (band from the schedule) and each working
+  day, classify the day from contemporaneous records into one of four
+  states with party-coded reasons: **U** — workface unavailable
+  (predecessor incomplete, access denied, open RFI/drawings, materials,
+  permits, weather; each U-day carries reason + party), **A** — available
+  but unmanned (crew absent/diverted), **M** — manned but under-producing
+  (flagged to disruption, not booked as delay), **P** — producing.
+  Activity delay = ΣU (by party) + ΣA + productivity remainder; daily codes
+  roll up the driving paths into window bookings — **feeding §8's ledger
+  directly** (WAM is where the ledger's bookings come from at daily grain).
+  Concurrency is *counted, daily, mechanically*: a calendar day showing
+  U(owner) on one driving front and A(contractor) on a parallel driving
+  front is a literal concurrent day.  Precedence rule within one activity:
+  U dominates A (a crew cannot be deployed to an unavailable front).
+  The data discipline is one line per front per day — which is Last
+  Planner's constraint log and daily-report practice already; the method
+  makes PPC reason codes attribution-grade.  This is the most
+  user-friendly, most during-execution-native, best-concurrency candidate
+  in the entire memo.
+- *Flowline forensics (location-based)*: delay as production-rate
+  divergence and location-handoff interference in LBMS terms; sees
+  trade-stacking cascades CPM logic never models.  Powerful where
+  location-based data exists; niche elsewhere.  Second paper, not first.
+
+**F3 — Independent as-built reconstruction (evidence fusion).**  Rebuild
+the as-built from evidence streams *other than the schedule's own claims* —
+daily reports, timestamped photos, RFIs/submittals, access logs, 4D/reality
+capture — and measure delay against the reconstructed record.  Until
+recently economically impossible; LLM document extraction changed the cost
+structure, and the method question becomes the *protocol that makes
+AI-extracted evidence defensible* (dual-extraction agreement rates,
+human-verification sampling, disclosure of extraction prompts).  Honest
+placement: this is a source-validation revolution that upgrades every MIP
+rather than a competing MIP — publishable, timely, but a different paper
+than "a new method."
+
+**F4 — Event-graph causal method.**  Maintain the plan network and a
+separate explicit causal graph of what-happened claims, each edge tied to
+evidence; compute counterfactuals on the event graph, not the CPM.
+Codifies what good experts do narratively.  Verdict: intellectually right,
+tribunal-risky (reads academic), and the evidence burden is F3's anyway.
+Park it; steal its plan-vs-causal-graph distinction for any paper's
+limitations section.
+
+### 9.3 Scoring against the stated criteria
+
+| Candidate | User-friendly | Concurrency handling | During execution | Fundamental novelty | Prior-art risk | ScheduleIQ fit |
+|---|---|---|---|---|---|---|
+| §8 Delay Ledger | High (accounting idiom) | Good (measured matrix) | Native | Moderate (3.3 descendant) | Medium | Ships today (Level 1) |
+| F1 Bracket | High (an interval) | Good (bracket overlap) | Yes | High | Low-Med | Near-term |
+| F1 PBF/Shapley | Low mechanics, readable outputs ("80% chance owner drove ≥8 of 12 days") | **Best in class (by construction)** | Per window | **Highest** | Medium (academic Shapley-delay papers exist) | Needs MC module (planned, ANALYTICS_PROPOSAL §4) + engine |
+| F2 WAM | **Best in class** | **Best in class (daily, counted)** | **Native** | High | Medium ("daily delay measure" practice exists — sweep) | New data layer; modest tooling |
+| F2 Flowline | Low (needs LBMS culture) | Good | Native | High | Medium (Seppänen corpus) | Poor near-term |
+| F3 Evidence fusion | Expert-side | n/a (validation layer) | Yes | High + timely (AI) | Low as protocol | Large build |
+| F4 Event graph | Low | Formal but contestable | No | Medium | Medium | Poor |
+
+### 9.4 Where this lands
+
+Two front-runners emerge from outside the nine's family tree, and they are
+complementary rather than competing:
+
+- **WAM (F2)** is the method the *original vision* was always pointing at:
+  field staff can run it because field staff already generate its raw
+  material; concurrency stops being doctrine and becomes a daily count; and
+  it composes with §8 — WAM supplies the daily-grain bookings, the ledger
+  supplies the monthly close and balancing discipline.  A combined
+  "WAM + Ledger" method paper is the strongest user-friendly/concurrency
+  package this memo has produced.
+- **PBF (F1)** is the *deepest* novelty — a new taxonomy axis, the Daubert
+  error-rate argument no existing method can answer, Shapley-principled
+  concurrency, and empirical priors from FRB.  It is expert-tooling-heavy
+  (MC module + engine port) and mechanically opaque to field staff, so it
+  serves the "revolutionary method" ambition, not the "field-friendly"
+  one.  The bracket method is its cheap observational cousin and could
+  ride inside either paper as the uncertainty-expression layer.
+
+Honest tension to decide: WAM optimizes the user's stated criteria; PBF
+optimizes novelty and forensic-epistemology impact.  One paper cannot carry
+both without becoming a manifesto.
+
+### 9.5 Prior-art kill-list additions
+
+Sweep before committing: "daily delay measure" / daily windows practice
+papers; Last Planner / PPC-as-evidence literature (lean construction
+corpus); Shapley or cooperative-game delay-apportionment papers (known to
+exist academically — the question is whether any is practicable/MIP-shaped);
+probabilistic/Monte-Carlo retrospective delay papers; Seppänen & Kenley
+LBMS forensics; AI/LLM document-extraction-for-claims papers (fast-moving,
+sweep last).
+
+### 9.6 Open questions for RJL (fourth set)
+
+14. Pick the lane for the flagship paper: (a) WAM + Ledger (field-native,
+    serves the original dispute-avoidance vision), (b) PBF (deepest
+    novelty, expert audience), or (c) §8 Ledger alone as the conservative
+    core with F1/F2 as future-work signposts?
+15. Does LI have (or can it get) a project with Last-Planner-style daily
+    constraint/reason-code records plus a schedule update series — the
+    validation substrate WAM needs?
+16. If PBF: does the paper commitment justify accelerating the Monte Carlo
+    module and CPM engine port, or is PBF the *second* paper after its
+    tooling exists?
+17. Shapley-based apportionment produces numbers no current legal doctrine
+    asks for.  Is LI comfortable publishing measurement that runs ahead of
+    doctrine (arguing doctrine should catch up), or must every output map
+    to an existing doctrinal question?

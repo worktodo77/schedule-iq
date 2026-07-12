@@ -612,37 +612,55 @@ class BDIResult:
     bdi_pct: Optional[float] = None
     baseline_label: str = ""
     latest_label: str = ""
+    target_code: Optional[str] = None
     steps: list[BDIStep] = field(default_factory=list)
     decomposition: list[BDIElement] = field(default_factory=list)
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 def _step_length_days(sched: Schedule, act: Activity) -> float:
-    """Remaining duration if the step still has remaining work, else original
-    duration (so completed steps still contribute their historical length
-    instead of vanishing at RD=0); milestones are 0 either way."""
-    hours = act.remaining_duration_hours if act.remaining_duration_hours > 0 \
-        else act.original_duration_hours
+    """FIXED length basis (Wave-4 ruling Q-G, 2026-07-12 —
+    docs/rulings/LI-06-bdi-v2-2026-07-12.md): every step contributes its
+    ORIGINAL (planned) duration, so mere progress can never move the dilution
+    share.  The prior remaining-else-original basis shrank in-progress
+    original steps as they burned down while added steps held full length —
+    the share rose with execution alone, conflating execution with revision
+    (rubric A4).  LOE/summary steps contribute ZERO length (not discrete
+    work — the family ruling extended to BDI); milestones are 0 by duration."""
+    if act.is_loe_or_summary:
+        return 0.0
     cal = sched.cal_for(act)
     hpd = cal.hours_per_day if cal and cal.hours_per_day else 8.0
-    return hours / hpd if hpd else 0.0
+    return act.original_duration_hours / hpd if hpd else 0.0
 
 
-def baseline_dilution_index(series_analysis) -> BDIResult:
+def baseline_dilution_index(series_analysis, baseline_index: int = 0,
+                            target_code: Optional[str] = None) -> BDIResult:
     """% of the LATEST schedule's driving-path length attributable to
     post-baseline elements: an activity not in the baseline, or one whose
     driving relationship into the next step was not in the baseline's
-    relationship set (ANALYTICS_PROPOSAL §10.1)."""
+    relationship set (ANALYTICS_PROPOSAL §10.1).
+
+    ``baseline_index`` selects the reference schedule (default: the first in
+    the series — if the series starts mid-project, pass the true contract
+    baseline explicitly); ``target_code`` selects the driving-path target
+    (default: auto-resolved on the latest schedule).  Both choices are named
+    in the standing disclosures (Wave-4 ruling Q-G)."""
     schedules = list(getattr(series_analysis, "schedules", []))
     res = BDIResult()
     if len(schedules) < 2:
         res.reason = "needs a baseline plus at least one update"
         return res
-    baseline, latest = schedules[0], schedules[-1]
+    if not (0 <= baseline_index < len(schedules) - 1):
+        res.reason = (f"baseline_index {baseline_index} is not an earlier "
+                      f"schedule of the {len(schedules)}-update series")
+        return res
+    baseline, latest = schedules[baseline_index], schedules[-1]
     res.baseline_label, res.latest_label = baseline.label(), latest.label()
 
     try:
-        dp = driving_path(latest)
+        dp = driving_path(latest, target_code)
     except Exception as e:                           # pragma: no cover - defensive
         res.reason = f"driving_path failed: {e}"
         return res
@@ -711,11 +729,29 @@ def baseline_dilution_index(series_analysis) -> BDIResult:
         # LI-05-LI-06-not-evaluated-2026-07-12.md, rubric A1).
         res.bdi_pct = None
         res.reason = ("NOT EVALUATED — the driving path has zero total "
-                      "working-day length (all milestones); there is no "
-                      "length basis to attribute, so dilution is undefined, "
-                      "not 0%")
+                      "working-day length (all milestones or LOE/summary); "
+                      "there is no length basis to attribute, so dilution is "
+                      "undefined, not 0%")
     else:
         res.bdi_pct = 100.0 * post_len / total_len
+    res.target_code = dp.target.code if dp.target else None
+    res.disclosures = [
+        "Length basis: every step weighs its ORIGINAL (planned) duration — "
+        "fixed, so progress alone cannot move the dilution share (a burned-"
+        "down in-progress step no longer shrinks against added scope); "
+        "LOE/summary steps contribute zero length (not discrete work); "
+        "milestones are zero-duration.",
+        f"Baseline = {res.baseline_label} "
+        + ("(the first schedule of the series by default — pass the true "
+           "contract baseline explicitly if the series starts mid-project)"
+           if baseline_index == 0 else f"(explicit baseline_index {baseline_index})")
+        + f"; driving-path target = {res.target_code or 'unresolved'}"
+        + (" (auto-resolved on the latest schedule — confirm for work product)"
+           if target_code is None else " (analyst-selected)") + ".",
+        "Matching is activity-CODE-keyed (a re-coded activity reads as "
+        "post-baseline); first-appearance attribution reads the change "
+        "register and reports 'NOT FOUND — REVIEW' rather than guessing.",
+    ]
     return res
 
 

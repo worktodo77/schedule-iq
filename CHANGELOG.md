@@ -3,6 +3,25 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-06 BDI Wave-4 revision (ruling Q-G, adjudicated 2026-07-12)
+
+**Check-affecting / number-changing for LI-06 (scored, weight 2).**
+Recorded ruling docs/rulings/LI-06-bdi-v2-2026-07-12.md.
+
+- **Fixed length basis:** every driving-path step weighs its ORIGINAL
+  (planned) duration — progress alone can no longer move the dilution share
+  (the prior remaining-else-original basis read an original 20d step at 4d
+  remaining vs a 10d added step as 71.4% "post-baseline"; fixed basis:
+  33.3% at every progress state).
+- **LOE/summary steps zero-length** (the deferred family ruling extended to
+  BDI); an all-LOE/milestone path reads NOT EVALUATED per the sentinel.
+- **Explicit baseline_index / target_code parameters**, both choices named
+  in new standing disclosures (confirm-for-work-product note when
+  defaulted); out-of-range index degrades with a reason.
+- Change-register detail-format coupling regression-locked.  4 new tests.
+
+Suite: 287 passed, 1 skipped.
+
 ## Unreleased — Review wave 2 (reduced scope): RW2-1 fixed
 
 **Check-affecting within the Unreleased Wave-1c train.**  The independent

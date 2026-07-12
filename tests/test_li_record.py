@@ -855,3 +855,109 @@ def test_u8_thin_bucket_is_not_evaluated_through_the_wiring():
              if x.check.id == "LI-03")
     assert r.value is None
     assert "NOT EVALUATED" in r.narrative and "< 5" in r.narrative
+
+
+# ==========================================================================
+# Wave 4a — BDI fixed-basis revision (docs/rulings/LI-06-bdi-v2-2026-07-12.md)
+# ==========================================================================
+def _bdi_act(uid, *, od=10, rem=None, tf=8.0, atype=ActivityType.TASK,
+             status=ActivityStatus.NOT_STARTED, ef=None):
+    return Activity(uid=uid, code=uid, name=uid, atype=atype, status=status,
+                    total_float_hours=tf * 8.0,
+                    original_duration_hours=od * 8.0,
+                    remaining_duration_hours=(od if rem is None else rem) * 8.0,
+                    early_finish=ef)
+
+
+def _bdi_sched(dd, acts, rels):
+    s = Schedule(project_id="BDI", data_date=dd)
+    s.activities = {a.uid: a for a in acts}
+    s.relationships = list(rels)
+    return s
+
+
+def test_bdi_progress_invariant_fixed_length_basis():
+    """Q-G ruling: the dilution share must not move with mere progress.
+    Original step X (od 20) + added step N (od 10): BDI = 10/30 = 33.3%
+    whether X has 20 or 4 days remaining (previously 10/(4+10) = 71.4% after
+    burn-down — execution alone inflated 'dilution')."""
+    dd = datetime(2025, 1, 6, 8)
+    fin = dd + timedelta(days=60)
+    for rem in (20, 4):
+        x0 = _bdi_act("X", od=20, tf=0.0, ef=fin)
+        x1 = _bdi_act("X", od=20, rem=rem, tf=0.0, ef=fin,
+                      status=(ActivityStatus.IN_PROGRESS if rem < 20
+                              else ActivityStatus.NOT_STARTED))
+        n1 = _bdi_act("N", od=10, tf=0.0, ef=fin)   # added PREDECESSOR of X
+        t = _bdi_act("T", od=0, rem=0, tf=0.0, ef=fin,
+                     atype=ActivityType.FINISH_MILESTONE)
+        s0 = _bdi_sched(dd, [x0, t], [Relationship("X", "T")])
+        s1 = _bdi_sched(dd + timedelta(days=30), [n1, x1, t],
+                        [Relationship("N", "X"), Relationship("X", "T")])
+        sa = SeriesAnalysis(schedules=[s0, s1])
+        bdi = baseline_dilution_index(sa)
+        assert {st.code for st in bdi.steps} == {"N", "X", "T"}
+        # X keeps its baseline edge X->T (baseline-original); N is added:
+        # BDI = 10 / (10 + 20) regardless of X's remaining duration
+        assert bdi.bdi_pct == pytest.approx(100.0 * 10 / 30), f"rem={rem}"
+
+
+def test_bdi_loe_step_contributes_zero_length():
+    dd = datetime(2025, 1, 6, 8)
+    fin = dd + timedelta(days=60)
+    l = _bdi_act("L", od=40, tf=0.0, ef=fin, atype=ActivityType.LOE)
+    x = _bdi_act("X", od=10, tf=0.0, ef=fin)
+    t = _bdi_act("T", od=0, rem=0, tf=0.0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE)
+    rels = [Relationship("L", "X"), Relationship("X", "T")]
+    s0 = _bdi_sched(dd, [l, x, t], rels)
+    s1 = _bdi_sched(dd + timedelta(days=30), [l, x, t], rels)
+    bdi = baseline_dilution_index(SeriesAnalysis(schedules=[s0, s1]))
+    lstep = next((st for st in bdi.steps if st.code == "L"), None)
+    if lstep is None:
+        pytest.skip("LOE not on the walked path in this run")
+    assert lstep.length_days == 0.0
+    assert bdi.bdi_pct == pytest.approx(0.0)          # all length is baseline X
+
+
+def test_bdi_explicit_baseline_and_target_params_disclosed():
+    dd = datetime(2025, 1, 6, 8)
+    fin = dd + timedelta(days=60)
+    mk = lambda d, acts, rels: _bdi_sched(d, acts, rels)
+    x = _bdi_act("X", od=10, tf=0.0, ef=fin)
+    n = _bdi_act("N", od=10, tf=0.0, ef=fin)
+    t = _bdi_act("T", od=0, rem=0, tf=0.0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE)
+    s0 = mk(dd, [x, t], [Relationship("X", "T")])
+    s1 = mk(dd + timedelta(days=30), [x, n, t],
+            [Relationship("X", "T"), Relationship("N", "T")])
+    s2 = mk(dd + timedelta(days=60), [x, n, t],
+            [Relationship("X", "T"), Relationship("N", "T")])
+    sa = SeriesAnalysis(schedules=[s0, s1, s2])
+    # explicit baseline = s1 (N already present there -> fully baseline-original)
+    bdi = baseline_dilution_index(sa, baseline_index=1, target_code="T")
+    assert bdi.bdi_pct == pytest.approx(0.0)
+    assert any("baseline_index 1" in d for d in bdi.disclosures)
+    assert any("analyst-selected" in d for d in bdi.disclosures)
+    assert bdi.target_code == "T"
+    # default baseline = s0 -> N is post-baseline
+    bdi0 = baseline_dilution_index(sa)
+    assert bdi0.bdi_pct is not None and bdi0.bdi_pct > 0.0
+    # out-of-range baseline_index degrades with a reason, never raises
+    bad = baseline_dilution_index(sa, baseline_index=2)
+    assert bad.bdi_pct is None and bad.reason
+
+
+def test_bdi5_logic_change_detail_format_coupling_lock():
+    """BDI's first-appearance attribution parses lc.detail.split()[0] as the
+    relationship type — lock the diff's detail format so a silent format
+    change cannot break the attribution unnoticed."""
+    dd = datetime(2025, 1, 6, 8)
+    fin = dd + timedelta(days=60)
+    a, b = _bdi_act("A", ef=fin), _bdi_act("B", ef=fin)
+    s0 = _bdi_sched(dd, [a, b], [])
+    s1 = _bdi_sched(dd + timedelta(days=30), [a, b], [Relationship("A", "B")])
+    from scheduleiq.compare.diff import compare
+    cs = compare(s0, s1)
+    added = [lc for lc in cs.logic_changes if lc.kind == "added"]
+    assert added and added[0].detail.split()[0] == "FS"

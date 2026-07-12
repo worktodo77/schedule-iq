@@ -683,10 +683,19 @@ delay runs 70% through scope the baseline never had").  Decomposes into the
 named added activities/logic with the update in which each arrived (change
 register).
 
-*Convention (sentinel ruling, 2026-07-12): a driving path with zero total
-working-day length (all milestones) has no length basis to attribute — BDI
-is **NOT EVALUATED** with a stated reason, never 0% (the best-possible
-"fully baseline-original" reading on an undefined basis;
+*Conventions (Wave-4 ruling Q-G, 2026-07-12 —
+docs/rulings/LI-06-bdi-v2-2026-07-12.md):* the length basis is **fixed** —
+every step weighs its original (planned) duration, so progress alone cannot
+move the dilution share (the prior remaining-else-original basis shrank
+in-progress original steps against added scope, conflating execution with
+revision — rubric A4); LOE/summary steps contribute zero length (family
+"real work only" ruling extended to BDI); the baseline defaults to the first
+schedule of the series and the driving-path target auto-resolves on the
+latest schedule — both are explicit parameters and both choices are named in
+the standing disclosures.  *Sentinel (2026-07-12): a driving path with zero
+total working-day length has no length basis to attribute — BDI is **NOT
+EVALUATED** with a stated reason, never 0% (the best-possible "fully
+baseline-original" reading on an undefined basis;
 docs/rulings/LI-05-LI-06-not-evaluated-2026-07-12.md).*
 
 ### 10.2 CDI — Criticality Dwell Index

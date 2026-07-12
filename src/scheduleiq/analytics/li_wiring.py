@@ -219,6 +219,7 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
     def _li06():
         b = rr.bdi
         finds = [Finding(x.code, "", x.detail) for x in b.decomposition]
+        finds.extend(Finding("disclosure", "", d) for d in b.disclosures)
         narrative = (f"{b.bdi_pct:.1f}% of the latest driving path "
                      f"({b.latest_label}) is post-baseline relative to {b.baseline_label}."
                      if b.bdi_pct is not None else (b.reason or ""))

@@ -979,8 +979,8 @@ checks:
   - id: LI-06
     name: "BDI — Baseline Dilution Index"
     category: "LI Proprietary Indices"
-    description: "Share of the latest driving path (by working-day length) attributable to post-baseline activities or logic — how much of today's completion story was never in the contract baseline."
-    formula: "100 x post-baseline step-days / total step-days along the latest driving path; NOT EVALUATED (no value) when the driving path has zero working-day length — an undefined basis is never reported as 0%"
+    description: "Share of the latest driving path (by working-day length) attributable to post-baseline activities or logic — how much of today's completion story was never in the contract baseline.  Length basis is FIXED: every step weighs its original (planned) duration, so progress alone cannot move the share; LOE/summary steps carry zero length (not discrete work).  Baseline defaults to the first schedule of the series (explicit baseline/target parameters available and disclosed)."
+    formula: "100 x post-baseline original-duration step-days / total original-duration step-days along the latest driving path (LOE/summary steps zero-length); NOT EVALUATED (no value) when the driving path has zero working-day length — an undefined basis is never reported as 0%"
     unit: percent
     threshold: null
     direction: info

@@ -515,8 +515,15 @@ def baseline_dilution_index(series_analysis) -> BDIResult:
                 first_appeared=label))
 
     if total_len <= 0:
-        res.bdi_pct = 0.0
-        res.reason = "driving path has zero total length (all milestones)"
+        # NOT EVALUATED, never 0.0%: a zero-length driving path has no length
+        # basis to attribute, and 0.0% is the "fully baseline-original"
+        # best-possible reading (audit BDI-1; sentinel ruling docs/rulings/
+        # LI-05-LI-06-not-evaluated-2026-07-12.md, rubric A1).
+        res.bdi_pct = None
+        res.reason = ("NOT EVALUATED — the driving path has zero total "
+                      "working-day length (all milestones); there is no "
+                      "length basis to attribute, so dilution is undefined, "
+                      "not 0%")
     else:
         res.bdi_pct = 100.0 * post_len / total_len
     return res

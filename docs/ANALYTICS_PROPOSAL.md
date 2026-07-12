@@ -575,6 +575,11 @@ defended by paper productivity (pairs with DUR-04 and the evergreen
 detector); at project end, realized slip ≈ RDI is a self-validating exhibit
 of sustained forecast unrealism.
 
+*Convention (sentinel ruling, 2026-07-12): when no update yields a usable
+required pace (no data date → forecast finish span), RDI is **NOT
+EVALUATED** with a stated reason — an uncomputable series is never reported
+as 0 days of debt (docs/rulings/LI-05-LI-06-not-evaluated-2026-07-12.md).*
+
 *Backlog: N6-N10 (PARKED pending review).  Dependencies: all five compute
 from existing modules (float paths, change register, actuals, resources);
 none requires the CPM engine.*
@@ -599,6 +604,12 @@ re-baselining questions, and a one-number rebuttal ("the claimed critical
 delay runs 70% through scope the baseline never had").  Decomposes into the
 named added activities/logic with the update in which each arrived (change
 register).
+
+*Convention (sentinel ruling, 2026-07-12): a driving path with zero total
+working-day length (all milestones) has no length basis to attribute — BDI
+is **NOT EVALUATED** with a stated reason, never 0% (the best-possible
+"fully baseline-original" reading on an undefined basis;
+docs/rulings/LI-05-LI-06-not-evaluated-2026-07-12.md).*
 
 ### 10.2 CDI — Criticality Dwell Index
 Who carried the project's risk, and for how long.  For every window, allocate

@@ -3,6 +3,30 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-05/LI-06 NOT EVALUATED sentinels (defect-class batch, ruled)
+
+**Check-affecting / number-changing at the Report Card surface.**  Ruled by
+the principal (2026-07-12, Q-C of the LI-02..LI-10 audit triage; recorded
+ruling docs/rulings/LI-05-LI-06-not-evaluated-2026-07-12.md).  Rubric A1:
+undefined must be explicit, never a plausible-looking number.
+
+- **LI-05 RDI:** a series where no update yields a usable required pace
+  previously returned `rdi_days = 0.0` beside its reason and **scored 100
+  ("no recovery debt") on a series the metric could not evaluate**.  Now
+  `rdi_days = None` + `NOT EVALUATED …` reason; the member is ungraded.
+  `RdiResult.rdi_days` is now Optional (None ⇒ NOT EVALUATED); the
+  fewer-than-two-updates case is likewise None.
+- **LI-06 BDI:** an all-milestone (zero-working-day-length) driving path
+  previously returned `bdi_pct = 0.0` — the best-possible "fully
+  baseline-original" reading — and scored 100.  Now `bdi_pct = None` +
+  `NOT EVALUATED …` reason; ungraded.
+- Accrual/attribution mathematics unchanged on every computable series
+  (regression-guarded).  matrix.yaml LI-05/LI-06 formulas and §9.5/§10.1
+  now state the convention.  7 new tests (`tests/test_li_sentinels.py`),
+  metric layer + wired path.
+
+Suite: 240 passed, 1 skipped.
+
 ## Unreleased — LI wiring defect batch (Wave 0 of the LI-02..LI-10 audit)
 
 **Check-affecting for LI-03 (FRB) only, via the report/score surface.**  No

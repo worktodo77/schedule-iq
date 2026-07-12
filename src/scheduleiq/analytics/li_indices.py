@@ -387,7 +387,12 @@ class RdiRow:
 @dataclass
 class RdiResult:
     rows: list[RdiRow] = field(default_factory=list)
-    rdi_days: float = 0.0              # final cumulative recovery debt, days
+    # Final cumulative recovery debt, days.  None => NOT EVALUATED: when no
+    # required pace could be computed the debt is UNDEFINED, never 0.0 — a
+    # fabricated zero read as "no recovery debt" and scored full credit
+    # (audit RDI-1; sentinel ruling docs/rulings/LI-05-LI-06-not-evaluated-
+    # 2026-07-12.md, rubric A1).
+    rdi_days: Optional[float] = None
     interpretation: str = ""
     reason: str = ""
 
@@ -1450,9 +1455,13 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
                            cumulative_days=cumulative))
 
     if all(r is None for r in required):
-        return RdiResult(rows=rows, rdi_days=0.0,
-                         reason="no update had a usable data date -> forecast "
-                                "finish span to compute a required pace")
+        # NOT EVALUATED, never 0.0: an uncomputable series must not read as
+        # "no recovery debt" (audit RDI-1; A1 — undefined is explicit).
+        return RdiResult(rows=rows, rdi_days=None,
+                         reason="NOT EVALUATED — no update had a usable data "
+                                "date -> forecast finish span to compute a "
+                                "required pace; recovery debt is undefined, "
+                                "not zero")
     interp = (f"Recovery debt stands at {cumulative:.1f} working days — the "
               "portion of the current completion forecast resting on a pace the "
               "Project has not demonstrated"

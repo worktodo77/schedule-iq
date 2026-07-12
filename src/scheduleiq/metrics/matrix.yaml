@@ -967,7 +967,7 @@ checks:
     name: "RDI — Recovery Debt Index"
     category: "LI Proprietary Indices"
     description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the maximum demonstrated pace."
-    formula: "sum over windows of max(0, required pace - max demonstrated pace) x window working days"
+    formula: "sum over windows of max(0, required pace - max demonstrated pace) x window working days; NOT EVALUATED (no value) when no update yields a usable required pace — an uncomputable series is never reported as 0 days of debt"
     unit: days
     threshold: null
     direction: info
@@ -980,7 +980,7 @@ checks:
     name: "BDI — Baseline Dilution Index"
     category: "LI Proprietary Indices"
     description: "Share of the latest driving path (by working-day length) attributable to post-baseline activities or logic — how much of today's completion story was never in the contract baseline."
-    formula: "100 x post-baseline step-days / total step-days along the latest driving path"
+    formula: "100 x post-baseline step-days / total step-days along the latest driving path; NOT EVALUATED (no value) when the driving path has zero working-day length — an undefined basis is never reported as 0%"
     unit: percent
     threshold: null
     direction: info

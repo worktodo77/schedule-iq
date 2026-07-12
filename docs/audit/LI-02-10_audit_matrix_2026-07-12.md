@@ -25,9 +25,11 @@ behavior is directly visible in the source and a probe adds nothing.
 >   truncation), adopted per-metric under per-metric rulings;
 >   `kernel_weight`/`relative_float_map` stay byte-identical until retired.
 >   Executed in Wave 3.
-> - **Q-C (0.0 sentinels): RULED — approved as a defect-class batch.**
->   RDI-1 and BDI-1 become NOT EVALUATED (None + reason) through the wiring;
->   check-affecting (previously such series scored 100).
+> - **Q-C (0.0 sentinels): RULED — approved as a defect-class batch; EXECUTED**
+>   (recorded ruling docs/rulings/LI-05-LI-06-not-evaluated-2026-07-12.md;
+>   RDI-1 and BDI-1 now NOT EVALUATED — None + reason — through the wiring;
+>   check-affecting: previously such series scored 100; suite 240 passed,
+>   1 skipped).
 > - **Sequencing: APPROVED as proposed; Wave 0 authorized and implemented**
 >   (see CHANGELOG "LI wiring defect batch"; FR1/W1/W2 fixed with 7
 >   wiring-path regressions; suite 233 passed, 1 skipped).

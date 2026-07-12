@@ -1480,3 +1480,170 @@ def test_run_li_indices_empty_schedule_list_never_raises():
     r = run_li_indices(SeriesAnalysis(schedules=[]))
     assert r.fcbi.reason and r.pci.reason and r.cdi.reason
     assert r.rdi.reason and r.bwi.reason
+
+
+# ==========================================================================
+# Wave 1b — ported RDI R1/R2 + BWI B1/B2 rulings
+# (docs/rulings/LI-05-LI-09-rdi-bwi-port-2026-07-12.md; as-audited record
+# docs/audit/RDI_BWI_CDI_audit_2026-07-08.md)
+# ==========================================================================
+def _w1b_act(uid, tf, *, od=10, rem=None, ef=None, status=ActivityStatus.NOT_STARTED,
+             As=None, af=None, atype=ActivityType.TASK, bf=None):
+    a = Activity(uid=uid, code=uid, name=uid, atype=atype, status=status,
+                 total_float_hours=None if tf is None else tf * 8.0,
+                 original_duration_hours=od * 8.0,
+                 remaining_duration_hours=(od if rem is None else rem) * 8.0,
+                 early_finish=ef, actual_start=As, actual_finish=af,
+                 baseline_finish=bf)
+    return a
+
+
+def _w1b_sched(dd, acts, rels=(), finish=None):
+    s = Schedule(project_id="W1B", data_date=dd,
+                 activities={a.uid: a for a in acts})
+    s.relationships = list(rels)
+    s.finish_date = finish
+    return s
+
+
+def _w1b_rdi(scheds):
+    return run_li_indices(SeriesAnalysis(schedules=scheds)).rdi
+
+
+def _w1b_bwi(scheds, target=None):
+    return run_li_indices(SeriesAnalysis(schedules=scheds), bwi_target=target).bwi
+
+
+_DD0 = datetime(2025, 1, 6, 8)                       # Monday
+_DD1 = datetime(2025, 1, 20, 8)                      # +10 working days
+_DD2 = datetime(2025, 2, 3, 8)                       # +10 more
+
+
+# ---- R2: accrual anchored on the running P50, max reported as bound -------
+def test_rdi_r2_accrues_against_p50_not_max():
+    """Window 1 retires A1 (planned 20d / 10wd -> demo 2.0); window 2 retires
+    nothing (demo 0.0).  At window 2 the required pace is 1.5: under the
+    ported P50 anchor (median of [2.0, 0.0] after folding window 2 = 1.0 ...
+    then 0.0 after window 2's own zero is folded) debt accrues; under the
+    withdrawn max anchor (2.0 >= 1.5) it would not.  Closed-form: window-2
+    accrual = max(0, 1.5 - median([2.0, 0.0])) x 10 = 15.0 with the ruled
+    fold-own-window convention median([2.0,0.0]) evaluated AFTER window 2's
+    demo (0.0) joins: median([2.0, 0.0]) = 1.0 -> 5.0."""
+    fin0 = _DD0 + timedelta(days=14)                 # 10 wd from dd0
+    fin1 = _DD1 + timedelta(days=14)                 # 10 wd from dd1
+    # S0: A1 floaty (off band), B near-critical rem 10d, C off band.
+    s0 = _w1b_sched(_DD0, [
+        _w1b_act("A1", 15.0, od=20, ef=fin0),
+        _w1b_act("B", 0.0, od=10, ef=fin0),
+        _w1b_act("C", 50.0, od=5, ef=fin1)], finish=fin0)
+    # S1: A1 completed in window 1 (TF written 0 on completion by the
+    # exporter, so the v0.4 RF fallback resolves it into the band — the
+    # completed-population gate itself is audit finding RDI-2, Wave 3).
+    s1 = _w1b_sched(_DD1, [
+        _w1b_act("A1", 0.0, od=20, rem=0, status=ActivityStatus.COMPLETED,
+                 As=_DD0 + timedelta(days=1), af=_DD1 - timedelta(days=2, hours=15)),
+        _w1b_act("B", 0.0, od=10, ef=fin1),
+        _w1b_act("C", 5.0, od=5, ef=fin1)], finish=fin1)
+    # S2: nothing completed in window 2.
+    s2 = _w1b_sched(_DD2, [
+        _w1b_act("A1", 0.0, od=20, rem=0, status=ActivityStatus.COMPLETED,
+                 As=_DD0 + timedelta(days=1), af=_DD1 - timedelta(days=2, hours=15)),
+        _w1b_act("B", 0.0, od=10, ef=fin1 + timedelta(days=14)),
+        _w1b_act("C", 5.0, od=5, ef=fin1 + timedelta(days=14))],
+        finish=fin1 + timedelta(days=14))
+    rdi = _w1b_rdi([s0, s1, s2])
+    assert rdi.reason == ""
+    # window 1: required(S0) = 10/10 = 1.0 <= p50 (2.0 after fold) -> 0
+    assert rdi.rows[1].demonstrated_pace == pytest.approx(2.0)
+    assert rdi.rows[1].accrual_days == pytest.approx(0.0)
+    # window 2: required(S1) = (10+5)/10 = 1.5; p50([2.0, 0.0]) = 1.0 -> 5.0
+    assert rdi.rows[2].demonstrated_pace == pytest.approx(0.0)
+    assert rdi.rows[2].accrual_days == pytest.approx(5.0)
+    assert rdi.rdi_days == pytest.approx(5.0)
+    # the withdrawn max anchor (2.0) would NOT have accrued at required 1.5 —
+    # the accrual above exists only because the anchor is the P50
+    max_demo = max(d for d in (r.demonstrated_pace for r in rdi.rows)
+                   if d is not None)
+    assert max_demo == pytest.approx(2.0)
+    assert max_demo > 1.5
+
+
+# ---- R1: planned-scope basis + companion overrun ratio (concurrency anchor)
+def test_rdi_r1_concurrency_anchor_demo_2_5_overrun_2_0():
+    """The lineage-A R1 regression case, re-anchored here: five parallel
+    on-pace activities (planned 5d each) all complete in one 10-wd window,
+    each spanning 10 wd of calendar.  Planned-scope basis: demonstrated =
+    25/10 = 2.5 (no phantom debt from concurrency); the overrun signal is
+    carried by the companion ratio = 50/25 = 2.0, never the accrual."""
+    done = [_w1b_act(f"P{i}", 0.0, od=5, rem=0, status=ActivityStatus.COMPLETED,
+                     As=_DD0, af=_DD1) for i in range(5)]
+    open_ = [_w1b_act(f"P{i}", 0.0, od=5, ef=_DD1) for i in range(5)]
+    s0 = _w1b_sched(_DD0, open_)
+    s1 = _w1b_sched(_DD1, done)
+    rdi = _w1b_rdi([s0, s1])
+    assert rdi.rows[1].demonstrated_pace == pytest.approx(2.5)
+    assert rdi.rows[1].overrun_ratio == pytest.approx(2.0)
+    assert rdi.overrun_ratio == pytest.approx(2.0)
+    assert any("never an accrual input" in d for d in rdi.disclosures)
+
+
+def test_rdi_r1_missing_actual_start_degrades_ratio_with_disclosure():
+    done = [_w1b_act(f"P{i}", 0.0, od=5, rem=0, status=ActivityStatus.COMPLETED,
+                     As=(_DD0 if i else None), af=_DD1) for i in range(5)]
+    open_ = [_w1b_act(f"P{i}", 0.0, od=5, ef=_DD1) for i in range(5)]
+    rdi = _w1b_rdi([_w1b_sched(_DD0, open_), _w1b_sched(_DD1, done)])
+    # P0 (no actual start) drops from the ratio: 4x10 elapsed / 4x5 planned
+    assert rdi.rows[1].overrun_ratio == pytest.approx(2.0)
+    assert rdi.rows[1].demonstrated_pace == pytest.approx(2.5)   # demo unaffected
+    assert any("carried no actual start" in d for d in rdi.disclosures)
+
+
+# ---- B1: fixed reference horizon --------------------------------------------
+def test_bwi_b1_slipping_milestone_reads_one_not_relief():
+    """The audit's BWI-1 probe, now under the ported fixed horizon: the
+    milestone slips 3 months with identical near-critical work — BWI must
+    read 1.0 (no relief), not < 1 off the moving forecast denominator."""
+    w0 = _w1b_act("W", 2.0, od=10, ef=datetime(2025, 5, 30, 17))
+    t0 = _w1b_act("MS", 0.0, od=0, rem=0, ef=datetime(2025, 6, 1, 17),
+                  atype=ActivityType.FINISH_MILESTONE)
+    w1 = _w1b_act("W", 2.0, od=10, ef=datetime(2025, 8, 30, 17))
+    t1 = _w1b_act("MS", 0.0, od=0, rem=0, ef=datetime(2025, 9, 1, 17),
+                  atype=ActivityType.FINISH_MILESTONE)
+    s0 = _w1b_sched(_DD0, [w0, t0], [Relationship("W", "MS")])
+    s1 = _w1b_sched(datetime(2025, 2, 6, 8), [w1, t1], [Relationship("W", "MS")])
+    bwi = _w1b_bwi([s0, s1])
+    assert bwi.reason == ""
+    assert bwi.rows[0].bwi == pytest.approx(1.0)
+    assert bwi.rows[1].bwi == pytest.approx(1.0)     # slip is NOT relief (B1)
+    assert any("FIXED reference horizon" in d for d in bwi.disclosures)
+
+
+def test_bwi_b1_added_work_still_reads_compression():
+    """Same horizon, work doubles -> BWI 2.0 (the numerator is isolated)."""
+    t0 = _w1b_act("MS", 0.0, od=0, rem=0, ef=datetime(2025, 6, 1, 17),
+                  atype=ActivityType.FINISH_MILESTONE)
+    w0 = _w1b_act("W", 2.0, od=10, ef=datetime(2025, 5, 30, 17))
+    w1 = _w1b_act("W", 2.0, od=20, rem=20, ef=datetime(2025, 5, 30, 17))
+    s0 = _w1b_sched(_DD0, [w0, t0], [Relationship("W", "MS")])
+    s1 = _w1b_sched(datetime(2025, 2, 6, 8), [w1, t0], [Relationship("W", "MS")])
+    bwi = _w1b_bwi([s0, s1])
+    assert bwi.rows[1].bwi == pytest.approx(2.0)
+
+
+# ---- B2: UID-pinned target survives a re-code -------------------------------
+def test_bwi_b2_recoded_target_survives_by_uid():
+    """The audit's BWI-2 probe: the target milestone is re-coded (same UID)
+    in update 2.  Pre-port the density silently dropped to None; the ported
+    UID pinning keeps tracking it."""
+    w = _w1b_act("W", 2.0, od=10, ef=datetime(2025, 5, 30, 17))
+    t0 = Activity(uid="MSU", code="MS", name="MS",
+                  atype=ActivityType.FINISH_MILESTONE, total_float_hours=0.0,
+                  early_finish=datetime(2025, 6, 1, 17))
+    t1 = Activity(uid="MSU", code="MS-NEW", name="MS",
+                  atype=ActivityType.FINISH_MILESTONE, total_float_hours=0.0,
+                  early_finish=datetime(2025, 6, 1, 17))
+    s0 = _w1b_sched(_DD0, [w, t0], [Relationship("W", "MSU")])
+    s1 = _w1b_sched(datetime(2025, 2, 6, 8), [w, t1], [Relationship("W", "MSU")])
+    bwi = _w1b_bwi([s0, s1], target="MS")
+    assert bwi.rows[1].density is not None           # tracked via the pinned UID
+    assert bwi.rows[1].bwi == pytest.approx(1.0)

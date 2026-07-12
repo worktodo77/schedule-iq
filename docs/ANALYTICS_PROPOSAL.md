@@ -599,10 +599,19 @@ split methods, not snapshot TIA) and where SRA effort matters.
 ### 9.5 RDI — Recovery Debt Index
 Cumulative gap between promised and demonstrated pace.  Each update implies
 a required future pace to hold its forecast finish (remaining driving/near-
-critical work per remaining working time); compare against the best pace
-actually demonstrated over trailing windows (P50 and max).  Debt accrues
-each window the required pace exceeds anything ever achieved:
-**RDI = Σ max(0, required − demonstrated_max) × window length**, in days.
+critical work per remaining working time); compare against the pace actually
+demonstrated over trailing windows.  Debt accrues each window the required
+pace exceeds the sustainable (P50) demonstrated pace:
+**RDI = Σ max(0, required − demonstrated_P50) × window length**, in days,
+with the running max demonstrated pace reported as the optimistic bound
+(R2 ruling, ported 2026-07-12).  *Demonstrated pace* is the planned
+near-critical scope actually retired (completions, at original duration) per
+calendar working-day — the only basis commensurable with required pace;
+"actually" attaches to the completion dates (R1 ruling: an elapsed-time basis
+was rejected as concurrency-non-additive / overrun-rewarding).  The overrun
+signal ships as the **companion duration-overrun ratio** (Σ actual elapsed ÷
+Σ planned of the same completions), per window and per series — an
+efficiency diagnostic, never an accrual input.
 RDI is the portion of the current completion forecast resting on unproven
 acceleration.  A finish date that holds steady while RDI climbs is being
 defended by paper productivity (pairs with DUR-04 and the evergreen
@@ -675,6 +684,14 @@ Quantifies work piling up against a fixed milestone.  For a selected
 milestone with a stationary (often constrained or promised) date: per update,
 compute remaining near-critical work volume per remaining working period
 ahead of the milestone, normalized by the same ratio at baseline.
+*Conventions (B1/B2 rulings, ported 2026-07-12): the density denominator is
+a FIXED reference horizon — working days from the first update's data date
+to the target's constrained (promised) date, else its baseline finish, else
+its first-update forecast finish — held constant across updates, so a
+slipping milestone cannot dilute the bow wave (a slip with unchanged work
+reads BWI = 1.0, not relief).  The target is pinned by persistent UID from
+the first update and located UID-then-code thereafter, so it survives
+re-coding/renaming.*
 **BWI > 1 and rising = a bow wave: each update packs more work into less
 time while the milestone date holds.**  The companion statistic is the
 projected break date — the update at which required density exceeds anything

@@ -3,6 +3,40 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-05 RDI / LI-09 BWI rulings PORTED (Wave 1b of the LI-02..LI-10 audit)
+
+**Check-affecting / number-changing for LI-05 and LI-09 (both scored,
+weight 2) on real data.**  The RDI/BWI rulings adjudicated by the principal
+on the lineage-A branch (v0.4.2–v0.4.4, 2026-07-09) are ported as-ruled
+(port ruling Q-A; recorded ruling
+docs/rulings/LI-05-LI-09-rdi-bwi-port-2026-07-12.md; as-audited record
+imported at docs/audit/RDI_BWI_CDI_audit_2026-07-08.md).
+
+- **R2 — RDI accrues against the running P50** (median, sustainable)
+  demonstrated pace, with the running max reported as the optimistic bound
+  (the max-only anchor under-accrued).
+- **R1 — planned-scope demonstrated basis affirmed + companion
+  duration-overrun ratio** (Σ actual elapsed ÷ Σ planned of the window's
+  completions) per window and per series, disclosed as an efficiency
+  diagnostic and never an accrual input; missing actual starts degrade the
+  ratio with a DATA QUALITY disclosure.  Anchor: five parallel on-pace
+  completions → demonstrated 2.5, companion ratio 2.0 (the case where an
+  elapsed basis would have manufactured phantom debt).
+- **B1 — BWI fixed reference horizon** (constrained date, else baseline
+  finish, else first-update forecast finish, constant across updates): a
+  slipping milestone with unchanged work reads 1.0, no longer < 1
+  ("relief") off the moving forecast denominator.
+- **B2 — BWI target pinned by persistent UID** (located UID-then-code), so
+  a re-coded/renamed milestone no longer silently drops later densities.
+- **X1 — standing disclosures** on RdiResult/BwiResult (LOE exclusion,
+  basis statements, data-quality notes).
+- The Wave-0.5 NOT EVALUATED sentinel is retained (supersedes lineage-A's
+  0.0 on the uncomputable branch).  The kernel C1/mixed-path items land
+  separately (Wave 1c).  6 new regression tests; 1 Wave-0 test re-fixtured
+  (B2 now survives the re-code it used).  Pinned demo letters hold.
+
+Suite: 267 passed, 1 skipped.
+
 ## Unreleased — LI-02 LHL v0.4.5 rulings PORTED (Wave 1a of the LI-02..LI-10 audit)
 
 **Check-affecting / number-changing for LI-02 (scored, weight 2).**  The 12

@@ -165,6 +165,24 @@ def _late_type(a) -> bool:
     return bool(a.constraint.is_late_type or a.constraint2.is_late_type)
 
 
+def _median(vals: list[float]) -> float:
+    """P50 of a list; 0.0 for an empty list.  Used as RDI's sustainable-pace
+    accrual anchor (ported ruling R2)."""
+    if not vals:
+        return 0.0
+    xs = sorted(vals)
+    n = len(xs)
+    mid = n // 2
+    return xs[mid] if n % 2 else (xs[mid - 1] + xs[mid]) / 2.0
+
+
+_LOE_EXCLUSION_NOTE = (
+    "LOE, WBS-summary, hammock, and other summary activities are excluded: "
+    "they are not discrete executable work and carry no project criticality "
+    "(approved methodology, 2026-07-08; ported 2026-07-12)."
+)
+
+
 # ==========================================================================
 # result dataclasses
 # ==========================================================================
@@ -382,6 +400,12 @@ class RdiRow:
     demonstrated_pace: Optional[float]  # D_w for the window ending at this update
     accrual_days: float
     cumulative_days: float
+    # R1 companion disclosure (ported v0.4.4): near-critical duration-overrun
+    # ratio of the window's completions — sum(actual elapsed working days) /
+    # sum(planned duration days).  > 1 = the retired work ran long.  Efficiency
+    # diagnostic only, NEVER an accrual input.  None when the window retired
+    # nothing or no completion carried a usable actual start.
+    overrun_ratio: Optional[float] = None
 
 
 @dataclass
@@ -393,8 +417,10 @@ class RdiResult:
     # (audit RDI-1; sentinel ruling docs/rulings/LI-05-LI-06-not-evaluated-
     # 2026-07-12.md, rubric A1).
     rdi_days: Optional[float] = None
+    overrun_ratio: Optional[float] = None  # series-level companion ratio (R1)
     interpretation: str = ""
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -411,6 +437,7 @@ class BwiResult:
     projected_break_label: Optional[str] = None
     interpretation: str = ""
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1375,10 +1402,22 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
 # ==========================================================================
 def _demonstrated_series(sa, kernels: dict[int, _Kernel],
                          band_days: float) -> list[Optional[float]]:
-    """Per window (n-1), the pace actually demonstrated: total duration (days,
-    own calendar) of near-critical activities *completed within the window*
-    divided by the window's standard working days.  ``None`` when the window
-    length is non-positive."""
+    """Per window (n-1), the planned scope actually retired: total PLANNED
+    duration (days, own calendar) of near-critical activities *completed within
+    the window* divided by the window's standard working days.  ``None`` when
+    the window length is non-positive.
+
+    R1 ruling (ported v0.4.4): the planned-duration numerator is affirmed — it
+    is the only basis commensurable with required pace (the forecast holds iff
+    planned scope is retired at rate R, both per calendar working-day).
+    "Actually" attaches to the completion DATES; overruns are captured as
+    calendar time consumed per planned day retired (zero-completion windows
+    depress the P50 accrual anchor).  An elapsed-time numerator/denominator was
+    rejected: elapsed spans are concurrency-non-additive (parallel work
+    double-counts calendar time, accruing phantom debt on any concurrent
+    schedule) or reward overruns outright.  The overrun signal ships separately
+    as the companion duration-overrun ratio (:func:`_overrun_series`), a
+    disclosure — never an accrual input."""
     scheds = getattr(sa, "schedules", [])
     out: list[Optional[float]] = []
     for i in range(len(scheds) - 1):
@@ -1403,6 +1442,82 @@ def _demonstrated_series(sa, kernels: dict[int, _Kernel],
                 done += a.duration_days(l.cal_for(a))
         out.append(done / wd)
     return out
+
+
+def _overrun_series(sa, kernels: dict[int, _Kernel],
+                    band_days: float
+                    ) -> tuple[list[Optional[float]], int, Optional[float]]:
+    """R1 companion disclosure (ported v0.4.4): per window (n-1), the
+    near-critical duration-overrun ratio of the window's completions —
+    sum(actual elapsed working days, actual_start -> actual_finish) /
+    sum(planned duration days) over the same completions used by
+    :func:`_demonstrated_series`.  > 1 = the retired work ran long.  ``None``
+    when the window retired nothing or no completion carried a usable actual
+    start.  Returns (per-window ratios, count of completions skipped for a
+    missing actual start — surfaced as a DATA QUALITY disclosure, series-level
+    ratio over the summed windows).  Diagnostic only — never an accrual input.
+    """
+    scheds = getattr(sa, "schedules", [])
+    out: list[Optional[float]] = []
+    missing_starts = 0
+    tot_planned = 0.0
+    tot_elapsed = 0.0
+    for i in range(len(scheds) - 1):
+        e, l = scheds[i], scheds[i + 1]
+        planned = 0.0
+        elapsed = 0.0
+        for a in l.activities.values():
+            if a.is_loe_or_summary or not a.completed:
+                continue
+            rf = kernels[id(l)].rf.get(a.code)
+            if rf is None or rf > band_days:
+                continue
+            af = a.actual_finish
+            if af is None or e.data_date is None or l.data_date is None \
+                    or not (e.data_date < af <= l.data_date):
+                continue
+            if a.actual_start is None:
+                missing_starts += 1
+                continue
+            planned += a.duration_days(l.cal_for(a))
+            elapsed += _working_days_5d(a.actual_start, af)
+        tot_planned += planned
+        tot_elapsed += elapsed
+        out.append(elapsed / planned if planned > 0 else None)
+    series = (tot_elapsed / tot_planned) if tot_planned > 0 else None
+    return out, missing_starts, series
+
+
+def _rdi_disclosures(scheds, missing_starts: int = 0) -> list[str]:
+    notes = [
+        _LOE_EXCLUSION_NOTE,
+        "Completed activities are excluded from the required-pace side and "
+        "counted on the demonstrated-pace side (they are the achievement).",
+        "Demonstrated pace = planned near-critical scope actually retired "
+        "(completions, at original duration) per calendar working-day — the same "
+        "units as required pace.  Overruns are captured as calendar time consumed "
+        "per planned day retired; the companion duration-overrun ratio (actual "
+        "elapsed / planned of the same completions) is reported per window and "
+        "for the series as an efficiency diagnostic, never an accrual input "
+        "(R1 ruling, 2026-07-09; ported 2026-07-12).",
+        "Debt accrues against the running P50 (median) of the demonstrated pace "
+        "— the sustainable pace — with the running max reported as the optimistic "
+        "bound; required pace is sampled at the window start and demonstrated pace "
+        "through the window end.",
+        "RDI depends on each update's remaining durations and project finish "
+        "date; if the project finish is absent, required pace is not computed "
+        "for that update, and if remaining duration is left unmaintained (0) on "
+        "incomplete near-critical work, required pace is understated.",
+    ]
+    missing = [s.label() for s in scheds if getattr(s, "finish_date", None) is None]
+    if missing:
+        notes.append("DATA QUALITY: no project finish date on update(s): "
+                     + ", ".join(missing) + " — required pace omitted there.")
+    if missing_starts:
+        notes.append(f"DATA QUALITY: {missing_starts} near-critical completion(s) "
+                     "carried no actual start — omitted from the duration-overrun "
+                     "ratio (the ratio may under-represent the overrun).")
+    return notes
 
 
 # ==========================================================================
@@ -1432,43 +1547,62 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
         required.append(rem / wd)
 
     demonstrated = _demonstrated_series(sa, kernels, band_days)
+    overrun, missing_starts, series_overrun = _overrun_series(sa, kernels,
+                                                              band_days)
 
+    # R2 ruling (ported v0.4.3): accrue debt against the running P50 (median)
+    # of the demonstrated series — the sustainable pace — not the single best
+    # window ever (max), which under-accrued.  Max is still tracked and
+    # reported as the optimistic bound.  P50 <= max, so accrual is (correctly)
+    # more conservative.
     rows: list[RdiRow] = []
     cumulative = 0.0
     max_demo = 0.0
+    demo_seen: list[float] = []
     rows.append(RdiRow(label=scheds[0].label(), required_pace=required[0],
                        demonstrated_pace=None, accrual_days=0.0,
                        cumulative_days=0.0))
     for i in range(len(scheds) - 1):
         d = demonstrated[i]
         if d is not None:
+            demo_seen.append(d)
             max_demo = max(max_demo, d)
+        p50_demo = _median(demo_seen)
         r_prev = required[i]
         win_wd = _working_days_5d(scheds[i].data_date, scheds[i + 1].data_date)
         accrual = 0.0
         if r_prev is not None and win_wd > 0:
-            accrual = max(0.0, r_prev - max_demo) * win_wd
+            accrual = max(0.0, r_prev - p50_demo) * win_wd
         cumulative += accrual
         rows.append(RdiRow(label=scheds[i + 1].label(),
                            required_pace=required[i + 1],
                            demonstrated_pace=d, accrual_days=accrual,
-                           cumulative_days=cumulative))
+                           cumulative_days=cumulative,
+                           overrun_ratio=overrun[i]))
 
     if all(r is None for r in required):
         # NOT EVALUATED, never 0.0: an uncomputable series must not read as
         # "no recovery debt" (audit RDI-1; A1 — undefined is explicit).
-        return RdiResult(rows=rows, rdi_days=None,
+        return RdiResult(rows=rows, rdi_days=None, overrun_ratio=series_overrun,
                          reason="NOT EVALUATED — no update had a usable data "
                                 "date -> forecast finish span to compute a "
                                 "required pace; recovery debt is undefined, "
-                                "not zero")
+                                "not zero",
+                         disclosures=_rdi_disclosures(scheds, missing_starts))
     interp = (f"Recovery debt stands at {cumulative:.1f} working days — the "
               "portion of the current completion forecast resting on a pace the "
-              "Project has not demonstrated"
-              + (" (debt has accrued: the forecast requires acceleration beyond "
-                 "the best window achieved)." if cumulative > 0
-                 else "; no window required more than the best pace demonstrated."))
-    return RdiResult(rows=rows, rdi_days=cumulative, interpretation=interp)
+              "Project has not sustainably demonstrated (accrued against the P50 "
+              f"demonstrated pace; best window ever = {max_demo:.3f} as the "
+              "optimistic bound)"
+              + (": the forecast requires acceleration beyond the median window "
+                 "achieved." if cumulative > 0
+                 else "; no window required more than the median pace demonstrated."))
+    if series_overrun is not None:
+        interp += (f"  Companion duration-overrun ratio of retired near-critical "
+                   f"work: {series_overrun:.2f}x planned (diagnostic only).")
+    return RdiResult(rows=rows, rdi_days=cumulative, overrun_ratio=series_overrun,
+                     interpretation=interp,
+                     disclosures=_rdi_disclosures(scheds, missing_starts))
 
 
 # ==========================================================================
@@ -1499,6 +1633,45 @@ def _find_by_code(s: Schedule, code: str):
     return None
 
 
+def _bwi_fixed_horizon(anchor) -> tuple[Optional[datetime], str]:
+    """B1 ruling (ported v0.4.3): BWI normalizes against a FIXED reference
+    horizon, not each update's moving forecast finish, so a slipping milestone
+    can no longer dilute the bow-wave signal it exists to catch.  Reference
+    date, in priority order (returned with a label for disclosure):
+      1. the target's constrained/promised date (late-type constraint_date),
+      2. else its linked baseline finish,
+      3. else its first-update forecast finish.
+    """
+    if anchor is None:
+        return None, "none"
+    if _late_type(anchor) and anchor.constraint_date is not None:
+        return anchor.constraint_date, "constrained (promised) date"
+    if anchor.baseline_finish is not None:
+        return anchor.baseline_finish, "baseline finish"
+    return anchor.finish, "first-update forecast finish"
+
+
+def _bwi_disclosures(target_code, densities, labels, ref_basis=None) -> list[str]:
+    notes = [
+        _LOE_EXCLUSION_NOTE,
+        "BWI normalizes against a FIXED reference horizon (working days from the "
+        "first update's data date to the target's "
+        + (ref_basis or "constrained/baseline/first-update finish")
+        + "), held constant across updates, so a slipping milestone cannot "
+        "dilute the bow-wave signal; the ratio isolates near-critical work "
+        "packed ahead of the milestone.",
+        "BWI depends on remaining durations of near-critical work and the "
+        "target milestone's finish; where the target has no usable finish in an "
+        "update, that update's density is omitted.",
+    ]
+    missing = [labels[i] for i, d in enumerate(densities) if d is None]
+    if missing:
+        notes.append(f"DATA QUALITY: target {target_code} had no usable forecast "
+                     "finish / near-critical density on update(s): "
+                     + ", ".join(missing) + ".")
+    return notes
+
+
 def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
          bwi_target: Optional[str]) -> BwiResult:
     scheds = getattr(sa, "schedules", [])
@@ -1508,14 +1681,35 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
     if target is None:
         return BwiResult(reason="no target milestone could be resolved")
 
+    # B2 target-resolution robustness (ported ruling): pin the target's
+    # PERSISTENT UID from the first update (matching by code, then by uid if
+    # the caller passed a uid), then locate it in each later update by UID
+    # first and fall back to code.  This survives an activity being
+    # re-coded/renamed between updates.  BWI mathematics are unchanged.
+    anchor = _find_by_code(scheds[0], target) or scheds[0].activities.get(target)
+    anchor_uid = anchor.uid if anchor is not None else None
+    target_code = anchor.code if anchor is not None else target
+
+    # B1 (ported v0.4.3): fixed reference horizon.  The density denominator is
+    # a single constant — working days from the first update's data date to the
+    # target's FIXED reference date — held across every update, so "working
+    # days to target" no longer moves and BWI isolates the numerator
+    # (near-critical work packed ahead of the milestone).  A slipping milestone
+    # with unchanged work now reads 1.0, not < 1.0.
+    ref_date, ref_basis = _bwi_fixed_horizon(anchor)
+    wd_const = _working_days_5d(scheds[0].data_date, ref_date) if ref_date else 0.0
+    if wd_const <= 0:
+        return BwiResult(target_code=target_code,
+                         reason=f"target {target_code} has no usable fixed "
+                                "reference horizon (constrained/baseline/first-"
+                                "update finish) to normalize against",
+                         disclosures=_bwi_disclosures(target_code, [], [], ref_basis))
+
     densities: list[Optional[float]] = []
     for s in scheds:
-        tgt = _find_by_code(s, target)
+        tgt = (s.activities.get(anchor_uid) if anchor_uid else None) \
+            or _find_by_code(s, target_code)
         if tgt is None or tgt.finish is None:
-            densities.append(None)
-            continue
-        wd = _working_days_5d(s.data_date, tgt.finish)
-        if wd <= 0:
             densities.append(None)
             continue
         k = kernels[id(s)]
@@ -1530,21 +1724,26 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
             if fin is None or fin > tgt.finish:
                 continue
             vol += a.remaining_days(s.cal_for(a))
-        densities.append(vol / wd)
+        densities.append(vol / wd_const)
 
+    labels = [s.label() for s in scheds]
     base = densities[0]
     if base is None:
-        return BwiResult(target_code=target,
-                         rows=[BwiRow(scheds[i].label(), densities[i], None)
+        return BwiResult(target_code=target_code,
+                         rows=[BwiRow(labels[i], densities[i], None)
                                for i in range(len(scheds))],
-                         reason=f"target {target} has no usable forecast finish / "
-                                "near-critical work at the first update")
+                         reason=f"target {target_code} has no usable forecast finish / "
+                                "near-critical work at the first update",
+                         disclosures=_bwi_disclosures(target_code, densities,
+                                                      labels, ref_basis))
     if base == 0:
-        return BwiResult(target_code=target,
-                         rows=[BwiRow(scheds[i].label(), densities[i], None)
+        return BwiResult(target_code=target_code,
+                         rows=[BwiRow(labels[i], densities[i], None)
                                for i in range(len(scheds))],
-                         reason=f"baseline near-critical density ahead of {target} "
-                                "is zero — BWI is undefined (nothing to normalize)")
+                         reason=f"baseline near-critical density ahead of {target_code} "
+                                "is zero — BWI is undefined (nothing to normalize)",
+                         disclosures=_bwi_disclosures(target_code, densities,
+                                                      labels, ref_basis))
 
     rows = [BwiRow(label=scheds[i].label(), density=densities[i],
                    bwi=(densities[i] / base if densities[i] is not None else None))
@@ -1565,17 +1764,19 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
             break
 
     last_bwi = next((r.bwi for r in reversed(rows) if r.bwi is not None), None)
-    interp = (f"Work packed ahead of {target} is "
+    interp = (f"Work packed ahead of {target_code} is "
               f"{last_bwi:.2f}x the baseline density"
               if last_bwi is not None else
-              f"Bow-wave density ahead of {target} could not be tracked")
+              f"Bow-wave density ahead of {target_code} could not be tracked")
     if break_label:
         interp += (f"; required density first outruns the demonstrated pace at "
                    f"{break_label} (projected break).")
     else:
         interp += "; required density stays within the demonstrated pace."
-    return BwiResult(target_code=target, rows=rows,
-                     projected_break_label=break_label, interpretation=interp)
+    return BwiResult(target_code=target_code, rows=rows,
+                     projected_break_label=break_label, interpretation=interp,
+                     disclosures=_bwi_disclosures(target_code, densities,
+                                                  labels, ref_basis))
 
 
 # ==========================================================================

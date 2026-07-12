@@ -121,12 +121,15 @@ def test_w1_none_pci_window_degrades_one_cell_not_all_ten(matrix):
 
 
 def test_w1_none_bwi_density_row_renders_dash(matrix):
-    """A BWI target absent (re-coded) in a later update yields a None
-    density/bwi row; the finding renders dashes instead of raising."""
+    """A BWI target with no usable finish in a later update yields a None
+    density/bwi row; the finding renders dashes instead of raising.  (The
+    original Wave-0 fixture used a re-code to produce the None row; the
+    ported B2 UID pinning now survives a re-code — the intended improvement —
+    so the None row is produced by a lost finish date instead.)"""
     dd = datetime(2025, 1, 6, 8)
     w0 = _a("W", "W", 2.0, ef=datetime(2025, 5, 30, 17))
     t0 = _m("MS", "MS", ef=datetime(2025, 6, 1, 17))
-    t1 = _m("MS", "MS-NEW", ef=datetime(2025, 6, 1, 17))     # re-coded, same UID
+    t1 = _m("MS", "MS", ef=None)                     # finish lost in update 2
     s0 = _s(dd, [w0, t0], [Relationship("W", "MS")])
     s1 = _s(datetime(2025, 2, 6, 8), [w0, t1], [Relationship("W", "MS")])
     res = _by_id(_sa([s0, s1]), matrix)

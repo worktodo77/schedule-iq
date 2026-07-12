@@ -1247,3 +1247,27 @@ method's.  Stated, not solved.
 22. Does the flagship paper mention WAM as the optional evidence layer
     for the progress column (one paragraph), or keep the paper's surface
     minimal and hold WAM entirely for follow-up work?
+
+---
+
+## 12. Artifacts (2026-07-12)
+
+The flagship concept (§10–11) is now drafted as a step-by-step
+methodology and packaged for external adversarial review:
+
+- **`docs/CCM_METHODOLOGY.md`** — the method spec, working draft v0.1:
+  definitions, prerequisites (engine handshake, sealed parameter table),
+  the three-phase procedure (measure → bifurcate → enumerate → collapse →
+  decompose → ledger), conventions and edge cases, outputs with
+  recheckable identities, limitations register, corrected worked example,
+  QA/acceptance tests.  Written tool-agnostically, as the paper's method
+  section would be; contains no LI index mathematics.
+- **`docs/CCM_PEER_REVIEW_PROMPT.md`** — self-contained adversarial
+  peer-review prompt for an external LLM (or human reviewer): three-hat
+  reviewer role (hostile expert / FSA subcommittee / practical
+  scheduler), 29R-03 primer, six explicit novelty claims (N1–N6) each
+  requiring a verdict, nine review tasks (including constructing minimal
+  counterexample networks against the inclusion-exclusion math and
+  rechecking the worked example), and a mandatory findings/kill-list
+  output format.  Embeds the methodology verbatim; regenerate when the
+  methodology changes.

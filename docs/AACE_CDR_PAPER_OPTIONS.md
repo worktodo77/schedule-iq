@@ -993,3 +993,145 @@ sweep last).
     asks for.  Is LI comfortable publishing measurement that runs ahead of
     doctrine (arguing doctrine should catch up), or must every output map
     to an existing doctrinal question?
+
+---
+
+## 10. Fifth pass (2026-07-12): the 3.3 × 3.9 hybrid — Contemporaneous Collapse
+
+Prompt: MIP 3.3's simple elegance is attractive, and so are MIP 3.9's
+analytical depth and concurrency attribution.  Those preferences point at a
+specific structural observation:
+
+**The observational/modeled dichotomy conflates two different jobs.**
+*Measuring* delay is done best observationally — use the record as-is, no
+analyst-manufactured artifacts (3.3's elegance).  *Attributing* delay is
+done best counterfactually — but-for extraction (3.9's depth).  Every
+existing MIP picks one tool and makes it do both jobs.  The hybrid assigns
+each job its best tool, window by window.
+
+### 10.1 The method: Contemporaneous Collapse (CCM)
+
+One-line pitch: **3.9's depth at 3.3's cadence, on 3.3's evidence.**
+
+3.9's fatal weakness is its collapse basis: an analyst-built as-built model
+whose logic is invented after the fact — the most manufactured artifact in
+delay practice — and a counterfactual that rewinds years into fiction.
+CCM's move: **collapse the contemporaneous updates instead.**
+
+Per window (update N → update N+1):
+
+1. **Measure observationally (the 3.3 step, untouched).**  Net milestone
+   slip from the tool-of-record updates as-is: the control total.
+2. **Enumerate the window's events mechanically.**  From the change
+   register (imposed scope/logic changes, directives) and the progress
+   variance decomposition (band-path activities that consumed more working
+   time than the update-N plan), each event party-coded.  The extraction
+   set derives from data both parties already exchanged — killing 3.9's
+   biggest subjectivity, event framing.
+3. **Attribute counterfactually (the 3.9 step, made shallow).**  On update
+   N+1, run de-impact collapses per party bucket: remove owner events
+   (restore to update-N planned pace/logic — a mechanical, published
+   convention), remove contractor events, remove both.  Four schedule runs
+   per window; with a validated diagnostic engine, seconds.
+4. **Report by inclusion-exclusion.**  With S(X) = window slip under event
+   set X: owner-exclusive = S(O,C) − S(C); contractor-exclusive =
+   S(O,C) − S(O); **concurrent = S(O) + S(C) − S(O,C)** — measured
+   functional concurrency *is the inclusion-exclusion overlap term*, not a
+   doctrine.  The identity balances by construction:
+   exclusive_O + exclusive_C + overlap (+ residual) = control total.
+   Three buckets (owner/contractor/neutral) give a pairwise + triple
+   overlap matrix — still mechanical.  If a single number per party is
+   demanded, Shapley splits the overlap terms symmetrically; the raw
+   marginal table is always published first (transparency before
+   allocation), and doctrine (Malmaison, apportionment, time-no-money) is
+   applied to the measured overlap, per §7.3/§8.5.
+
+> Worked micro-example — Window 7, control total +12 wd:
+> collapse runs give S(C-only) = 5, S(O-only) = 9, S(none) = 0.
+> Owner-exclusive 12−5 = **7 wd** · contractor-exclusive 12−9 = **3 wd** ·
+> concurrent 9+5−12 = **2 wd** · residual 0 · **sum 12 ✓**.
+> One readable sentence: "This month slipped 12 days: 7 only the owner's
+> events caused, 3 only the contractor's, 2 both would have caused."
+
+5. **Optional bidirectional check.**  Run the additive mirror (insert the
+   window's events into update N, forward-predict slip) and compare with
+   the subtractive result: the gap is model error, reported per window — a
+   convergence signal (F1-ensemble localized) and a Daubert error-rate
+   breadcrumb without full PBF machinery.
+
+### 10.2 Why the shallow counterfactual is the defensible one
+
+A full collapsed as-built asks the model to rewind years; every rewound
+month compounds the fiction (logic that would have changed, resequencing
+that would have happened).  CCM's counterfactual is **one window deep**:
+"where would the milestone stand at month-end but-for this month's events"
+— asked of the very network the parties were jointly managing to that
+month.  The base document is not the analyst's model of the project; it is
+the project's model of itself, exchanged contemporaneously.  Cross-window
+ripple effects (owner delay in window 3 pushing work into winter in window
+7) are explicitly *not* re-litigated — window attributions bank forward,
+the same convention all windows practice already applies, stated as a
+limitation rather than hidden.
+
+### 10.3 Fit with everything else in this memo
+
+- **§8's Delay Ledger is CCM's reporting format**: CCM supplies
+  but-for-grade bookings; the ledger supplies the monthly close, balancing
+  discipline, and append-only custody.  The half-step (MIP 3.4) is
+  revealed as a 2-variant special case of CCM's collapse set (progress
+  vs. revisions); CCM generalizes it to party-coded marginal analysis.
+- **Upgrade path within F1**: CCM (deterministic points) → dual-convention
+  /bracket runs (intervals) → PBF (distributions).  One idea family, three
+  maturity stages — the flagship can ship stage 1 and *describe* the rest.
+- **Zero new field burden** — the decisive contrast with WAM (§9): CCM
+  needs no daily data discipline, no reason codes, nothing the project
+  doesn't already produce.  It extracts 3.9-grade attribution from the
+  update series every CPM-specified project already exchanges monthly.
+  WAM remains the richer method *where* the daily record exists; CCM is
+  the method for the projects that exist.
+- **Tooling**: the engine is the gate.  The firm's mip39 tool already
+  contains PDM scheduling, ABCS destatusing, and longest-path extraction
+  (ANALYTICS_PROPOSAL §0 port plan) — CCM is arguably the natural
+  destination of that port, and the "user-friendly" claim rests on
+  automation: mechanics by machine, judgment only at event coding, outputs
+  a superintendent can read.
+
+### 10.4 Attack surface (honest register)
+
+1. **De-impact conventions are modeling judgments** ("what pace would the
+   contractor have achieved but-for the interference?" — the entanglement
+   problem).  Answer: a published, symmetric, mechanical convention
+   (restore to update-N planned pace), with the dual-convention bracket as
+   the sensitivity disclosure when contested.
+2. **Update quality garbage-in** — same as 3.3; same intake-gate answer
+   (§8.6.1), and the residual line catches what the collapse cannot
+   explain.
+3. **Additive-in-windows is practiced** (3.7 run per window is known
+   practice, and half-step is codified).  The novelty claims are
+   specifically: subtractive collapse on *contemporaneous updates* rather
+   than a constructed as-built; the full marginal / inclusion-exclusion
+   protocol as *codified concurrency measurement*; determinism and
+   automation discipline.  The prior-art sweep must test exactly those
+   three (practitioner "but-for windows" variants, mip39-adjacent
+   methodology papers, contemporaneous period analysis literature).
+4. **Cross-window ripple exclusion** — stated convention (§10.2), shared
+   with all windows methods; opposing experts will raise it regardless.
+
+### 10.5 Where this leaves the flagship question (Q14 revised)
+
+CCM changes the answer-space of Q14: it dominates §8's ledger-alone option
+(the ledger becomes its reporting layer) and outflanks WAM on adoptability
+(zero new data burden vs. a new daily discipline).  Revised recommendation:
+**flagship = CCM + Ledger** ("Contemporaneous Collapse, reported as a
+monthly delay close"), with WAM and PBF as named future work.  The paper
+inherits §8's gates (determinism experiment, residual size, one-page
+example) plus one new hard gate: **the engine port with its validation
+handshake must exist at least at prototype level**, because CCM without a
+validated engine is a paper about software that doesn't run yet.
+
+18. Does the CCM framing change the engine-port priority (ADR-0007 /
+    ANALYTICS_PROPOSAL §0) from "analytical roadmap item" to "paper
+    prerequisite," and is that acceptable scope for this effort?
+19. Is "Contemporaneous Collapse" the right name, or does LI want the
+    method named for what it outputs (e.g., "Marginal Window Analysis,"
+    "But-For Windows") rather than its mechanics?

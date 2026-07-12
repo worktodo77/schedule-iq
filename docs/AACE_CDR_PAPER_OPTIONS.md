@@ -1135,3 +1135,115 @@ validated engine is a paper about software that doesn't run yet.
 19. Is "Contemporaneous Collapse" the right name, or does LI want the
     method named for what it outputs (e.g., "Marginal Window Analysis,"
     "But-For Windows") rather than its mechanics?
+
+---
+
+## 11. Sixth pass (2026-07-12): folding in the half-step — the two-axis lattice
+
+Prompt: add MIP 3.4's defining element — the half-step separation of
+progress from revisions — into §10's Contemporaneous Collapse.
+
+### 11.1 What the half-step adds: a second axis
+
+§10's CCM decomposes each window along one axis: **party** (owner /
+contractor / neutral).  The half-step decomposes along a different axis:
+**mechanism** — slip caused by actual performance against the then-current
+plan (progress half) vs. slip caused or recovered by non-progress edits
+(revision half).  Neither axis subsumes the other; crossing them yields a
+**mechanism × party matrix per window**, and each cell is forensically
+distinct territory:
+
+| | Progress-driven | Revision-driven |
+|---|---|---|
+| **Owner** | Interference with existing scope: suspensions, access, holds on active work | Added scope, directives, change orders — the compensable heartland |
+| **Contractor** | Performance shortfall — classic contractor delay | Resequencing/replanning; *negative* bookings = mitigation; persistent slip-recovery by edit = manipulation signature |
+| **Neutral** | Weather on active work | Calendar/exception revisions |
+
+Mechanics: build the MIP 3.4 half-step schedule (update N's network,
+N+1's progress only — the mip39 tool's ABCS destatusing machinery), which
+bifurcates the control total mechanically before any party coding.  Then
+run §10.1's party-bucket collapses *within each half*: progress-half
+collapses restore underperforming activities to planned pace per party;
+revision-half collapses remove each party's named change-register edits.
+Inclusion-exclusion balances each half, halves sum to the control total,
+concurrency overlaps report per half.
+
+> Worked example, extended — Window 7, control total +12 wd.
+> Half-step: progress-driven +9, revision-driven +3.
+> Progress half: contractor-exclusive **6**, owner-exclusive **1** (RFI
+> hold on active work), concurrent **2** → 9 ✓.
+> Revision half: owner-exclusive **+4** (CO-14), contractor-exclusive
+> **−1** (resequencing recovery), concurrent 0 → 3 ✓.  Grand total 12 ✓.
+> Readable: "12 days this month: 6 contractor performance, 1 owner hold,
+> 2 concurrent on active work; 4 owner added scope, less 1 recovered by
+> contractor resequencing."
+
+### 11.2 Three things the combination buys beyond either parent
+
+1. **It stratifies attribution by evidentiary confidence.**  The revision
+   half's party coding is near-mechanical — every edit is a named, logged
+   change-register entry with an author.  The progress half is where
+   entanglement lives ("*why* did piling underperform?").  The matrix
+   makes that asymmetry explicit instead of smearing it — and it is
+   exactly where WAM (§9) docks: the daily U/A availability codes are the
+   evidence layer for the progress column specifically.  The methods
+   compose rather than compete.
+2. **The manipulation detector is built into the method.**  Persistent
+   positive progress-half bookings offset by persistent negative
+   revision-half bookings is the evergreen signature — slip continually
+   erased by paper — now quantified per window inside the attribution
+   itself (ties to the evergreen detector, RDI, and SMI as corroborating
+   diagnostics).  3.4 practitioners know this pattern; no method reports
+   it as a standing output.
+3. **It repairs the half-step's own known defect.**  Classic 3.4 applies
+   progress first, then revisions — but the split is order-dependent
+   (revisions applied before progress can shift the critical path
+   differently), and the progress-first convention is an unexamined
+   tradition.  The marginal framework treats {progress, revisions} as two
+   more event buckets: run both orders (or the full lattice), report the
+   order-sensitivity, Shapley-average if a single split is demanded.  The
+   protocol default stays progress-first for continuity with 3.4, with
+   order-sensitivity disclosed — an honest upgrade the FSA community can
+   verify on its own cases.
+
+### 11.3 Cost, tooling, and the automation claim
+
+The full lattice (2 mechanisms × 3 parties = 6 buckets → the informative
+subset of exclusive marginals plus pairwise overlaps) is roughly 10–15
+engine runs per window per milestone.  No human analyst has ever done
+exhaustive marginal analysis because it was fifteen schedule runs a window;
+for a validated engine it is seconds.  This is the honest form of the
+user-friendliness claim: **the machine runs the lattice, judgment lives
+only at event coding, and the field reads a quadrant chart.**  The engine
+port (Q18) remains the hard gate; the half-step integration adds the
+destatusing path, which the mip39 core already implements.
+
+### 11.4 Effect on the flagship
+
+The flagship concept (Q14, revised in §10.5) becomes: **three-parent
+synthesis — 3.3's measurement, 3.4's mechanism bifurcation, 3.9's
+counterfactual party attribution — reported as §8's monthly delay close.**
+That parentage is the paper's acceptance strategy: every element is either
+an existing codified MIP's best feature or a mechanical protocol on top of
+one; the method reads as evolution, not invention.  Candidate framing for
+the title: the window "halved by 3.4, then quartered by party" — the
+**Quartered Windows** presentation (owner/contractor canonical view,
+neutral folded into an annex row).
+
+One entanglement caveat for the limitations section: some revisions are
+*responses* to progress slip (resequencing because of it).  The matrix
+books mechanism, not motive — the response relationship is the protocol
+layer's job (IL's emergence-to-response log), not the attribution
+method's.  Stated, not solved.
+
+### 11.5 Open questions (fifth set)
+
+20. Presentation default: 2×2 quartered-window chart (neutral folded into
+    an annex) or the full 2×3 matrix?  The quartered chart is the
+    memorable artifact; the matrix is the complete one.
+21. Order convention: progress-first (3.4 continuity) with disclosed
+    sensitivity, or order-symmetrized split as the default?  Continuity
+    is recommended — the paper should spend its novelty budget elsewhere.
+22. Does the flagship paper mention WAM as the optional evidence layer
+    for the progress column (one paragraph), or keep the paper's surface
+    minimal and hold WAM entirely for follow-up work?

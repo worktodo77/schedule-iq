@@ -476,11 +476,21 @@ series_curve_overrides:
     rationale: "FRB empirical forecast-error band width (largest bucket),
       working days.  Same working-day-scale caveat as LI-01."
   LI-04:
-    points: [[0.05, 0], [0.15, 100], [0.35, 100], [0.6, 0]]
-    rationale: "PCI (Herfindahl concentration of criticality across the top
-      float paths) is two-sided per design §4: too diffuse (no coherent
-      critical path) and too concentrated (manufactured consolidation) are
-      both concerning; [0.15, 0.35] is full credit."
+    # PROVISIONAL / UNGRADED (kernel v2, 2026-07-12, design ruling D4).  The
+    # Wave-3 kernel revision changed PCI's basis: shares are now weighted on
+    # the nonnegative driver-relative path margins of a convergence-bounded
+    # enumeration (no top-10 floor at 0.1, no w>1 negative-float premium).
+    # The prior two-sided anchors [0.05, 0.15, 0.35, 0.6] were tuned to the
+    # retired scale and are INVALIDATED; no points curve is provided, so the
+    # engine leaves LI-04 ungraded (reported informationally with its
+    # severity strip and disclosures) pending anchor recalibration against
+    # real series (the LI-01 precedent).
+    provisional: true
+    rationale: "PROVISIONAL — ungraded pending anchor recalibration after the
+      kernel v2 basis change (docs/rulings/LI-kernel-v2-2026-07-12.md).  PCI
+      remains two-sided in design (too diffuse and too concentrated both
+      concern); new anchors are calibrated against real series before the
+      member re-enters the score."
   LI-05:
     points: [[0, 100], [20, 70], [60, 0]]
     rationale: "RDI cumulative recovery debt, working days.  Same

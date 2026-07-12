@@ -953,8 +953,8 @@ checks:
   - id: LI-04
     name: "PCI — Path Concentration Index"
     category: "LI Proprietary Indices"
-    description: "Herfindahl concentration of criticality across the top float paths (same kernel family as FCBI).  Paths with no discrete-work member (pure LOE/summary or bare-milestone chains) are excluded so summary activities cannot inflate the path count; on a kept mixed path an LOE no longer drives the members' relative float (the kernel takes the min total float over non-summary members — milestones retained as criticality references).  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation."
-    formula: "sum of squared kernel-weight shares over the top-10 discrete-work float paths, per update (LOE/summary-only paths dropped)"
+    description: "Herfindahl concentration of criticality across the enumerated float paths to the stable completion milestone (kernel v2: the locked FCBI basis — nonnegative driver-relative path margins on fixed reference hours, discrete-work paths only, proven convergence frontier in place of a raw top-N, weights in (0,1] with negative-float severity reported beside as N/dN+).  Falling PCI is a leading indicator of critical-path instability; a sudden rise alongside logic churn suggests engineered consolidation.  PROVISIONAL for scoring pending anchor recalibration."
+    formula: "sum of squared weight shares, w_p = 2^(-(margin_p - margin_driving)/lambda), over the convergence-bounded discrete-work float-path enumeration to the completion milestone, per update; cap hit -> PROVISIONAL"
     unit: ratio
     threshold: null
     direction: info
@@ -966,7 +966,7 @@ checks:
   - id: LI-05
     name: "RDI — Recovery Debt Index"
     category: "LI Proprietary Indices"
-    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the running P50 (median, sustainable) demonstrated pace, with the running max reported as the optimistic bound.  Demonstrated pace = planned near-critical scope actually retired per calendar working-day (R1 ruling: the only basis commensurable with required pace); the companion duration-overrun ratio (actual elapsed / planned of the window's completions) is disclosed per window and per series as an efficiency diagnostic, never an accrual input.  LOE/summary activities are excluded (not discrete work); an LOE on a mixed near-critical path no longer drives the members' relative float (kernel neutralization over non-summary members).  Depends on maintained remaining durations and a project finish date (data-quality disclosures emitted when absent)."
+    description: "Cumulative days of completion forecast resting on never-demonstrated pace: accrues when required near-critical pace exceeds the running P50 (median, sustainable) demonstrated pace, with the running max reported as the optimistic bound.  Demonstrated pace = planned near-critical scope actually retired per calendar working-day (R1 ruling: the only basis commensurable with required pace); the companion duration-overrun ratio (actual elapsed / planned of the window's completions) is disclosed per window and per series as an efficiency diagnostic, never an accrual input.  Kernel v2 population: near-critical membership is the nonnegative enumerated distance to the stable completion milestone (unresolved work is excluded and disclosed, never assigned its own float; non-target governance quarantines); a completion counts as demonstrated if it was near-critical at its window's EARLIER endpoint (nonanticipative — independent of exporter float-nulling at completion).  LOE/summary activities are excluded (not discrete work).  Depends on maintained remaining durations and a project finish date (data-quality disclosures emitted when absent)."
     formula: "sum over windows of max(0, required pace - P50 demonstrated pace) x window working days; max demonstrated reported as bound; NOT EVALUATED (no value) when no update yields a usable required pace — an uncomputable series is never reported as 0 days of debt"
     unit: days
     threshold: null
@@ -992,8 +992,8 @@ checks:
   - id: LI-07
     name: "CDI — Criticality Dwell Index"
     category: "LI Proprietary Indices"
-    description: "Each activity's share of total project criticality-time (one unit allocated per update across the near-critical band by kernel weight), over discrete work and milestone markers.  LOE/summary activities are excluded (not discrete work).  Completed activities are RETAINED: CDI is retrospective criticality-time (where risk dwelt over the project's life, including now-finished work), unlike the forward-looking FCBI/RDI/BWI.  The leaderboard is the delay analysis's cast of characters."
-    formula: "accumulated kernel-weighted allocation per activity (discrete work + milestone markers; LOE/summary excluded) / windows allocated; scalar = top-decile share"
+    description: "Each activity's share of total project criticality-time (one unit allocated per update across the near-critical band by kernel-v2 weight), over LIVE discrete work resolved on the enumeration to the stable completion milestone (unresolved and governed work is quarantined and counted, never priced; milestone markers are references, not work — their deadline pressure reaches the analysis via governance and the severity strip).  Dwell ACCRUES WHILE LIVE: a completed activity retains every unit earned while live — retrospective criticality-time is the accumulated live history — but stops earning after completion.  The leaderboard is the delay analysis's cast of characters."
+    formula: "accumulated kernel-v2-weighted allocation per live resolved ungoverned discrete activity / windows allocated; scalar = top-decile share; quarantine counts disclosed"
     unit: ratio
     threshold: null
     direction: info
@@ -1018,7 +1018,7 @@ checks:
   - id: LI-09
     name: "BWI — Bow-Wave Index"
     category: "LI Proprietary Indices"
-    description: "Remaining near-critical work per remaining working period ahead of a milestone, normalized to the first update.  The denominator is a FIXED reference horizon (working days from the first update's data date to the target's constrained/baseline/first-forecast date), held constant across updates, so a slipping milestone cannot dilute the signal — the ratio isolates the near-critical work packed ahead of the milestone.  LOE/summary activities are excluded (not discrete work); the target is pinned by persistent UID so it survives re-coding/renaming.  Rising BWI = compression that must eventually break; projected break reported against demonstrated pace."
+    description: "Remaining near-critical work per remaining working period ahead of a milestone, normalized to the first update.  The denominator is a FIXED reference horizon (working days from the first update's data date to the target's constrained/baseline/first-forecast date), held constant across updates, so a slipping milestone cannot dilute the signal — the ratio isolates the near-critical work packed ahead of the milestone.  Kernel v2: band membership is the nonnegative enumerated distance to the BOW-WAVE MILESTONE ITSELF (unresolved work excluded and disclosed, never own-float; governed work quarantined); the target is pinned by persistent UID so it survives re-coding/renaming; the projected-break test compares required pace (remaining volume / working days remaining to the fixed reference) against the demonstrated pace.  Rising BWI = compression that must eventually break; projected break reported against demonstrated pace."
     formula: "density_u / density_first, density = near-critical remaining days / fixed working-days-to-reference-horizon"
     unit: ratio
     threshold: null

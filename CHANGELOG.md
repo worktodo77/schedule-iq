@@ -3,6 +3,53 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI kernel v2 (Wave 3; rulings Q-B + design D1–D4, adjudicated 2026-07-12)
+
+**Check-affecting / number-changing for LI-04 PCI, LI-05 RDI, LI-07 CDI,
+LI-09 BWI** — every consumer of the v0.4 relative-float kernel moves to the
+FCBI v0.5 family basis.  **LI-04 is additionally PROVISIONAL/UNGRADED**
+(D4): its scored anchors were tuned to the abolished floor-0.1/top-10/
+premium scale; `scorecard.yaml` carries the provisional block pending
+recalibration against real series (LI-01 precedent).  LI-05/LI-09 stay
+graded; pinned demo letters verified (demo held with LI-04 ungraded).
+Recorded ruling docs/rulings/LI-kernel-v2-2026-07-12.md; approved design
+docs/LI-kernel-v2-design-2026-07-12.md.
+
+- **Family basis (D1):** nonnegative target-specific distance on the locked
+  FCBI enumeration (proven convergence frontier, exact path cap →
+  PROVISIONAL, propagated-governance quarantine, stable completion-milestone
+  target), implemented as `_build_kernel_v2` — a mirror of the locked
+  `_target_distance`, regression-locked against it as an oracle on a
+  40-DAG corpus.  Abolishes the own-float fallback (K1: unresolved is
+  quarantined + disclosed, never priced), the w > 1 negative-float premium
+  (K2: d ≥ 0 ⇒ w ≤ 1), and the raw top-10 truncation (K5: PCI's 1/10
+  Herfindahl floor is gone).
+- **Severity beside (D2):** per-update N = max(0, −target margin) and ΔN⁺
+  deepening reported beside PCI/CDI, never inside the weights (uniform
+  deepening leaves PCI identical; the strip carries it).
+- **CDI (D3):** dwell over live, resolved, ungoverned discrete activities
+  with d ≤ band; milestone markers and post-completion accrual superseded
+  out (dwell earned while live is retained); per-update quarantine counts
+  disclosed.
+- **RDI:** demonstrated-pace gate moves to the window's EARLIER endpoint
+  (nonanticipative; fixes audit RDI-2's exporter dependence).  Honest
+  degradation: an update whose entire live population is quarantined has
+  required = None; an all-None series is NOT EVALUATED naming the
+  quarantine (never a fabricated 0 days of debt).
+- **BWI:** band membership by distance to the bow-wave milestone ITSELF
+  (own UID-pinned target); B1 fixed horizon / B2 UID pinning / W1c-3 break
+  test carried over unchanged.
+- λ bounded to (0, FCBI_CONV_LAMBDA] family-wide (invalid λ → PCI/CDI NOT
+  EVALUATED); Q-H sensitivity sets re-pointed.  Legacy v0.4 helpers stay
+  byte-identical, RETIRED from the pipeline.  FCBI (LI-01), the shared
+  enumerator, and the white paper untouched — all FCBI anchors pass
+  unchanged.
+- Review status: the independent adversarial review wave over Wave 3 (and
+  review-wave-2's territory) is OWED — recorded in the ruling and the
+  audit-matrix banner.
+
+Suite: 296 passed, 1 skipped.
+
 ## Unreleased — LI kernel constant governance (ruling Q-H, adjudicated 2026-07-12)
 
 **Additive — no canonical number changes.**  Recorded ruling

@@ -164,9 +164,10 @@ def test_w2_li07_findings_carry_real_dwell_share(matrix):
     res = _by_id(_rdi_capable_series(), matrix)
     details = [f.detail for f in res["LI-07"].findings]
     assert details
-    # X and T split each update's unit of dwell; shares must be real numbers,
-    # not the fabricated 0.0% of getattr(e, "share", 0)
-    assert any("dwell share 50.0%" in d for d in details)
+    # kernel v2: X (the only live discrete task) holds the whole unit of dwell
+    # (the target milestone is a reference, not work); the share must be a
+    # real number, not the fabricated 0.0% of getattr(e, "share", 0)
+    assert any("dwell share 100.0%" in d for d in details)
 
 
 def test_w2_li10_basis_is_named_not_question_mark(matrix):

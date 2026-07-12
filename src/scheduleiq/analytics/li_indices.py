@@ -456,8 +456,14 @@ class FcbiResult:
 class PciResult:
     labels: list[str] = field(default_factory=list)
     per_update: list[Optional[float]] = field(default_factory=list)
+    # D2: negative-float severity BESIDE the index (never in the weights)
+    n_severity: list = field(default_factory=list)      # per update, ref days
+    n_deepening: list = field(default_factory=list)     # dN+ per update
+    depth_capped: bool = False                          # any update provisional
+    target_code: Optional[str] = None
     interpretation: str = ""
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -473,6 +479,12 @@ class CdiResult:
     leaderboard: list[CdiEntry] = field(default_factory=list)
     top_decile_share: Optional[float] = None
     allocations: int = 0             # number of updates that allocated a unit
+    # v2 population accounting (B2 pattern): activity-update pairs kept out of
+    # the dwell allocation, quarantined/disclosed rather than silently priced
+    unresolved_total: int = 0        # live discrete work on no enumerated path
+    governed_total: int = 0          # live discrete work under non-target governance
+    n_severity: list = field(default_factory=list)      # D2, per update
+    target_code: Optional[str] = None
     interpretation: str = ""
     reason: str = ""
     disclosures: list[str] = field(default_factory=list)
@@ -1396,28 +1408,58 @@ def fcbi_lambda_sensitivity(sa, target: Optional[str] = None,
 
 
 # ==========================================================================
-# 2. PCI — Path Concentration Index  (§9.4, N9)
+# 2. PCI — Path Concentration Index  (§9.4, N9; v2 basis, Wave 3)
 # ==========================================================================
-def _pci(sa, kernels: dict[int, _Kernel], lam: float) -> PciResult:
+_V2_DISCLOSURES = [
+    "Basis (kernel v2, 2026-07-12): nonnegative target-specific distance on "
+    "the locked FCBI enumeration — fixed reference hours, discrete-work "
+    "margins, proven convergence frontier (a cap hit is PROVISIONAL, "
+    "disclosed); w = 2^(-d/lambda) in (0, 1] — no negative-float premium; "
+    "activities on no enumerated path are UNRESOLVED (never own-float); "
+    "non-target governance is traced through the network and quarantined.",
+    "Negative-float severity is reported BESIDE the index (N = max(0, "
+    "-target margin), dN+ deepening), never inside the weights.",
+]
+
+
+def _pci(sa, k2map: dict[int, _KernelV2], lam: float,
+         lam_reason: str = "") -> PciResult:
     scheds = getattr(sa, "schedules", [])
     if not scheds:
         return PciResult(reason="no schedules")
     labels = [s.label() for s in scheds]
+    k2s = [k2map.get(id(s)) for s in scheds]
+    target = next((k.target_ref for k in k2s if k is not None), None)
+    if target is None:
+        return PciResult(labels=labels, reason=(
+            "NOT EVALUATED — no stable terminal completion milestone is common "
+            "to every update (kernel v2 requires one; select it explicitly)"))
+    if lam_reason:
+        return PciResult(labels=labels, target_code=target,
+                         reason="NOT EVALUATED — " + lam_reason,
+                         disclosures=list(_V2_DISCLOSURES))
     per: list[Optional[float]] = []
     computed = False
-    for s in scheds:
-        paths = kernels[id(s)].paths
-        weights = [kernel_weight(p.rel_float_days, lam) for p in paths]
+    capped = False
+    for k in k2s:
+        margins = k.path_margins if k is not None else []
+        capped = capped or (k is not None and k.depth_capped)
+        weights = [kernel_weight(d, lam) for d in margins]   # d >= 0 -> w <= 1
         tot = sum(weights)
-        if not paths or tot <= 0:
+        if not weights or tot <= 0:
             per.append(None)
             continue
         shares = [w / tot for w in weights]
         per.append(sum(sh * sh for sh in shares))     # Herfindahl, 1/N .. 1
         computed = True
+    n_series, n_deep = _v2_severity(k2s)
     if not computed:
-        return PciResult(labels=labels, per_update=per,
-                         reason="no float paths could be extracted for any update")
+        return PciResult(labels=labels, per_update=per, target_code=target,
+                         n_severity=n_series, n_deepening=n_deep,
+                         depth_capped=capped,
+                         disclosures=list(_V2_DISCLOSURES),
+                         reason="no discrete-work float paths could be "
+                                "enumerated to the target for any update")
 
     vals = [(i, v) for i, v in enumerate(per) if v is not None]
     first_v, last_v = vals[0][1], vals[-1][1]
@@ -1432,7 +1474,13 @@ def _pci(sa, kernels: dict[int, _Kernel], lam: float) -> PciResult:
     else:
         interp = (f"PCI is stable near {last_v:.2f} (1.0 = single-threaded, "
                   "1/N = fully diffuse near-criticality).")
-    return PciResult(labels=labels, per_update=per, interpretation=interp)
+    if capped:
+        interp += (" PROVISIONAL: the path enumeration hit the depth ceiling "
+                   "without converging on at least one update.")
+    return PciResult(labels=labels, per_update=per, target_code=target,
+                     n_severity=n_series, n_deepening=n_deep,
+                     depth_capped=capped, interpretation=interp,
+                     disclosures=list(_V2_DISCLOSURES))
 
 
 # ==========================================================================
@@ -1441,30 +1489,60 @@ def _pci(sa, kernels: dict[int, _Kernel], lam: float) -> PciResult:
 def _cdi_disclosures() -> list[str]:
     return [
         _LOE_EXCLUSION_NOTE,
-        "Completed activities are RETAINED in CDI: it measures retrospective "
-        "criticality-time (where risk dwelt over the project's life, including "
-        "on now-finished work), unlike the forward-looking FCBI/RDI/BWI "
-        "(ruling C2, 2026-07-08; ported 2026-07-12).",
+        _V2_DISCLOSURES[0],
+        "Dwell ACCRUES WHILE LIVE (kernel v2 design D3, 2026-07-12): a "
+        "completed activity retains every dwell unit earned while live — "
+        "retrospective criticality-time is the accumulated live history "
+        "(ruling C2's rationale) — but stops EARNING after completion, "
+        "superseding the v0.4 incidental post-completion accrual through the "
+        "own-float fallback.",
+        "Milestone markers are excluded from the dwell allocation (references, "
+        "not work); their deadline pressure reaches the analysis via the "
+        "governance quarantine and the severity strip, not as dwell.",
     ]
 
 
-def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
-         band_days: float) -> CdiResult:
+def _cdi(sa, k2map: dict[int, _KernelV2], lam: float,
+         band_days: float, lam_reason: str = "") -> CdiResult:
     scheds = getattr(sa, "schedules", [])
     if not scheds:
         return CdiResult(reason="no schedules")
+    k2s = [k2map.get(id(s)) for s in scheds]
+    target = next((k.target_ref for k in k2s if k is not None), None)
+    if target is None:
+        return CdiResult(reason=(
+            "NOT EVALUATED — no stable terminal completion milestone is common "
+            "to every update (kernel v2 requires one; select it explicitly)"))
+    if lam_reason:
+        return CdiResult(target_code=target,
+                         reason="NOT EVALUATED — " + lam_reason,
+                         disclosures=_cdi_disclosures())
     dwell: dict[str, float] = {}
     windows_present: dict[str, int] = {}
     names: dict[str, str] = {}
     allocated = 0
-    for s in scheds:
-        k = kernels[id(s)]
-        # LOE/summary activities were already excluded from the kernel RF map
-        # (ported rule C1), so ``k.rf`` contains only discrete work + milestone
-        # markers; the band selection below never allocates dwell to a summary
-        # activity.
-        near = {code: k.weight[code] for code, rf in k.rf.items()
-                if rf <= band_days and code in k.weight}
+    unresolved_total = governed_total = 0
+    for s, k in zip(scheds, k2s):
+        # v2 dwell population (D1/D3): LIVE discrete tasks (completed work
+        # stops EARNING dwell — history earned while live is retained, D3;
+        # milestones are references, not work — their pressure reaches the
+        # board via governance + the severity strip), RESOLVED on the
+        # enumeration (K1: no own-float fallback — unresolved is quarantined,
+        # counted, disclosed), UNGOVERNED (propagated non-target governance
+        # quarantines, counted, disclosed), within the band.
+        near: dict[str, float] = {}
+        for a in s.activities.values():
+            if a.is_loe_or_summary or a.is_milestone or a.completed:
+                continue
+            d = k.dist.get(a.code) if k is not None else None
+            if d is None:
+                unresolved_total += 1
+                continue
+            if a.code in (k.governed if k is not None else {}):
+                governed_total += 1
+                continue
+            if d <= band_days:
+                near[a.code] = kernel_weight(d, lam)      # w in (0, 1]
         wsum = sum(near.values())
         if wsum <= 0:
             continue
@@ -1476,16 +1554,20 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
                 a = _find_by_code(s, code)
                 if a is not None:
                     names[code] = a.name
+    n_series, _n_deep = _v2_severity(k2s)
     if allocated == 0:
-        return CdiResult(reason="no update had activities inside the near-critical "
-                                f"band (RF <= {band_days:g}d)",
+        return CdiResult(reason="no update had eligible activities inside the "
+                                f"near-critical band (d <= {band_days:g}d)",
+                         target_code=target, n_severity=n_series,
+                         unresolved_total=unresolved_total,
+                         governed_total=governed_total,
                          disclosures=_cdi_disclosures())
 
     board = [CdiEntry(code=c, name=names.get(c, ""),
                       dwell_share=v / allocated,
                       windows_present=windows_present.get(c, 0))
              for c, v in dwell.items()]
-    board.sort(key=lambda e: e.dwell_share, reverse=True)
+    board.sort(key=lambda e: (-e.dwell_share, e.code))     # deterministic (D3 nit)
     n = len(board)
     k_top = max(1, math.ceil(n * 0.10))
     top_decile = sum(e.dwell_share for e in board[:k_top])
@@ -1493,16 +1575,23 @@ def _cdi(sa, kernels: dict[int, _Kernel], lam: float,
     interp = (f"{lead.code} carried the most criticality-time "
               f"({lead.dwell_share:.0%} of the Project's dwell); the top decile "
               f"({k_top} of {n} activities) holds {top_decile:.0%}.")
+    if unresolved_total or governed_total:
+        interp += (f"  Quarantined from the dwell allocation: "
+                   f"{unresolved_total} unresolved and {governed_total} governed "
+                   "activity-update(s) (disclosed, never priced).")
     return CdiResult(leaderboard=board, top_decile_share=top_decile,
-                     allocations=allocated, interpretation=interp,
+                     allocations=allocated, target_code=target,
+                     unresolved_total=unresolved_total,
+                     governed_total=governed_total, n_severity=n_series,
+                     interpretation=interp,
                      disclosures=_cdi_disclosures())
 
 
 # ==========================================================================
 # demonstrated-pace series (shared by RDI and BWI's projected break)
 # ==========================================================================
-def _demonstrated_series(sa, kernels: dict[int, _Kernel],
-                         band_days: float) -> list[Optional[float]]:
+def _demonstrated_series(sa, k2map: dict[int, _KernelV2],
+                         band_days: float) -> tuple[list, int]:
     """Per window (n-1), the planned scope actually retired: total PLANNED
     duration (days, own calendar) of near-critical activities *completed within
     the window* divided by the window's standard working days.  ``None`` when
@@ -1518,34 +1607,54 @@ def _demonstrated_series(sa, kernels: dict[int, _Kernel],
     double-counts calendar time, accruing phantom debt on any concurrent
     schedule) or reward overruns outright.  The overrun signal ships separately
     as the companion duration-overrun ratio (:func:`_overrun_series`), a
-    disclosure — never an accrual input."""
+    disclosure — never an accrual input.
+
+    Kernel v2 (Wave 3, fixes audit RDI-2): a completion counts if it was
+    near-critical AT THE WINDOW'S EARLIER ENDPOINT — its v2 distance at the
+    start of the window is resolved, ungoverned, and within the band.  This
+    is nonanticipative (the O3 lesson) and no longer depends on whether the
+    exporter nulls total float at completion (the old later-endpoint RF gate
+    silently dropped such completions, manufacturing phantom debt).
+    Completions unresolvable at the earlier endpoint are counted and
+    disclosed, never silently dropped."""
     scheds = getattr(sa, "schedules", [])
     out: list[Optional[float]] = []
+    skipped_unresolved = 0
     for i in range(len(scheds) - 1):
         e, l = scheds[i], scheds[i + 1]
         wd = _working_days_5d(e.data_date, l.data_date)
         if wd <= 0:
             out.append(None)
             continue
-        lk = kernels[id(l)]
+        ek = k2map.get(id(e))
+        e_by_code = {a.code: a for a in e.activities.values()}
         done = 0.0
         for a in l.activities.values():
-            if a.is_loe_or_summary or not a.completed:
-                continue
-            rf = lk.rf.get(a.code)
-            if rf is None or rf > band_days:
+            if a.is_loe_or_summary or a.is_milestone or not a.completed:
                 continue
             af = a.actual_finish
             if af is None:
                 continue
-            if e.data_date is not None and l.data_date is not None \
-                    and e.data_date < af <= l.data_date:
-                done += a.duration_days(l.cal_for(a))
+            if not (e.data_date is not None and l.data_date is not None
+                    and e.data_date < af <= l.data_date):
+                continue
+            if a.code not in e_by_code:            # born-and-done inside the window
+                skipped_unresolved += 1
+                continue
+            d = ek.dist.get(a.code) if ek is not None else None
+            if d is None:
+                skipped_unresolved += 1            # unresolved at start: disclosed
+                continue
+            if a.code in (ek.governed if ek is not None else {}):
+                continue                           # governed: quarantined basis
+            if d > band_days:
+                continue
+            done += a.duration_days(l.cal_for(a))
         out.append(done / wd)
-    return out
+    return out, skipped_unresolved
 
 
-def _overrun_series(sa, kernels: dict[int, _Kernel],
+def _overrun_series(sa, k2map: dict[int, _KernelV2],
                     band_days: float
                     ) -> tuple[list[Optional[float]], int, Optional[float]]:
     """R1 companion disclosure (ported v0.4.4): per window (n-1), the
@@ -1567,11 +1676,15 @@ def _overrun_series(sa, kernels: dict[int, _Kernel],
         e, l = scheds[i], scheds[i + 1]
         planned = 0.0
         elapsed = 0.0
+        ek = k2map.get(id(e))
         for a in l.activities.values():
-            if a.is_loe_or_summary or not a.completed:
+            if a.is_loe_or_summary or a.is_milestone or not a.completed:
                 continue
-            rf = kernels[id(l)].rf.get(a.code)
-            if rf is None or rf > band_days:
+            # v2: same nonanticipative earlier-endpoint gate as the
+            # demonstrated series (RDI-2 fix)
+            d = ek.dist.get(a.code) if ek is not None else None
+            if d is None or d > band_days \
+                    or a.code in (ek.governed if ek is not None else {}):
                 continue
             af = a.actual_finish
             if af is None or e.data_date is None or l.data_date is None \
@@ -1589,9 +1702,16 @@ def _overrun_series(sa, kernels: dict[int, _Kernel],
     return out, missing_starts, series
 
 
-def _rdi_disclosures(scheds, missing_starts: int = 0) -> list[str]:
+def _rdi_disclosures(scheds, missing_starts: int = 0,
+                     req_unresolved: int = 0,
+                     demo_unresolved: int = 0) -> list[str]:
     notes = [
         _LOE_EXCLUSION_NOTE,
+        _V2_DISCLOSURES[0],
+        "Demonstrated-pace population (kernel v2, RDI-2 fix): a completion "
+        "counts if it was near-critical at the WINDOW'S EARLIER ENDPOINT "
+        "(nonanticipative) — no longer dependent on the exporter's "
+        "total-float handling at completion.",
         "Completed activities are excluded from the required-pace side and "
         "counted on the demonstrated-pace side (they are the achievement).",
         "Demonstrated pace = planned near-critical scope actually retired "
@@ -1618,37 +1738,67 @@ def _rdi_disclosures(scheds, missing_starts: int = 0) -> list[str]:
         notes.append(f"DATA QUALITY: {missing_starts} near-critical completion(s) "
                      "carried no actual start — omitted from the duration-overrun "
                      "ratio (the ratio may under-represent the overrun).")
+    if req_unresolved:
+        notes.append(f"DATA QUALITY: {req_unresolved} live activity-update(s) "
+                     "were on no enumerated path to the target — excluded from "
+                     "required pace (never assigned own float), so required "
+                     "pace may be understated.")
+    if demo_unresolved:
+        notes.append(f"DATA QUALITY: {demo_unresolved} completion(s) were "
+                     "unresolvable at their window's earlier endpoint — "
+                     "excluded from demonstrated pace, disclosed.")
     return notes
 
 
 # ==========================================================================
 # 4. RDI — Recovery Debt Index  (§9.5, N10)
 # ==========================================================================
-def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
+def _rdi(sa, k2map: dict[int, _KernelV2], band_days: float) -> RdiResult:
     scheds = getattr(sa, "schedules", [])
     if len(scheds) < 2:
         return RdiResult(reason="series has fewer than two updates")
+    if not any(k2map.get(id(s)) and k2map[id(s)].target_ref for s in scheds):
+        return RdiResult(reason=(
+            "NOT EVALUATED — no stable terminal completion milestone is common "
+            "to every update (kernel v2 requires one; select it explicitly)"))
 
-    # required pace R_u per update
+    # required pace R_u per update: v2 population — resolved (K1: never
+    # own-float), ungoverned (quarantined, disclosed), within the band
     required: list[Optional[float]] = []
+    req_unresolved = 0
     for s in scheds:
-        k = kernels[id(s)]
+        k = k2map.get(id(s))
         wd = _working_days_5d(s.data_date, s.finish_date)
         if wd <= 0:
             required.append(None)
             continue
         rem = 0.0
+        eligible = quarantined = 0
         for a in s.activities.values():
-            if a.is_loe_or_summary or a.completed:
+            if a.is_loe_or_summary or a.is_milestone or a.completed:
                 continue
-            rf = k.rf.get(a.code)
-            if rf is None or rf > band_days:
+            d = k.dist.get(a.code) if k is not None else None
+            if d is None:
+                req_unresolved += 1
+                quarantined += 1
+                continue
+            if a.code in (k.governed if k is not None else {}):
+                quarantined += 1
+                continue
+            eligible += 1
+            if d > band_days:
                 continue
             rem += a.remaining_days(s.cal_for(a))
-        required.append(rem / wd)
+        # honest zero (A1): an update whose ENTIRE live population is
+        # quarantined (unresolved/governed) has no usable required-pace basis
+        # — required is None there, never a fabricated "no required pace"
+        if eligible == 0 and quarantined > 0:
+            required.append(None)
+        else:
+            required.append(rem / wd)
 
-    demonstrated = _demonstrated_series(sa, kernels, band_days)
-    overrun, missing_starts, series_overrun = _overrun_series(sa, kernels,
+    demonstrated, demo_unresolved = _demonstrated_series(sa, k2map, band_days)
+    overrun, missing_starts, series_overrun = _overrun_series(sa, k2map,
                                                               band_days)
 
     # R2 ruling (ported v0.4.3): accrue debt against the running P50 (median)
@@ -1683,13 +1833,18 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
 
     if all(r is None for r in required):
         # NOT EVALUATED, never 0.0: an uncomputable series must not read as
-        # "no recovery debt" (audit RDI-1; A1 — undefined is explicit).
+        # "no recovery debt" (audit RDI-1; A1 — undefined is explicit; under
+        # kernel v2 this also covers a fully-quarantined population, e.g. a
+        # mis-selected target whose network is governed by another deadline)
         return RdiResult(rows=rows, rdi_days=None, overrun_ratio=series_overrun,
-                         reason="NOT EVALUATED — no update had a usable data "
-                                "date -> forecast finish span to compute a "
-                                "required pace; recovery debt is undefined, "
-                                "not zero",
-                         disclosures=_rdi_disclosures(scheds, missing_starts))
+                         reason="NOT EVALUATED — no update had a usable "
+                                "required-pace basis (data date -> forecast "
+                                "finish span, or the entire live population "
+                                "is quarantined on the selected target basis); "
+                                "recovery debt is undefined, not zero",
+                         disclosures=_rdi_disclosures(scheds, missing_starts,
+                                                      req_unresolved,
+                                                      demo_unresolved))
     interp = (f"Recovery debt stands at {cumulative:.1f} working days — the "
               "portion of the current completion forecast resting on a pace the "
               "Project has not sustainably demonstrated (accrued against the P50 "
@@ -1703,7 +1858,9 @@ def _rdi(sa, kernels: dict[int, _Kernel], band_days: float) -> RdiResult:
                    f"work: {series_overrun:.2f}x planned (diagnostic only).")
     return RdiResult(rows=rows, rdi_days=cumulative, overrun_ratio=series_overrun,
                      interpretation=interp,
-                     disclosures=_rdi_disclosures(scheds, missing_starts))
+                     disclosures=_rdi_disclosures(scheds, missing_starts,
+                                                  req_unresolved,
+                                                  demo_unresolved))
 
 
 # ==========================================================================
@@ -1752,9 +1909,15 @@ def _bwi_fixed_horizon(anchor) -> tuple[Optional[datetime], str]:
     return anchor.finish, "first-update forecast finish"
 
 
-def _bwi_disclosures(target_code, densities, labels, ref_basis=None) -> list[str]:
+def _bwi_disclosures(target_code, densities, labels, ref_basis=None,
+                     unresolved: int = 0) -> list[str]:
     notes = [
         _LOE_EXCLUSION_NOTE,
+        _V2_DISCLOSURES[0],
+        "Band membership (kernel v2) is the nonnegative distance to the "
+        "bow-wave milestone ITSELF (pinned anchor), so 'work packed against "
+        "m' means near-critical relative to m; the projected-break test uses "
+        "the completion-family demonstrated pace.",
         "BWI normalizes against a FIXED reference horizon (working days from the "
         "first update's data date to the target's "
         + (ref_basis or "constrained/baseline/first-update finish")
@@ -1770,10 +1933,15 @@ def _bwi_disclosures(target_code, densities, labels, ref_basis=None) -> list[str
         notes.append(f"DATA QUALITY: target {target_code} had no usable forecast "
                      "finish / near-critical density on update(s): "
                      + ", ".join(missing) + ".")
+    if unresolved:
+        notes.append(f"DATA QUALITY: {unresolved} live activity-update(s) ahead "
+                     "of the milestone were on no enumerated path to it — "
+                     "excluded from the packed volume (never own-float), "
+                     "disclosed.")
     return notes
 
 
-def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
+def _bwi(sa, k2map: dict[int, _KernelV2], band_days: float,
          bwi_target: Optional[str]) -> BwiResult:
     scheds = getattr(sa, "schedules", [])
     if not scheds:
@@ -1806,6 +1974,14 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
                                 "update finish) to normalize against",
                          disclosures=_bwi_disclosures(target_code, [], [], ref_basis))
 
+    # kernel v2 (Wave 3, design D1): band membership is the v2 distance to
+    # the BOW-WAVE MILESTONE ITSELF (its pinned anchor, resolvable by UID so
+    # a re-code survives — B2), not to the completion target: "work packed
+    # against m" means near-critical relative to m.  Unresolved work is
+    # excluded and disclosed (K1: never own-float); governed work (non-target
+    # basis) is quarantined.
+    k2b = {id(s): _build_kernel_v2(s, anchor_uid or target_code) for s in scheds}
+    bwi_unresolved = 0
     densities: list[Optional[float]] = []
     for s in scheds:
         tgt = (s.activities.get(anchor_uid) if anchor_uid else None) \
@@ -1813,16 +1989,21 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
         if tgt is None or tgt.finish is None:
             densities.append(None)
             continue
-        k = kernels[id(s)]
+        k = k2b[id(s)]
         vol = 0.0
         for a in s.activities.values():
-            if a.is_loe_or_summary or a.completed:
-                continue
-            rf = k.rf.get(a.code)
-            if rf is None or rf > band_days:
+            if a.is_loe_or_summary or a.is_milestone or a.completed:
                 continue
             fin = a.finish
             if fin is None or fin > tgt.finish:
+                continue
+            d = k.dist.get(a.code)
+            if d is None:
+                bwi_unresolved += 1
+                continue
+            if a.code in k.governed:
+                continue
+            if d > band_days:
                 continue
             vol += a.remaining_days(s.cal_for(a))
         densities.append(vol / wd_const)
@@ -1858,7 +2039,7 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
     # runway (review W1c-3: testing the constant-denominator density against
     # demonstrated pace made break sensitivity decay exactly as the milestone
     # approached, while the narrative still claimed "required density").
-    demo = _demonstrated_series(sa, kernels, band_days)
+    demo, _demo_unres = _demonstrated_series(sa, k2map, band_days)
     break_label: Optional[str] = None
     max_demo = 0.0
     for i in range(1, len(scheds)):
@@ -1887,7 +2068,130 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
     return BwiResult(target_code=target_code, rows=rows,
                      projected_break_label=break_label, interpretation=interp,
                      disclosures=_bwi_disclosures(target_code, densities,
-                                                  labels, ref_basis))
+                                                  labels, ref_basis,
+                                                  bwi_unresolved))
+
+
+# ==========================================================================
+# LI kernel v2 (Wave 3, rulings Q-B + design D1-D4, 2026-07-12 —
+# docs/LI-kernel-v2-design-2026-07-12.md, docs/rulings/LI-kernel-v2-2026-07-12.md)
+#
+# The family basis for PCI/CDI/RDI/BWI is the LOCKED FCBI v0.5.5 distance
+# basis: nonnegative target-specific distance with the PROVEN convergence
+# frontier, propagated-governance quarantine, and stable-target resolution —
+# REUSED (the FCBI functions are called / mirrored under an equivalence
+# regression, never modified).  This abolishes, for the whole family: the
+# own-total-float fallback (K1 — unresolved is unresolved), the w > 1
+# negative-float premium (K2 — d >= 0 so w in (0, 1]; severity is reported
+# BESIDE the indices, D2), and the raw top-10 truncation (K5 — the proven
+# frontier + exact cap replace it; a cap hit is provisional, disclosed).
+# The legacy v0.4 helpers (kernel_weight / relative_float_map /
+# activity_weights / _build_kernel) remain byte-identical, RETIRED from the
+# pipeline (published-spec citations and regression locks only).
+# ==========================================================================
+@dataclass
+class _KernelV2:
+    """Per-schedule LI criticality basis to one target (FCBI-basis reuse)."""
+    target_ref: Optional[str]          # code (family target) or UID (BWI anchor)
+    dist: dict                         # code -> d >= 0 (resolved only; K1: no fallback)
+    governed: dict                     # code -> reason (propagated, quarantined)
+    driving_margin: Optional[float]
+    target_margin: Optional[float]     # reference days; feeds N severity (D2)
+    depth_capped: bool                 # cap hit -> provisional, disclosed (K5)
+    path_margins: list                 # d_p per enumerated DISCRETE-WORK path (PCI)
+
+
+def _v2_enumerate(schedule: Schedule, target_ref: Optional[str]
+                  ) -> tuple[dict, Optional[float], Optional[float], bool, list]:
+    """The v2 enumeration: streams :func:`iter_float_paths` with EXACTLY the
+    locked ``_target_distance`` round structure — same reachable-set frontier
+    at ``FCBI_CONV_LAMBDA``/``FCBI_CONV_TOL``, same ``FCBI_PATHS_MAX`` exact
+    cap, same fixed-reference discrete-only margins — additionally collecting
+    per-path margins for PCI (a path counts for PCI only if it carries at
+    least one discrete-work member — the C1 rule).  ``target_ref`` may be an
+    activity CODE (family completion target) or UID (BWI's pinned anchor,
+    which survives re-codes).  Regression-locked against ``_target_distance``
+    as the oracle (same resolved map on a seeded corpus) so this mirror can
+    never silently diverge from the locked FCBI basis."""
+    if target_ref is None:
+        return {}, None, None, False, []
+    tgt = schedule.activities.get(target_ref) or _find_by_code(schedule, target_ref)
+    reachable: set[str] = set()
+    if tgt is not None:
+        stack, seen = [tgt.uid], {tgt.uid}
+        while stack:
+            cur = stack.pop()
+            for r in schedule.predecessors_of(cur):
+                if r.pred_uid not in seen:
+                    seen.add(r.pred_uid)
+                    stack.append(r.pred_uid)
+        reachable = seen
+    dist: dict[str, float] = {}
+    path_margins: list[float] = []
+    driving_margin: Optional[float] = None
+    n_paths = 0
+    depth_capped = False
+    for _native_rel, fp, used in iter_float_paths(schedule, target_uid=target_ref):
+        n_paths += 1
+        if n_paths > FCBI_PATHS_MAX:                 # exact cap (W4-07 semantics)
+            depth_capped = True
+            break
+        if driving_margin is None:
+            if fp.rel_float_hours is None:
+                return {}, None, None, False, []
+            driving_margin = fp.rel_float_hours / REFERENCE_HPD
+        if fp.rel_float_hours is not None:
+            d = max(0.0, fp.rel_float_hours / REFERENCE_HPD - driving_margin)
+            if any(_is_discrete_work(a) for a in fp.activities):
+                path_margins.append(d)               # PCI membership (C1 rule)
+            for a in fp.activities:
+                if a.is_loe_or_summary:
+                    continue
+                cur = dist.get(a.code)
+                if cur is None or d < cur:
+                    dist[a.code] = d
+        rem = [act.total_float_hours
+               for uid in reachable - used
+               if (act := schedule.activities.get(uid)) is not None
+               and not act.is_loe_or_summary and act.total_float_hours is not None]
+        if not rem:
+            break
+        frontier_d = max(0.0, min(rem) / REFERENCE_HPD - driving_margin)
+        if kernel_weight(frontier_d, FCBI_CONV_LAMBDA) < FCBI_CONV_TOL:
+            break
+    if driving_margin is None:
+        return {}, None, None, False, []
+    tmargin = (tgt.total_float_hours / REFERENCE_HPD
+               if tgt is not None and tgt.total_float_hours is not None else None)
+    return dist, driving_margin, tmargin, depth_capped, path_margins
+
+
+def _build_kernel_v2(schedule: Schedule, target_ref: Optional[str]) -> _KernelV2:
+    dist, dmarg, tmarg, capped, pmargins = _v2_enumerate(schedule, target_ref)
+    tgt = None
+    if target_ref is not None:
+        tgt = schedule.activities.get(target_ref) or _find_by_code(schedule, target_ref)
+    governed = _governed_codes(schedule, tgt.code if tgt else target_ref) \
+        if target_ref is not None else {}
+    return _KernelV2(target_ref=target_ref, dist=dist, governed=governed,
+                     driving_margin=dmarg, target_margin=tmarg,
+                     depth_capped=capped, path_margins=pmargins)
+
+
+def _v2_severity(k2s: list) -> tuple[list, list]:
+    """Per-update N = max(0, -target margin) and dN+ deepening (D2: severity
+    beside the indices, never inside the weights)."""
+    n_series: list[Optional[float]] = []
+    for k in k2s:
+        n_series.append(max(0.0, -k.target_margin)
+                        if k.target_margin is not None else None)
+    deep: list[Optional[float]] = []
+    prev = None
+    for n in n_series:
+        deep.append(max(0.0, n - prev) if (n is not None and prev is not None) else None)
+        if n is not None:
+            prev = n
+    return n_series, deep
 
 
 # ==========================================================================
@@ -1895,9 +2199,10 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
 # docs/rulings/LI-kernel-constants-2026-07-12.md).  λ = 5 working days and
 # band_days = 10 are PROFESSIONAL CONVENTIONS, not calibrated constants
 # (rubric C4): contested/expert use shows the sensitivity sets below instead
-# of a point claim.  KERNEL_PATHS_N = 10 is likewise a recorded convention —
-# note PCI's Herfindahl over at most 10 shares has floor 1/10, so scored
-# anchors below 0.1 are unreachable (re-examined with the Wave-3 kernel).
+# of a point claim.  KERNEL_PATHS_N = 10 was likewise a recorded convention;
+# the Wave-3 kernel replaced it in the pipeline with the proven convergence
+# frontier (it now only parameterizes the retired legacy helper), so PCI's
+# 1/10 Herfindahl floor is gone (docs/rulings/LI-kernel-v2-2026-07-12.md).
 # ==========================================================================
 @dataclass
 class KernelLambdaPoint:
@@ -1919,9 +2224,9 @@ def kernel_lambda_sensitivity(sa, lams=(3.0, 5.0, 10.0),
                               ) -> list[KernelLambdaPoint]:
     """PCI and CDI across the λ set (default {3, 5, 10} working days — the
     FCBI Q2 pattern), exposing whether a concentration/dwell conclusion is
-    robust to the half-weight constant.  The v0.4 kernel accepts any finite
-    positive λ (it is not bounded by the FCBI convergence reference).  Never
-    raises."""
+    robust to the half-weight constant.  Under kernel v2 the λ bound is the
+    FCBI one — a set member outside (0, FCBI_CONV_LAMBDA] yields None points
+    (PCI/CDI NOT EVALUATED at that λ, W4-05).  Never raises."""
     out: list[KernelLambdaPoint] = []
     for lam in lams:
         try:
@@ -1961,10 +2266,13 @@ def run_li_indices(sa, lam: float = DEFAULT_LAMBDA,
                    fcbi_target: Optional[str] = None) -> LiIndicesResult:
     """Compute all five LI indices over the ordered series ``sa``.
 
-    Float paths (the expensive step) are extracted once per schedule and shared
-    across PCI/CDI (the v0.4 RF kernel); FCBI (LI-01, v0.5 governed) computes its
-    own nonnegative target-specific distance basis (ruling O1) and does not use
-    that kernel.  Every sub-result carries a ``reason`` when it could not be
+    Kernel v2 (Wave 3, docs/rulings/LI-kernel-v2-2026-07-12.md): PCI/CDI/RDI/
+    BWI share the FCBI v0.5 family basis — one ``_build_kernel_v2`` per
+    schedule (nonnegative target-specific distance, propagated-governance
+    quarantine, proven convergence frontier) to the stable completion-
+    milestone target; BWI builds its own basis to the UID-pinned bow-wave
+    anchor.  FCBI (LI-01, locked) computes its own basis unchanged (ruling
+    O1).  Every sub-result carries a ``reason`` when it could not be
     computed; this function never raises.
 
     Parameters
@@ -1973,10 +2281,12 @@ def run_li_indices(sa, lam: float = DEFAULT_LAMBDA,
         Ordered schedules with change-register changesets (``sa.schedules`` and
         ``sa.changesets``).
     lam : float
-        Half-weight constant λ (default 5 working days): FCBI weight
-        w = 2^(-d/λ), and the v0.4 kernel for PCI/CDI/RDI/BWI.
+        Half-weight constant λ (default 5 working days): w = 2^(-d/λ) for
+        FCBI and for the PCI/CDI weighting.  Bounded to
+        (0, FCBI_CONV_LAMBDA] like FCBI's (W4-05) — an invalid λ leaves
+        PCI/CDI NOT EVALUATED with the reason (RDI/BWI do not weight by λ).
     band_days : float
-        Near-critical band (RF <= band_days) for CDI/RDI/BWI (default 10 wd).
+        Near-critical band (d <= band_days) for CDI/RDI/BWI (default 10 wd).
     bwi_target : str | None
         Activity code for the Bow-Wave milestone; default resolves to the latest
         late-type-constrained finish milestone, else the last finish milestone.
@@ -1987,20 +2297,21 @@ def run_li_indices(sa, lam: float = DEFAULT_LAMBDA,
         explicitly (ruling O7.1).
     """
     scheds = getattr(sa, "schedules", [])
-    # the shared v0.4 kernel (PCI/CDI/RDI/BWI) cannot divide by a non-positive λ;
-    # fall back to the default there while FCBI reports the invalid-λ reason itself.
-    # Type-hardened (v0.5.6): guard the finiteness test against non-real / bool λ so
-    # the public entry point never raises on a bad LI-01 λ.  NOTE the v0.4 kernel is
-    # NOT bounded by FCBI_CONV_LAMBDA — any finite positive λ (incl. > 10) is valid
-    # here, so this uses its own predicate, not the FCBI-specific range check.
-    kern_lam = (lam if (isinstance(lam, Real) and not isinstance(lam, bool)
-                        and math.isfinite(float(lam)) and lam > 0)
-                else DEFAULT_LAMBDA)
-    kernels = {id(s): _build_kernel(s, kern_lam) for s in scheds}
+    # kernel v2 (Wave 3): the family basis is the FCBI distance basis, so the
+    # weighting λ is bounded like FCBI's — (0, FCBI_CONV_LAMBDA] — for the same
+    # frontier-validity reason (W4-05).  An invalid λ leaves PCI/CDI NOT
+    # EVALUATED with the reason (RDI/BWI do not weight by λ).  The legacy v0.4
+    # helpers are byte-identical but RETIRED from this pipeline.
+    lam_reason = _invalid_lambda_reason(lam)
+    kern_lam = lam if not lam_reason else DEFAULT_LAMBDA
+    # family completion target: the same stable terminal completion milestone
+    # rule as FCBI (W4-06); PCI/CDI/RDI are NOT EVALUATED on a discontinuity
+    family_target, _fam_auto = _resolve_fcbi_target(scheds, fcbi_target)
+    k2map = {id(s): _build_kernel_v2(s, family_target) for s in scheds}
     return LiIndicesResult(
         fcbi=_fcbi(sa, lam, fcbi_target),        # raw λ: FCBI reports invalid-λ itself
-        pci=_pci(sa, kernels, kern_lam),
-        cdi=_cdi(sa, kernels, kern_lam, band_days),
-        rdi=_rdi(sa, kernels, band_days),
-        bwi=_bwi(sa, kernels, band_days, bwi_target),
+        pci=_pci(sa, k2map, kern_lam, lam_reason),
+        cdi=_cdi(sa, k2map, kern_lam, band_days, lam_reason),
+        rdi=_rdi(sa, k2map, band_days),
+        bwi=_bwi(sa, k2map, band_days, bwi_target),
     )

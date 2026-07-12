@@ -631,6 +631,24 @@ kept-mixed-path residual inside PCI's own Herfindahl weights (which read the
 shared `rel_float_days`) remains intentionally deferred to the kernel-cluster
 revision (audit K3/Wave 3), as recorded in the v0.4.2 validation.
 
+*Kernel v2 (Wave 3, 2026-07-12 —
+docs/rulings/LI-kernel-v2-2026-07-12.md):* PCI now prices concentration on
+the **FCBI v0.5 family basis**: path weights
+`w_p = 2^(−(margin_p − margin_driving)/λ)` over the convergence-bounded
+discrete-work float-path enumeration to the stable completion-milestone
+target, margins in fixed reference hours over discrete members only.
+Distances are nonnegative, so the w > 1 negative-float premium is abolished
+— a deepening driver no longer manufactures "concentration"; target-margin
+severity (N/ΔN⁺, working days of deficit and per-update deepening) is
+reported **beside** the index.  The proven λ-invariant convergence frontier
+replaces the raw top-10 truncation (the 0.1 Herfindahl floor disappears; an
+enumeration-cap hit marks the update PROVISIONAL, disclosed).  The deferred
+kept-mixed-path residual above is thereby closed: weights read the
+discrete-only margins.  No family target or λ outside (0,
+`FCBI_CONV_LAMBDA`] → NOT EVALUATED with the reason.  Scored anchors are
+**provisional/ungraded** pending recalibration against real series (D4;
+LI-01 precedent).
+
 ### 9.5 RDI — Recovery Debt Index
 Cumulative gap between promised and demonstrated pace.  Each update implies
 a required future pace to hold its forecast finish (remaining driving/near-
@@ -657,6 +675,19 @@ of sustained forecast unrealism.
 required pace (no data date → forecast finish span), RDI is **NOT
 EVALUATED** with a stated reason — an uncomputable series is never reported
 as 0 days of debt (docs/rulings/LI-05-LI-06-not-evaluated-2026-07-12.md).*
+
+*Kernel v2 (Wave 3, 2026-07-12 —
+docs/rulings/LI-kernel-v2-2026-07-12.md):* near-critical membership is now
+by nonnegative target distance **d ≤ band** under the family basis
+(completion-milestone target); activities on no enumerated path or under
+non-target governance are **quarantined from the required-pace numerator
+and disclosed** — never priced by own-float fallback.  Demonstrated pace is
+**nonanticipative** (fixes audit RDI-2): a completion counts iff it was
+near-critical at the *earlier* endpoint of the window, so the measure no
+longer depends on whether the exporter nulls TF at completion.  An update
+whose entire candidate population is quarantined yields required = None
+(not a fabricated 0); if every update degrades this way the series is NOT
+EVALUATED with the quarantine named in the reason.
 
 *Backlog: N6-N10 (PARKED pending review).  Dependencies: all five compute
 from existing modules (float paths, change register, actuals, resources);
@@ -717,6 +748,22 @@ a *retrospective* criticality-time measure (where risk dwelt over the
 project's life, including now-finished work), which is why, unlike the
 forward-looking FCBI/RDI/BWI, it does not drop completed activities.
 
+*Kernel v2 (Wave 3, 2026-07-12 —
+docs/rulings/LI-kernel-v2-2026-07-12.md):* per update, one unit of dwell is
+allocated over **live, resolved, ungoverned discrete** activities with
+nonnegative target distance d ≤ band (family completion target); the shares
+are kernel-weighted `2^(−d/λ)`.  Unresolved (no enumerated path) and
+governed (non-target basis) activities are **quarantined with per-update
+counts disclosed**, never dwell-holders on an own-float fallback.  Two
+recorded supersessions of the v0.4.2 conventions above: **milestone markers
+no longer hold dwell** (they are references, not work — their pressure
+reaches the board via governance quarantine and the beside-the-index N/ΔN⁺
+severity strip), and completed activities **accrue while live only** (D3):
+all dwell earned before completion is retained — the retrospective
+criticality-time rationale is about retaining history — but the v0.4
+fallback's incidental post-completion accrual ends.  Target-margin severity
+(N/ΔN⁺) is reported beside the leaderboard, as for PCI.
+
 ### 10.3 IL — Intervention Latency
 How long problems stayed visible before the schedule shows a response.  For
 each emergence event (a path entering negative float, or an activity chain
@@ -757,6 +804,15 @@ slipping milestone cannot dilute the bow wave (a slip with unchanged work
 reads BWI = 1.0, not relief).  The target is pinned by persistent UID from
 the first update and located UID-then-code thereafter, so it survives
 re-coding/renaming.*
+*Kernel v2 (Wave 3, 2026-07-12 —
+docs/rulings/LI-kernel-v2-2026-07-12.md): band membership is by nonnegative
+distance **to the BWI milestone itself** — the enumeration is run with the
+UID-pinned bow-wave milestone as its own target, so "work packed against m"
+means near-critical *relative to m*, not to project completion.  Unresolved
+and non-target-governed work is quarantined and disclosed, never counted on
+an own-float fallback.  The B1 fixed horizon, B2 UID pinning, and the
+required-pace break test (required = remaining near-critical volume over
+remaining runway to the fixed horizon, W1c-3) carry over unchanged.*
 **BWI > 1 and rising = a bow wave: each update packs more work into less
 time while the milestone date holds.**  The companion statistic is the
 projected break date — the update at which required density exceeds anything

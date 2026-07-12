@@ -91,6 +91,26 @@ behavior is directly visible in the source and a probe adds nothing.
 >   re-exam, RDI-2 demonstrated-population gate, CDI milestone/fallback
 >   membership) — design to be presented to the principal before
 >   implementation — plus the owed independent confirmation review wave.
+> - **Wave 3 (kernel v2): DESIGN APPROVED (D1–D4) AND EXECUTED**
+>   (2026-07-12).  Design presented before implementation
+>   (docs/LI-kernel-v2-design-2026-07-12.md, commit 8d36b34); the principal
+>   ruled D1 full FCBI basis reuse (per-metric targets), D2 severity strip
+>   beside PCI/CDI, D3 CDI accrue-while-live, D4 LI-04 provisional/
+>   ungraded.  PCI/CDI/RDI/BWI now run on the FCBI v0.5 family basis
+>   (`_build_kernel_v2`, oracle-locked to the locked `_target_distance` on
+>   a 40-DAG corpus); recorded ruling
+>   docs/rulings/LI-kernel-v2-2026-07-12.md.  **Findings K1/K2/K5, the PCI
+>   weight residual, RDI-2, and the CDI milestone/fallback membership are
+>   RESOLVED** (K5's Herfindahl-floor disclosure is superseded — the floor
+>   is gone; LI-04's scored anchors are provisional pending recalibration).
+>   Legacy v0.4 helpers byte-identical, retired from the pipeline; FCBI /
+>   enumerator / white paper untouched; pinned demo letters hold (LI-04
+>   ungraded).  Suite after Wave 3: 296 passed, 1 skipped.  REMAINING OPEN:
+>   (i) the OWED independent adversarial review wave — review-wave-2's
+>   territory plus Waves 3/4 (subagent capacity unavailable at landing;
+>   review wave 2 ran at reduced scope, disclosed); (ii) LI-04 anchor
+>   recalibration against real series (separate flagged step, D4); (iii)
+>   the legacy-kernel formal retirement record at eventual removal.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 

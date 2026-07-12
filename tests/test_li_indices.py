@@ -44,6 +44,17 @@ def series():
 
 
 @pytest.fixture(scope="session")
+def indices_a1200(series):
+    # kernel v2: the family metrics share FCBI's completion target; the demo's
+    # contractual completion is A1200 (the CS_MANDFIN deadline) — analyst-
+    # selected here exactly as the FCBI demo test selects it.  The AUTO target
+    # resolves to MS-100 (later-finishing terminal), under which A1200's
+    # deadline governs the whole network -> everything quarantines (honest,
+    # covered by test_family_auto_target_full_quarantine_is_honest).
+    return run_li_indices(series, fcbi_target="A1200")
+
+
+@pytest.fixture(scope="session")
 def indices(series):
     return run_li_indices(series)
 
@@ -1376,8 +1387,18 @@ def test_pci_in_unit_interval(indices):
 
 
 # ===================================================================== CDI
-def test_cdi_shares_sum_to_one(indices):
-    cdi = indices.cdi
+def test_family_auto_target_full_quarantine_is_honest(indices):
+    """Kernel v2: under the AUTO family target (MS-100), the demo's A1200
+    deadline governs the entire live network — CDI must say so (empty board
+    with a reason) and RDI must be NOT EVALUATED, never a fabricated
+    zero-debt/empty-cast reading (rubric A1; the analyst selects m, O7.1)."""
+    assert indices.cdi.reason and not indices.cdi.leaderboard
+    assert indices.rdi.rdi_days is None
+    assert "quarantined" in indices.rdi.reason or "NOT EVALUATED" in indices.rdi.reason
+
+
+def test_cdi_shares_sum_to_one(indices_a1200):
+    cdi = indices_a1200.cdi
     assert cdi.reason == ""
     assert cdi.leaderboard, "expected a non-empty dwell leaderboard"
     # each update allocates exactly one unit; shares are that unit's split
@@ -1390,8 +1411,8 @@ def test_cdi_shares_sum_to_one(indices):
 
 
 # ===================================================================== RDI
-def test_rdi_nonnegative_one_row_per_update(indices, series):
-    rdi = indices.rdi
+def test_rdi_nonnegative_one_row_per_update(indices_a1200, series):
+    rdi = indices_a1200.rdi
     assert rdi.reason == ""
     assert rdi.rdi_days >= 0.0
     assert len(rdi.rows) == len(series.schedules)     # one row per update
@@ -1416,11 +1437,13 @@ def test_bwi_first_update_is_baseline(indices):
 
 
 def test_bwi_projected_break_date():
-    """Three updates, no logic (RF = own float; all near-critical at TF=0),
-    target milestone T fixed at 2025-06-30.  Window 1 completes 20 activity-days
-    of near-critical work (demonstrated pace ~1.0/day); update 2 then loads 500
-    activity-days of remaining near-critical work ahead of T, whose required
-    density (~6/day) outruns anything demonstrated -> projected break at U2."""
+    """Three updates, each work item logically tied to target milestone T
+    (kernel v2: band membership is the enumerated distance to the pinned
+    anchor — an unconnected activity is unresolved and disclosed, never
+    own-float).  Window 1 completes 20 activity-days of near-critical work
+    (demonstrated pace ~1.0/day); update 2 then loads 500 activity-days of
+    remaining near-critical work ahead of T, whose required pace outruns
+    anything demonstrated -> projected break at U2."""
     def mk(uid, code, *, status=ActivityStatus.NOT_STARTED, od_h=0.0, rem_h=0.0,
            tf_h=0.0, ef=None, af=None,
            atype=ActivityType.TASK, constraint=ConstraintType.NONE):
@@ -1438,24 +1461,28 @@ def test_bwi_projected_break_date():
     T = lambda: mk("T", "T", atype=ActivityType.FINISH_MILESTONE, ef=TFIN,
                    constraint=ConstraintType.MANDATORY_FINISH)
 
-    u0 = sched(datetime(2025, 1, 6, 8), [
+    def link(sched_obj, uids):
+        sched_obj.relationships = [Relationship(u, "T") for u in uids]
+        return sched_obj
+
+    u0 = link(sched(datetime(2025, 1, 6, 8), [
         T(),
         mk("W1", "W1", od_h=160, rem_h=160, ef=datetime(2025, 3, 1, 17)),
-    ])
-    u1 = sched(datetime(2025, 2, 3, 8), [
+    ]), ["W1"])
+    u1 = link(sched(datetime(2025, 2, 3, 8), [
         T(),
         mk("W1", "W1", status=ActivityStatus.COMPLETED, od_h=160, rem_h=0,
            af=datetime(2025, 1, 20, 17)),
         mk("W2", "W2", od_h=80, rem_h=80, ef=datetime(2025, 4, 1, 17)),
-    ])
-    u2 = sched(datetime(2025, 3, 3, 8), [
+    ]), ["W1", "W2"])
+    u2 = link(sched(datetime(2025, 3, 3, 8), [
         T(),
         mk("W1", "W1", status=ActivityStatus.COMPLETED, od_h=160, rem_h=0,
            af=datetime(2025, 1, 20, 17)),
         mk("W2", "W2", status=ActivityStatus.COMPLETED, od_h=80, rem_h=0,
            af=datetime(2025, 2, 20, 17)),
         mk("W3", "W3", od_h=4000, rem_h=4000, ef=datetime(2025, 5, 1, 17)),
-    ])
+    ]), ["W1", "W2", "W3"])
     sa = SeriesAnalysis(schedules=[u0, u1, u2])
     bwi = run_li_indices(sa, bwi_target="T").bwi
     assert bwi.reason == ""
@@ -1523,37 +1550,43 @@ _DD2 = datetime(2025, 2, 3, 8)                       # +10 more
 def test_rdi_r2_accrues_against_p50_not_max():
     """Window 1 retires A1 (planned 20d / 10wd -> demo 2.0); window 2 retires
     nothing (demo 0.0).  At window 2 the required pace is 1.5: under the
-    ported P50 anchor (median of [2.0, 0.0] after folding window 2 = 1.0 ...
-    then 0.0 after window 2's own zero is folded) debt accrues; under the
-    withdrawn max anchor (2.0 >= 1.5) it would not.  Closed-form: window-2
-    accrual = max(0, 1.5 - median([2.0, 0.0])) x 10 = 15.0 with the ruled
-    fold-own-window convention median([2.0,0.0]) evaluated AFTER window 2's
-    demo (0.0) joins: median([2.0, 0.0]) = 1.0 -> 5.0."""
-    fin0 = _DD0 + timedelta(days=14)                 # 10 wd from dd0
+    ported P50 anchor (median([2.0, 0.0]) = 1.0 after window 2's own zero is
+    folded) debt accrues 5.0 d; under the withdrawn max anchor (2.0 >= 1.5)
+    it would not.  Kernel v2: activities are logically tied to the terminal
+    milestone T; A1 completes with TF nulled by the exporter and STILL
+    counts as demonstrated via its earlier-endpoint distance (the RDI-2
+    fix)."""
+    fin0 = _DD0 + timedelta(days=28)                 # 20 wd from dd0
     fin1 = _DD1 + timedelta(days=14)                 # 10 wd from dd1
-    # S0: A1 floaty (off band), B near-critical rem 10d, C off band.
+    tm = lambda ef: _w1b_act("T", 0.0, od=0, rem=0, ef=ef,
+                             atype=ActivityType.FINISH_MILESTONE)
+    rels = [Relationship("A1", "T"), Relationship("B", "T"),
+            Relationship("C", "T")]
+    # S0: B drives (d 0), A1 near-critical (d 5, IN band at the window start),
+    # C far off band (d 50).  required(S0) = (10 + 20)/20 = 1.5.
     s0 = _w1b_sched(_DD0, [
-        _w1b_act("A1", 15.0, od=20, ef=fin0),
+        _w1b_act("A1", 5.0, od=20, ef=fin0),
         _w1b_act("B", 0.0, od=10, ef=fin0),
-        _w1b_act("C", 50.0, od=5, ef=fin1)], finish=fin0)
-    # S1: A1 completed in window 1 (TF written 0 on completion by the
-    # exporter, so the v0.4 RF fallback resolves it into the band — the
-    # completed-population gate itself is audit finding RDI-2, Wave 3).
+        _w1b_act("C", 50.0, od=5, ef=fin1), tm(fin0)], rels, finish=fin0)
+    # S1: A1 completed in window 1 with TF NULLED by the exporter — the v2
+    # demonstrated gate reads its window-START distance (5 <= band), so the
+    # completion still counts (RDI-2 fix); C tightens into the band.
     s1 = _w1b_sched(_DD1, [
-        _w1b_act("A1", 0.0, od=20, rem=0, status=ActivityStatus.COMPLETED,
+        _w1b_act("A1", None, od=20, rem=0, status=ActivityStatus.COMPLETED,
                  As=_DD0 + timedelta(days=1), af=_DD1 - timedelta(days=2, hours=15)),
         _w1b_act("B", 0.0, od=10, ef=fin1),
-        _w1b_act("C", 5.0, od=5, ef=fin1)], finish=fin1)
+        _w1b_act("C", 5.0, od=5, ef=fin1), tm(fin1)], rels, finish=fin1)
     # S2: nothing completed in window 2.
     s2 = _w1b_sched(_DD2, [
-        _w1b_act("A1", 0.0, od=20, rem=0, status=ActivityStatus.COMPLETED,
+        _w1b_act("A1", None, od=20, rem=0, status=ActivityStatus.COMPLETED,
                  As=_DD0 + timedelta(days=1), af=_DD1 - timedelta(days=2, hours=15)),
         _w1b_act("B", 0.0, od=10, ef=fin1 + timedelta(days=14)),
-        _w1b_act("C", 5.0, od=5, ef=fin1 + timedelta(days=14))],
+        _w1b_act("C", 5.0, od=5, ef=fin1 + timedelta(days=14)),
+        tm(fin1 + timedelta(days=14))], rels,
         finish=fin1 + timedelta(days=14))
     rdi = _w1b_rdi([s0, s1, s2])
     assert rdi.reason == ""
-    # window 1: required(S0) = 10/10 = 1.0 <= p50 (2.0 after fold) -> 0
+    # window 1: required(S0) = 1.5 <= p50 (2.0 after fold) -> 0
     assert rdi.rows[1].demonstrated_pace == pytest.approx(2.0)
     assert rdi.rows[1].accrual_days == pytest.approx(0.0)
     # window 2: required(S1) = (10+5)/10 = 1.5; p50([2.0, 0.0]) = 1.0 -> 5.0
@@ -1575,11 +1608,14 @@ def test_rdi_r1_concurrency_anchor_demo_2_5_overrun_2_0():
     each spanning 10 wd of calendar.  Planned-scope basis: demonstrated =
     25/10 = 2.5 (no phantom debt from concurrency); the overrun signal is
     carried by the companion ratio = 50/25 = 2.0, never the accrual."""
-    done = [_w1b_act(f"P{i}", 0.0, od=5, rem=0, status=ActivityStatus.COMPLETED,
+    tm = lambda: _w1b_act("T", 0.0, od=0, rem=0, ef=_DD1 + timedelta(days=30),
+                          atype=ActivityType.FINISH_MILESTONE)
+    rels = [Relationship(f"P{i}", "T") for i in range(5)]
+    done = [_w1b_act(f"P{i}", None, od=5, rem=0, status=ActivityStatus.COMPLETED,
                      As=_DD0, af=_DD1) for i in range(5)]
     open_ = [_w1b_act(f"P{i}", 0.0, od=5, ef=_DD1) for i in range(5)]
-    s0 = _w1b_sched(_DD0, open_)
-    s1 = _w1b_sched(_DD1, done)
+    s0 = _w1b_sched(_DD0, open_ + [tm()], rels)
+    s1 = _w1b_sched(_DD1, done + [tm()], rels)
     rdi = _w1b_rdi([s0, s1])
     assert rdi.rows[1].demonstrated_pace == pytest.approx(2.5)
     assert rdi.rows[1].overrun_ratio == pytest.approx(2.0)
@@ -1588,10 +1624,14 @@ def test_rdi_r1_concurrency_anchor_demo_2_5_overrun_2_0():
 
 
 def test_rdi_r1_missing_actual_start_degrades_ratio_with_disclosure():
-    done = [_w1b_act(f"P{i}", 0.0, od=5, rem=0, status=ActivityStatus.COMPLETED,
+    tm = lambda: _w1b_act("T", 0.0, od=0, rem=0, ef=_DD1 + timedelta(days=30),
+                          atype=ActivityType.FINISH_MILESTONE)
+    rels = [Relationship(f"P{i}", "T") for i in range(5)]
+    done = [_w1b_act(f"P{i}", None, od=5, rem=0, status=ActivityStatus.COMPLETED,
                      As=(_DD0 if i else None), af=_DD1) for i in range(5)]
     open_ = [_w1b_act(f"P{i}", 0.0, od=5, ef=_DD1) for i in range(5)]
-    rdi = _w1b_rdi([_w1b_sched(_DD0, open_), _w1b_sched(_DD1, done)])
+    rdi = _w1b_rdi([_w1b_sched(_DD0, open_ + [tm()], rels),
+                    _w1b_sched(_DD1, done + [tm()], rels)])
     # P0 (no actual start) drops from the ratio: 4x10 elapsed / 4x5 planned
     assert rdi.rows[1].overrun_ratio == pytest.approx(2.0)
     assert rdi.rows[1].demonstrated_pace == pytest.approx(2.5)   # demo unaffected
@@ -1727,10 +1767,13 @@ def test_pci_all_milestone_schedule_graceful():
     assert pci.reason
 
 
-def test_cdi_c1_loe_excluded_completed_retained_and_disclosed():
-    """CDI inherits the kernel exclusion (no LOE on the leaderboard); a
-    completed discrete activity still earns retrospective dwell (C2), and
-    both conventions are disclosed on the result."""
+def test_cdi_c1_v2_population_loe_completed_milestone_orphan():
+    """CDI v2 population (rulings C1 + design D1/D3): LOE never on the
+    leaderboard; a COMPLETED activity stops EARNING dwell (accrue-while-live,
+    D3 — history from live updates is retained, here there are none); the
+    target milestone is a reference, not work; an orphan on no enumerated
+    path is unresolved-quarantined (K1: never own-float), counted and
+    disclosed."""
     rels = [Relationship("X", "T"), Relationship("D", "T")]
     s = _w1b_sched(_DD0, [
         _w1b_act("X", 0.0, od=10, ef=_DD0 + timedelta(days=30)),
@@ -1738,15 +1781,18 @@ def test_cdi_c1_loe_excluded_completed_retained_and_disclosed():
                  As=_DD0 - timedelta(days=20), af=_DD0 - timedelta(days=6)),
         _w1b_act("T", 0.0, od=0, rem=0, ef=_DD0 + timedelta(days=30),
                  atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("ORPH", 4.0, od=10, ef=_DD0 + timedelta(days=30)),
         _w1b_act("L", 0.0, od=10, ef=_DD0 + timedelta(days=30),
                  atype=ActivityType.LOE)], rels)
     cdi = run_li_indices(SeriesAnalysis(schedules=[s, s])).cdi
     codes = {e.code for e in cdi.leaderboard}
-    assert "L" not in codes                          # C1
-    assert "D" in codes                              # C2: retrospective dwell
+    assert codes == {"X"}            # LOE, completed, milestone, orphan all out
+    assert cdi.leaderboard[0].dwell_share == pytest.approx(1.0)
+    assert cdi.unresolved_total == 2                 # ORPH x 2 updates
     text = "\n".join(cdi.disclosures)
     assert "not discrete executable work" in text
-    assert "RETAINED" in text
+    assert "ACCRUES WHILE LIVE" in text
+    assert cdi.n_severity == [0.0, 0.0]              # D2 strip present
 
 
 # ==========================================================================
@@ -1879,3 +1925,63 @@ def test_qh_kernel_band_sensitivity_set_never_raises():
     empty = kernel_band_sensitivity(SeriesAnalysis(schedules=[]))
     assert all(p.rdi_days is None for p in empty)
     assert kernel_lambda_sensitivity(SeriesAnalysis(schedules=[]))
+
+
+# ==========================================================================
+# Wave 3 — kernel v2 (docs/rulings/LI-kernel-v2-2026-07-12.md)
+# ==========================================================================
+def test_v2_enumeration_matches_locked_fcbi_oracle_on_corpus():
+    """The v2 mirror must NEVER diverge from the locked FCBI basis: on a
+    seeded random-DAG corpus, _v2_enumerate's resolved distance map, driving
+    margin, target margin, and cap flag equal _target_distance's (the
+    oracle) exactly — the W4-03 non-circularity discipline applied to the
+    family kernel."""
+    import random
+    from scheduleiq.analytics.li_indices import _v2_enumerate, _target_distance
+    rng = random.Random(20260712)
+    for case in range(40):
+        n = rng.randint(4, 14)
+        acts = [_w1b_act(f"N{i}",
+                         rng.choice([None, -3.0, 0.0, 2.0, 5.0, 12.0, 30.0]),
+                         od=rng.randint(1, 15),
+                         ef=_DD0 + timedelta(days=rng.randint(5, 90)),
+                         atype=(ActivityType.LOE if rng.random() < 0.15
+                                else ActivityType.TASK))
+                for i in range(n)]
+        acts.append(_w1b_act("T", 0.0, od=0, rem=0,
+                             ef=_DD0 + timedelta(days=100),
+                             atype=ActivityType.FINISH_MILESTONE))
+        rels = [Relationship(f"N{i}", "T") for i in range(n) if rng.random() < 0.6]
+        rels += [Relationship(f"N{i}", f"N{j}")
+                 for i in range(n) for j in range(i + 1, n) if rng.random() < 0.15]
+        rels.sort(key=lambda r: (r.pred_uid, r.succ_uid))
+        s = _w1b_sched(_DD0, acts, rels)
+        o_dist, o_dm, o_tm, o_cap = _target_distance(s, "T")
+        v_dist, v_dm, v_tm, v_cap, _pm = _v2_enumerate(s, "T")
+        assert v_dist == o_dist, f"case {case}: distance maps diverge"
+        assert v_dm == o_dm and v_tm == o_tm and v_cap == o_cap, f"case {case}"
+
+
+def test_v2_pci_no_negative_float_premium():
+    """K2 abolished: a UNIFORM sink into negative float (every path 10 days
+    deeper, relative separations unchanged) cannot move PCI — under the old
+    kernel the driving path's w exploded to 4.0 and read as rising
+    'concentration'.  The negative-float signal is carried BESIDE the index
+    by the severity strip (D2).  (A driver deepening ALONE is different:
+    the relative separation genuinely widens, and v2 prices that as
+    structure — distance — not as a premium.)"""
+    fin = _DD0 + timedelta(days=30)
+    rels = [Relationship("X", "T"), Relationship("Y", "T")]
+    mk = lambda tfx, tfy, tft: _w1b_sched(_DD0, [
+        _w1b_act("X", tfx, od=10, ef=fin),
+        _w1b_act("Y", tfy, od=10, ef=fin),
+        _w1b_act("T", tft, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE)], rels)
+    on_time = run_li_indices(SeriesAnalysis(schedules=[mk(0.0, 5.0, 0.0)] * 2)).pci
+    deep = run_li_indices(SeriesAnalysis(schedules=[mk(-10.0, -5.0, -10.0)] * 2)).pci
+    # same relative separations -> identical PCI (the old kernel moved it via
+    # the w>1 premium: driver weight 4.0 vs 1.0)
+    assert on_time.per_update[0] == pytest.approx(deep.per_update[0])
+    # severity strip carries the negative-float signal beside the index (D2)
+    assert deep.n_severity[0] == pytest.approx(10.0)
+    assert on_time.n_severity[0] == pytest.approx(0.0)

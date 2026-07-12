@@ -68,7 +68,14 @@ behavior is directly visible in the source and a probe adds nothing.
 >   docs/rulings/LI-04-LI-07-kernel-loe-port-2026-07-12.md.  Clean areas
 >   with probe evidence: FCBI/paths byte-identity, never-raises, Wave-3
 >   scope locks, all ported ruling arithmetic.  Suite after dispositions:
->   282 passed, 1 skipped.  Wave 2 gets its own review wave next.
+>   282 passed, 1 skipped.
+> - **Review wave 2: run at REDUCED SCOPE, implementation-side** (the
+>   independent reviewer was terminated by a spend limit — disclosed; an
+>   independent confirmation wave is owed).  W1c fixes + Wave-2 IL/FRB
+>   verified on-probe; one new finding **RW2-1** (zero-float-evidence
+>   branch leaked the tail min through the shared rel_float_days fallback
+>   -> fabricated rf 0.0) FIXED with regression.  Suite: 283 passed,
+>   1 skipped.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 

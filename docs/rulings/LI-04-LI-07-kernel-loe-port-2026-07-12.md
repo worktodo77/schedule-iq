@@ -81,6 +81,30 @@ Wave-1c train (milestone-float-bearing paths, unfloated branches, and break
 labels move vs the pre-review commit; the pre-port base semantics for
 milestone floats are restored).
 
+## Review wave 2 (2026-07-12) — REDUCED SCOPE, implementation-side
+
+**Independence caveat, disclosed:** the independent wave-2 reviewer was
+terminated early by an account spend limit; this wave was run by the
+implementation side against the wave-2 probe plan (verify W1c-1..3 fixes;
+attack the Wave-2 IL/FRB revision).  It does NOT carry the weight of an
+independent review; a fully independent confirmation wave should run when
+resources allow before any of this is treated as review-clean.
+
+Probes executed (all reproduced, outputs in the session record):
+W1c-1/3 fix verification incl. the wd_rem ≤ 0 edge (no raise, break
+skipped); the causing-edit-as-response case (latency 0 with the adjacency
+disclosure present — behavior as adjudicated under IL1-A); the S(0) = 0.5
+KM boundary (median reached at 0, standard convention); completed+negative
+same-window exclusion (IL4b); overdue-horizon banding at n ≥ 5 through
+`frb_apply_forward`; same-chain re-emergence (independent events, second
+censored at its own follow-up).
+
+**One new finding, fixed:**
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| **RW2-1** | MAJOR | A branch carrying NO float evidence at all (its only unique member stores no float) still leaked the spliced tail's min THROUGH the shared `rel_float_days` fallback — kernel rf 0.0 / weight 1.0 for a float-less feeder task (the same rubric-A1 class as W1c-2, one level deeper). | **Fixed:** `_li_path_rel_float` returns None for a zero-float-evidence branch and `relative_float_map` skips it — the member falls through to the own-float fallback / the documented "omitted (weight undefined)" case, never a fabricated 0.0.  Regression `test_rw2_1_*`. |
+
 ## Verification
 
 - Full suite **272 passed, 1 skipped**, including every FCBI anchor

@@ -3,6 +3,26 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — Review wave 2 (reduced scope): RW2-1 fixed
+
+**Check-affecting within the Unreleased Wave-1c train.**  The independent
+wave-2 reviewer was terminated by an account spend limit; the wave ran
+implementation-side against the same probe plan (disclosed as NOT
+independent in the ruling record; an independent confirmation wave is owed).
+The W1c-1..3 fixes and the Wave-2 IL/FRB rulings verified on-probe (incl.
+the causing-edit adjacency case, the S(0)=0.5 KM boundary, IL4b
+completed+negative same-window exclusion, overdue banding at n>=5, and the
+wd_rem<=0 break edge).  One new finding, fixed:
+
+- **RW2-1:** a branch with NO float evidence at all still leaked the
+  spliced tail's min through the shared `rel_float_days` fallback (kernel
+  rf 0.0 / weight 1.0 for a float-less feeder task).  A zero-float-evidence
+  branch now contributes no RF evidence — its members fall to the own-float
+  fallback / the documented omitted case, never a fabricated 0.0.
+  Regression `test_rw2_1_*`.
+
+Suite: 283 passed, 1 skipped.
+
 ## Unreleased — Wave 0-1c adversarial review, wave 1 (findings W1c-1..5 dispositioned)
 
 **Check-affecting within the Unreleased Wave-1c train** (no released number

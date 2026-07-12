@@ -137,7 +137,12 @@ def _li_path_rel_float(schedule: Schedule, p: FloatPath) -> float:
     shared ``rel_float_days`` — the branch's own basis — NEVER to the spliced
     driving-path tail's min (review W1c-2: the tail-min fallback fabricated
     rf = 0.0 for a genuinely floaty branch, the exact rubric-A1 class this
-    audit exists to kill).
+    audit exists to kill).  When the branch carries NO float evidence at all
+    (no unique member of any type stores a float), the shared field itself is
+    tail-derived, so this returns ``None`` — the path contributes no RF
+    evidence for its unique members, and they fall through to the own-float
+    fallback / the documented "omitted (weight undefined)" case instead of a
+    fabricated 0.0 (review wave-2 finding RW2-1).
     """
     uniq = p.unique_uids
     vals = [a.total_float_days(schedule.cal_for(a)) for a in p.activities
@@ -145,7 +150,10 @@ def _li_path_rel_float(schedule: Schedule, p: FloatPath) -> float:
             and a.total_float_days(schedule.cal_for(a)) is not None]
     if vals:
         return min(vals)
-    return p.rel_float_days
+    any_branch_float = any(
+        a.total_float_days(schedule.cal_for(a)) is not None
+        for a in p.activities if a.uid in uniq)
+    return p.rel_float_days if any_branch_float else None
 
 
 def relative_float_map(schedule: Schedule,
@@ -171,6 +179,8 @@ def relative_float_map(schedule: Schedule,
     rf: dict[str, float] = {}
     for p in paths:
         li_rel = _li_path_rel_float(schedule, p)
+        if li_rel is None:                   # zero-float-evidence branch (RW2-1):
+            continue                         # contributes no RF evidence
         for a in p.activities:
             if a.is_loe_or_summary:          # summary work carries no criticality
                 continue

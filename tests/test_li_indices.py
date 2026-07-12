@@ -1818,3 +1818,22 @@ def test_w1c3_bwi_projected_break_fires_as_runway_shrinks():
     # REQUIRED pace is 40 vol / 40 wd remaining = 1.0 > demonstrated 0.0
     assert bwi.rows[1].density is not None and bwi.rows[1].density < 0.5
     assert bwi.projected_break_label is not None    # break correctly fires
+
+
+def test_rw2_1_zero_float_evidence_branch_contributes_no_rf():
+    """Review wave-2 finding RW2-1: a branch whose unique members carry NO
+    float at all must contribute no RF evidence — its float-less discrete
+    member is omitted (weight undefined), never assigned the spliced tail's
+    0.0 through the shared rel_float_days fallback."""
+    fin = _DD0 + timedelta(days=60)
+    rels = [Relationship("A1", "A2"), Relationship("A2", "TGT"),
+            Relationship("NL", "A2")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("A1", 0.0, od=10, ef=fin), _w1b_act("A2", 0.0, od=10, ef=fin),
+        _w1b_act("TGT", 0.0, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("NL", None, od=10, ef=fin)], rels)
+    k = _build_kernel(s, 5.0)
+    assert "NL" not in k.rf                          # omitted, not fabricated 0.0
+    assert k.rf["A1"] == pytest.approx(0.0)          # spine unaffected
+    assert k.rf["A2"] == pytest.approx(0.0)

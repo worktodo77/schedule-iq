@@ -1747,3 +1747,74 @@ def test_cdi_c1_loe_excluded_completed_retained_and_disclosed():
     text = "\n".join(cdi.disclosures)
     assert "not discrete executable work" in text
     assert "RETAINED" in text
+
+
+# ==========================================================================
+# Wave-1c adversarial review (W1c-1..5) — reproduced findings locked
+# ==========================================================================
+def test_w1c1_milestone_float_keeps_deadline_chain_in_band():
+    """Review W1c-1: a deadline-constrained finish milestone in negative
+    float must keep setting its kept-path margin (the ruled text: milestones
+    are excluded ONLY from the discrete-work path test).  A draft that
+    stripped milestone floats emptied the near-critical band on a
+    deadline-critical chain — CDI dwell, RDI required pace, and BWI volume
+    all silently lost the chain."""
+    fin = _DD0 + timedelta(days=30)
+    rels = [Relationship("T1", "T2"), Relationship("T2", "MS")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("T1", 15.0, od=10, ef=fin),
+        _w1b_act("T2", 15.0, od=10, ef=fin),
+        _w1b_act("MS", -2.0, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE)], rels)
+    k = _build_kernel(s, 5.0)
+    assert k.rf["MS"] == pytest.approx(-2.0)
+    assert k.rf["T1"] == pytest.approx(-2.0)        # milestone float sets margin
+    assert k.rf["T2"] == pytest.approx(-2.0)
+    # the whole chain stays inside the near-critical band (and the K2 premium
+    # still fires on path-borne negative float — Wave-3 scope lock)
+    assert all(rf <= 10.0 for rf in k.rf.values())
+    assert kernel_weight(k.rf["T1"], 5.0) > 1.0
+
+
+def test_w1c2_unfloated_branch_reads_branch_basis_not_tail_zero():
+    """Review W1c-2: a kept branch whose float-bearing members are only its
+    LOE must fall back to the branch's OWN basis (shared rel_float_days),
+    never the spliced driving-path tail's min — the tail-min fallback
+    fabricated rf = 0.0 (weight 1.0) for a genuinely floaty branch."""
+    fin = _DD0 + timedelta(days=60)
+    # driving spine A1->A2->TGT at TF 0; feeder branch NL(no float)->M9(50)
+    # attaching via an LOE(50) so the branch's discrete member NL carries None
+    rels = [Relationship("A1", "A2"), Relationship("A2", "TGT"),
+            Relationship("NL", "L9"), Relationship("L9", "A2")]
+    s = _w1b_sched(_DD0, [
+        _w1b_act("A1", 0.0, od=10, ef=fin), _w1b_act("A2", 0.0, od=10, ef=fin),
+        _w1b_act("TGT", 0.0, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE),
+        _w1b_act("NL", None, od=10, ef=fin),
+        _w1b_act("L9", 50.0, od=10, ef=fin, atype=ActivityType.LOE)], rels)
+    k = _build_kernel(s, 5.0)
+    # NL sits on the floaty branch: its RF must be the branch basis (50 via
+    # the shared rel_float_days), NOT the tail's 0.0
+    assert k.rf.get("NL") == pytest.approx(50.0)
+    assert kernel_weight(k.rf["NL"], 5.0) < 0.01    # far off-critical, not 1.0
+
+
+def test_w1c3_bwi_projected_break_fires_as_runway_shrinks():
+    """Review W1c-3: the projected-break test must use REQUIRED pace —
+    remaining near-critical volume per working day REMAINING to the fixed
+    reference — not the constant-denominator BWI density, whose break
+    sensitivity decayed exactly as the milestone approached."""
+    ref = datetime(2025, 6, 2, 17)                  # fixed reference horizon
+    mk = lambda dd, rem: _w1b_sched(dd, [
+        _w1b_act("W", 2.0, od=40, rem=rem, ef=ref - timedelta(days=3)),
+        _w1b_act("MS", 0.0, od=0, rem=0, ef=ref,
+                 atype=ActivityType.FINISH_MILESTONE)],
+        [Relationship("W", "MS")])
+    s0 = mk(datetime(2025, 1, 6, 8), 40)            # ~106 wd runway
+    s1 = mk(datetime(2025, 4, 7, 8), 40)            # 40 wd runway, 40 d volume
+    sa = SeriesAnalysis(schedules=[s0, s1])
+    bwi = run_li_indices(sa).bwi
+    # constant-denominator density at update 1 is ~0.38 (< any demo), but the
+    # REQUIRED pace is 40 vol / 40 wd remaining = 1.0 > demonstrated 0.0
+    assert bwi.rows[1].density is not None and bwi.rows[1].density < 0.5
+    assert bwi.projected_break_label is not None    # break correctly fires

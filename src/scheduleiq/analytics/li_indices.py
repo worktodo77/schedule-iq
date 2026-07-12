@@ -115,31 +115,36 @@ def _is_discrete_work(a) -> bool:
 
 
 def _li_path_rel_float(schedule: Schedule, p: FloatPath) -> float:
-    """LI-specific relative float of a float path, computed over the path's
-    **discrete-work** members only (ported v0.4.3 mixed-path neutralization).
+    """LI-specific relative float of a float path: the min total float over the
+    path's unique **non-summary** members (ported v0.4.3 mixed-path
+    neutralization, as RULED — LOE/summary excluded, milestones RETAINED).
 
     ``FloatPath.rel_float_days`` comes from the shared ``float_paths()`` and is
     the min total float over the branch UNIQUE to this path — including any LOE/
     summary member.  When an LOE is the lowest-float member of a kept *mixed*
-    path it therefore drags the whole path (and the discrete members' RF) toward
+    path it therefore drags the whole path (and the members' RF) toward
     criticality.  The LI kernel neutralizes that by taking the min total float
-    over the path's unique **discrete** members (LOE/summary excluded).  This is
-    an LI-index-local calculation layered on top of the enumerator; the shared
-    ``float_paths()`` result is untouched (only its additive ``unique_uids`` is
-    read).  Falls back to any discrete member, then to ``rel_float_days``, so a
-    path always yields a value.
+    over the path's unique members EXCLUDING LOE/summary — and ONLY those: a
+    deadline-carrying finish milestone is a legitimate criticality reference
+    whose (possibly negative) float must keep setting the path margin, exactly
+    as the ruled methodology note states (review W1c-1: an earlier draft also
+    stripped milestone floats here, silently emptying the near-critical band on
+    a deadline-critical chain).  This is an LI-index-local calculation layered
+    on top of the enumerator; the shared ``float_paths()`` result is untouched
+    (only its additive ``unique_uids`` is read).
+
+    When no unique non-summary member carries a float, falls back to the
+    shared ``rel_float_days`` — the branch's own basis — NEVER to the spliced
+    driving-path tail's min (review W1c-2: the tail-min fallback fabricated
+    rf = 0.0 for a genuinely floaty branch, the exact rubric-A1 class this
+    audit exists to kill).
     """
     uniq = p.unique_uids
-    disc_unique = [a.total_float_days(schedule.cal_for(a)) for a in p.activities
-                   if a.uid in uniq and _is_discrete_work(a)
-                   and a.total_float_days(schedule.cal_for(a)) is not None]
-    if disc_unique:
-        return min(disc_unique)
-    disc_any = [a.total_float_days(schedule.cal_for(a)) for a in p.activities
-                if _is_discrete_work(a)
-                and a.total_float_days(schedule.cal_for(a)) is not None]
-    if disc_any:
-        return min(disc_any)
+    vals = [a.total_float_days(schedule.cal_for(a)) for a in p.activities
+            if a.uid in uniq and not a.is_loe_or_summary
+            and a.total_float_days(schedule.cal_for(a)) is not None]
+    if vals:
+        return min(vals)
     return p.rel_float_days
 
 
@@ -1835,8 +1840,14 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
                    bwi=(densities[i] / base if densities[i] is not None else None))
             for i in range(len(scheds))]
 
-    # projected break: first update whose required density exceeds the best
-    # pace ever demonstrated up to that point (RDI's demonstrated D series).
+    # projected break: first update whose REQUIRED density — remaining
+    # near-critical volume per working day REMAINING from that update's data
+    # date to the fixed reference date — exceeds the best pace demonstrated so
+    # far (RDI's demonstrated D series).  The BWI ratio keeps B1's CONSTANT
+    # denominator; the break test needs a true required pace with a shrinking
+    # runway (review W1c-3: testing the constant-denominator density against
+    # demonstrated pace made break sensitivity decay exactly as the milestone
+    # approached, while the narrative still claimed "required density").
     demo = _demonstrated_series(sa, kernels, band_days)
     break_label: Optional[str] = None
     max_demo = 0.0
@@ -1845,7 +1856,11 @@ def _bwi(sa, kernels: dict[int, _Kernel], band_days: float,
         if d is not None:
             max_demo = max(max_demo, d)
         di = densities[i]
-        if di is not None and di > max_demo:
+        wd_rem = _working_days_5d(scheds[i].data_date, ref_date)
+        if di is None or wd_rem <= 0:
+            continue
+        req = (di * wd_const) / wd_rem          # remaining volume / remaining runway
+        if req > max_demo:
             break_label = scheds[i].label()
             break
 

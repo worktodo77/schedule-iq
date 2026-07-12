@@ -19,19 +19,26 @@ this kernel; the full FCBI anchor suite passes unchanged.
   project criticality: `relative_float_map` gives them no RF entry (so no
   kernel weight, no CDI dwell, no RDI/BWI band membership via the map), and
   `_build_kernel` drops float paths with no discrete-work member, so a pure
-  LOE/summary or bare-milestone chain cannot inflate PCI's path count (a
-  single-threaded schedule with an LOE feeder reads 1.0).  Milestones are
-  retained in the RF map (legitimate criticality references) but do not
+  LOE/summary or bare-milestone chain cannot inflate PCI's path count (an
+  LOE-only BRANCH cannot register as a kernel path; a kept MIXED path's
+  Herfindahl-weight residual is separately deferred — review W1c-4 corrected
+  an over-broad "reads 1.0" claim here).  Milestones are retained in the RF
+  map and their floats keep setting kept-path margins (legitimate
+  criticality references — a deadline-constrained finish milestone in
+  negative float keeps its chain in the near-critical band); they do not
   satisfy the discrete-work path test.
 - **Mixed-path neutralization (v0.4.3).**  The LI kernel computes each kept
-  path's relative float over its unique **discrete** members only
-  (`_li_path_rel_float`), so an LOE that is the lowest-float member of a
-  mixed path no longer drives the discrete members' RF.  Implemented as an
-  LI-kernel-local layer reading `FloatPath.unique_uids` — an **additive**
-  field populated by `_finalize_path`; the shared `float_paths()` /
-  `iter_float_paths()` walk, ordering, `rel_float_days`, and
-  `rel_float_hours` are all byte-identical (regression-pinned: the shared
-  path still carries the LOE's −2.0 while the kernel RF reads 0.0).
+  path's relative float over its unique **non-summary** members
+  (`_li_path_rel_float` — LOE/summary out, milestones retained), so an LOE
+  that is the lowest-float member of a mixed path no longer drives the
+  members' RF; when no unique non-summary member carries a float, the
+  fallback is the shared `rel_float_days` (the branch's own basis), never
+  the spliced tail's min.  Implemented as an LI-kernel-local layer reading
+  `FloatPath.unique_uids` — an **additive** field populated by
+  `_finalize_path`; the shared `float_paths()` / `iter_float_paths()` walk,
+  ordering, `rel_float_days`, and `rel_float_hours` are all byte-identical
+  (regression-pinned: the shared path still carries the LOE's −2.0 while
+  the kernel RF reads 0.0).
 - **C2 — CDI completed-retention documented.**  No behavioral change:
   completed activities are retained because CDI measures retrospective
   criticality-time; now stated at §10.2, the LI-07 matrix row, and a
@@ -48,6 +55,31 @@ this kernel; the full FCBI anchor suite passes unchanged.
   `rel_float_days`, as lineage A deliberately deferred and its validation
   record locked).  All await the principal-approved new governed LI kernel
   (triage ruling Q-B), Wave 3.
+
+## Post-port adversarial review — wave 1 (2026-07-12), loop closed
+
+An independent adversarial review of the Wave 0–1c change set (`ec30292..372be49`,
+reproduce-before-reporting; FCBI/paths byte-identity re-verified on a 82-entry
+corpus with 0 diff lines; 96 adversarial never-raises calls, 0 raises; every
+ported ruling's arithmetic re-derived) raised 3 MAJOR + 2 MINOR findings, all
+reproduced.  Dispositions — each fix CONFORMS the code to the already-ruled
+record (the FCBI post-implementation-review precedent), no new methodology:
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| **W1c-1** | MAJOR | `_li_path_rel_float` stripped MILESTONE floats from kept-path margins via `_is_discrete_work`, contradicting the ruled text ("milestones excluded ONLY from the discrete-work path test") — a deadline-constrained finish milestone at TF −2 left its whole chain's RF at +15, emptying the near-critical band for CDI/RDI/BWI. Faithfully ported from lineage-A code, whose comment carried the same contradiction latently. | **Fixed to the ruled text:** the kept-path min is over unique NON-SUMMARY members (milestones retained); regression `test_w1c1_*` (chain stays at −2, K2 premium still fires). |
+| **W1c-2** | MAJOR | When a branch's unique members carried no float, the fallback read the spliced driving-path TAIL's min — fabricating rf 0.0 / weight 1.0 for a genuinely floaty branch (rubric A1). Also ported faithfully from lineage-A code. | **Fixed:** fallback goes straight to the shared `rel_float_days` (the branch's own basis); the tail-min step is removed; regression `test_w1c2_*` (rf 50.0, not 0.0). |
+| **W1c-3** | MAJOR | Under B1's constant denominator the projected-break test (`density > max_demo`) no longer compared a REQUIRED pace — break sensitivity decayed exactly as the milestone approached while the narrative still said "required density". Present in lineage-A's B1 code too. | **Fixed:** the break test now uses remaining volume / working days REMAINING to the fixed reference (a true required pace); the BWI ratio keeps B1's constant denominator; regression `test_w1c3_*`. |
+| **W1c-4** | MINOR | Over-broad claim "a single-threaded schedule with an LOE feeder reads PCI 1.0" (only true when the LOE feeds the target directly; a mid-chain LOE yields a kept mixed path, PCI 0.9697 — the separately-deferred Herfindahl residual). | **Reworded** here, in the CHANGELOG, and in the C1 test docstring: "an LOE-only branch cannot register as a kernel path". |
+| **W1c-5** | MINOR | matrix.yaml LI-07 said "each discrete-work activity's share" while milestone markers legitimately hold dwell. | **Reworded** (matrix row + §10.2): discrete work AND milestone markers; LOE/summary excluded. |
+
+The review's clean areas: FCBI/paths byte-identity, never-raises, the
+Wave-3 scope locks (own-float fallback, w>1 premium, PCI weight residual),
+and every ported LHL/RDI/BWI ruling's arithmetic — NO FINDINGS, with probe
+evidence.  W1c-1/2/3 are check-affecting refinements WITHIN the Unreleased
+Wave-1c train (milestone-float-bearing paths, unfloated branches, and break
+labels move vs the pre-review commit; the pre-port base semantics for
+milestone floats are restored).
 
 ## Verification
 

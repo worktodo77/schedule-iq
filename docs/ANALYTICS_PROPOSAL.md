@@ -701,7 +701,9 @@ activity with near-zero dwell that suddenly hosts a major claimed delay is a
 red flag; a high-dwell activity that never appears in the claim narrative is
 a gap in the other side's story.
 *Conventions (v0.4.2, ported 2026-07-12):* LOE/summary activities are
-excluded (not discrete work).  **Completed activities are retained** — CDI is
+excluded (not discrete work); milestone markers are retained in the RF map
+and can hold dwell (a deadline-carrying milestone is a criticality
+reference).  **Completed activities are retained** — CDI is
 a *retrospective* criticality-time measure (where risk dwelt over the
 project's life, including now-finished work), which is why, unlike the
 forward-looking FCBI/RDI/BWI, it does not drop completed activities.

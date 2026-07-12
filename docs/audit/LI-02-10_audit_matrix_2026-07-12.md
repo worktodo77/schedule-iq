@@ -59,8 +59,16 @@ behavior is directly visible in the source and a probe adds nothing.
 >   1 skipped.  Remaining open work: Wave 3 (kernel cluster K1/K2/K4/K5/K6,
 >   PCI weight residual, RDI-2, CDI milestone/fallback membership, under the
 >   Q-B new-kernel ruling) and Wave 4 (BDI-2..5, MML-1..5 — Q-F/Q-G/Q-H).
->   An independent adversarial review of Waves 0-1c is in flight; its
->   dispositions will be recorded here.
+> - **Adversarial review wave 1 (Waves 0-1c): COMPLETE, loop closed**
+>   (2026-07-12).  3 MAJOR + 2 MINOR findings, all reproduced and
+>   dispositioned (W1c-1 milestone floats retained in kept-path margins;
+>   W1c-2 unfloated-branch fallback to the branch basis, never the tail min;
+>   W1c-3 BWI projected-break on true required pace; W1c-4/5 record
+>   wording) — full table in
+>   docs/rulings/LI-04-LI-07-kernel-loe-port-2026-07-12.md.  Clean areas
+>   with probe evidence: FCBI/paths byte-identity, never-raises, Wave-3
+>   scope locks, all ported ruling arithmetic.  Suite after dispositions:
+>   282 passed, 1 skipped.  Wave 2 gets its own review wave next.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 

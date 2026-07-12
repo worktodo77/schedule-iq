@@ -3,6 +3,35 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — Wave 0-1c adversarial review, wave 1 (findings W1c-1..5 dispositioned)
+
+**Check-affecting within the Unreleased Wave-1c train** (no released number
+moves).  An independent adversarial review of `ec30292..372be49`
+(reproduce-before-reporting) raised 3 MAJOR + 2 MINOR findings, all
+reproduced and dispositioned (full table in
+docs/rulings/LI-04-LI-07-kernel-loe-port-2026-07-12.md):
+
+- **W1c-1:** kept-path margins now retain MILESTONE floats (min over unique
+  non-summary members) — the ported code had silently stripped them,
+  contradicting the ruled text and emptying the near-critical band on a
+  deadline-constrained chain (rf +15 instead of −2 for the whole chain).
+- **W1c-2:** an unfloated branch falls back to the shared `rel_float_days`
+  (its own basis), never the spliced driving-path tail's min, which
+  fabricated rf 0.0 / weight 1.0 for a genuinely floaty branch (rubric A1).
+- **W1c-3:** BWI's projected-break test now compares a true REQUIRED pace
+  (remaining volume / working days remaining to the fixed reference) against
+  the demonstrated pace; under B1's constant denominator the old test lost
+  sensitivity exactly as the milestone approached.
+- **W1c-4/5:** over-broad "LOE feeder reads PCI 1.0" claim reworded
+  (LOE-only BRANCHES cannot register as kernel paths); LI-07 wording now
+  states milestone markers hold dwell (LOE/summary excluded).
+- Review clean areas, with probe evidence: FCBI/paths byte-identity
+  (82-entry corpus, 0 diff lines), never-raises (96 adversarial calls),
+  Wave-3 scope locks, and every ported LHL/RDI/BWI ruling's arithmetic.
+- 3 new regressions (`test_w1c1..3_*`).
+
+Suite: 282 passed, 1 skipped.
+
 ## Unreleased — LI-08 IL + LI-03 FRB Wave-2 revisions (rulings adjudicated 2026-07-12)
 
 **Check-affecting / number-changing for LI-08 and LI-03 (both scored,
@@ -50,15 +79,17 @@ validation record imported at docs/audit/v0.4.2_validation_2026-07-09.md.
 
 - **C1 — LOE/summary excluded at the shared kernel:** no RF entry, no
   weight, no CDI dwell, no band membership; `_build_kernel` drops paths
-  with no discrete-work member (a single-threaded schedule with an LOE
-  feeder reads PCI 1.0, and an all-milestone schedule degrades to None
+  with no discrete-work member (an LOE-only branch cannot register as
+  a kernel path, and an all-milestone schedule degrades to None
   with a reason, never a spurious concentration).
 - **Mixed-path neutralization:** each kept path's LI relative float is the
-  min total float over its unique DISCRETE members (`_li_path_rel_float`
-  over the new additive `FloatPath.unique_uids`), so an LOE no longer
-  drives a discrete activity's RF.  The shared `float_paths()` /
-  `iter_float_paths()` are byte-identical (regression-pinned alongside the
-  neutralization).
+  min total float over its unique NON-SUMMARY members (`_li_path_rel_float`
+  over the new additive `FloatPath.unique_uids` — LOE/summary out,
+  milestones retained per review W1c-1), so an LOE no longer drives a
+  member's RF; an unfloated branch falls back to the shared
+  `rel_float_days`, never the spliced tail's min (review W1c-2).  The
+  shared `float_paths()` / `iter_float_paths()` are byte-identical
+  (regression-pinned alongside the neutralization).
 - **C2 — CDI completed-retention documented** (§10.2, LI-07 row, standing
   disclosures); no behavioral change.
 - NOT changed (Wave-3 kernel-cluster scope, scope-locked by test): the

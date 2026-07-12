@@ -940,8 +940,8 @@ checks:
   - id: LI-03
     name: "FRB — Forecast Reliability Band"
     category: "LI Proprietary Indices"
-    description: "Empirical error band on the scheduler's own forecasts: central-80% interval of (actual - forecast finish) working days, bucketed by forecast horizon; bias and dispersion reported separately."
-    formula: "per horizon bucket: median, P10, P90 of realized forecast errors"
+    description: "Empirical error band on the scheduler's own forecasts: central-80% interval of (actual - forecast finish) working days, bucketed by forecast horizon incl. an overdue (<=0d) bucket; bias and dispersion reported separately.  Scored on the largest bucket's P90-P10 width, gradeable only at n >= 5 resolved forecasts (below the floor LI-03 is NOT EVALUATED — a thin record never certifies a forecaster)."
+    formula: "per horizon bucket (overdue/0-30/30-90/90-180/>180d): median, P10, P90 of realized forecast errors; scored width = largest bucket P90-P10, n >= 5 floor"
     unit: days
     threshold: null
     direction: info
@@ -1005,8 +1005,8 @@ checks:
   - id: LI-08
     name: "IL — Intervention Latency"
     category: "LI Proprietary Indices"
-    description: "Median updates (and days) from a chain first showing negative float to the first responsive edit on that chain (logic, duration, calendar, or resources).  Quantifies mitigation responsiveness; distinguishes 'did not act' from 'acted and it did not work'."
-    formula: "median over emergence events of (first responsive update - emergence update); unresolved counted separately"
+    description: "Kaplan-Meier median updates (and days) from a chain first showing negative float to the first responsive edit on that chain (logic, duration, calendar, or resources), with never-resolved chains right-censored at their follow-up so ignored chains reach the score.  The emergence window itself is scanned (same-window mitigation = latency 0; causality asserted by adjacency, disclosed).  LOE/summary activities and activities completed in the later file are excluded from the emergence set.  Quantifies mitigation responsiveness; distinguishes 'did not act' from 'acted and it did not work'."
+    formula: "KM median over emergence events of (first responsive update - emergence update, incl. 0), unresolved right-censored at follow-up; median not reached -> did-not-act branch; zero-information events -> NOT EVALUATED; day figures withheld on missing/non-increasing data dates"
     unit: index
     threshold: null
     direction: info

@@ -171,11 +171,22 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
                                      f"P90 {_fmt(b.p90_days, '{:+.1f}')}d"))
                 if best is None or b.n > best.n:
                     best = b
-        if best is not None and best.p90_days is not None and best.p10_days is not None:
+        # FR3 ruling (2026-07-12): the scored band needs n >= 5 resolved
+        # forecasts — the metric's own frb_apply_forward floor.  Below it,
+        # LI-03 is NOT EVALUATED (None), never certified off one observation.
+        if best is not None and best.n >= 5 \
+                and best.p90_days is not None and best.p10_days is not None:
             band_width = best.p90_days - best.p10_days
-        narrative = (f"Empirical forecast error band (largest bucket): width "
-                     f"{band_width:.0f} working days." if band_width is not None
-                     else (frb.reason or "Insufficient completions to calibrate."))
+        if band_width is not None:
+            narrative = (f"Empirical forecast error band (largest bucket, "
+                         f"n={best.n}): width {band_width:.0f} working days.")
+        elif best is not None:
+            narrative = (f"NOT EVALUATED — largest bucket has only {best.n} "
+                         "resolved forecast(s) (< 5): insufficient track "
+                         "record to certify a band (FR3 scoring floor).")
+        else:
+            narrative = frb.reason or "Insufficient completions to calibrate."
+        finds.extend(Finding("disclosure", "", d) for d in frb.disclosures)
         return _res(by_id, "LI-03", band_width, narrative, finds)
 
     _emit("LI-03", _li03, rr_err)
@@ -240,10 +251,22 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
                                  "", f"emerged {e.emergence_label}; "
                                      f"response: {resp}"))
         v = il.median_il_updates
-        narrative = (f"Median intervention latency {v} update(s) "
-                     f"({il.median_il_days} days); {il.unresolved_count} unresolved."
-                     if v is not None else
-                     (il.reason or f"{il.unresolved_count} emergence event(s), none resolved."))
+        if v is not None:
+            days = (f" ({il.median_il_days} days among resolved)"
+                    if il.median_il_days is not None else "")
+            narrative = (f"Median intervention latency (KM) {v:g} update(s)"
+                         f"{days}; {il.unresolved_count} unresolved "
+                         "(right-censored).")
+        elif il.follow_up_bound_updates is not None:
+            narrative = (f"KM median latency not reached within follow-up — the "
+                         f"majority of chains went unresolved (at least "
+                         f"{il.follow_up_bound_updates:g} update(s); "
+                         f"{il.unresolved_count} unresolved).")
+        else:
+            narrative = (il.reason
+                         or f"{il.unresolved_count} emergence event(s); no "
+                            "latency information within the observed follow-up.")
+        finds.extend(Finding("disclosure", "", d) for d in il.disclosures)
         return _res(by_id, "LI-08", v, narrative, finds)
 
     _emit("LI-08", _li08, rr_err)

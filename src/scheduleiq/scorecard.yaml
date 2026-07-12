@@ -495,15 +495,20 @@ series_curve_overrides:
     special: true
     points: [[0, 100], [2, 70], [6, 0]]
     unresolved_only_score: 20.0
-    rationale: "Intervention Latency, median updates from a chain first
-      showing negative float to the first responsive edit.  0 updates
-      (same-update response) scores 100; 2 updates is a reasonably prompt
-      published pass mark; 6 (3x) is the ceiling.  If there is no median
-      (no responsive edit was ever observed) but at least one unresolved
-      emergence event exists, scored at a fixed 20 — 'did not act' is worse
-      than any measured latency; if there are no emergence events at all,
-      there is nothing to grade and the check is left N/A.  Implemented in
-      scorecard.py (_score_li08) because of this branch."
+    rationale: "Intervention Latency (Wave-2 rulings IL1-A/IL2-A,
+      2026-07-12): KM median updates from a chain first showing negative
+      float to the first responsive edit, never-resolved chains
+      right-censored at their follow-up.  0 updates (same-window response —
+      the emergence window is scanned) scores 100; 2 updates is a reasonably
+      prompt published pass mark; 6 (3x) is the ceiling.  If the KM median
+      is not reached (the majority of chains went unresolved through their
+      follow-up), scored at a fixed 20 — 'did not act' is worse than any
+      measured latency — with the follow-up lower bound as the value; if
+      there is no latency information at all (no events, or only
+      zero-follow-up events such as a sole final-window emergence), the
+      check is left N/A rather than 20.  Implemented in scorecard.py
+      (_li08_score) because of these branches; offender count = unresolved
+      chains (docs/rulings/LI-08-il-v2-2026-07-12.md)."
   LI-09:
     points: [[1.0, 100], [1.5, 70], [3.0, 0]]
     rationale: "BWI, remaining near-critical density normalized to the

@@ -3,6 +3,40 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-08 IL + LI-03 FRB Wave-2 revisions (rulings adjudicated 2026-07-12)
+
+**Check-affecting / number-changing for LI-08 and LI-03 (both scored,
+weight 2).**  The open rulings from the lineage-A IL/FRB audit (imported at
+docs/audit/IL_FRB_audit_2026-07-10.md) were adjudicated by the principal —
+every recommended option adopted (recorded rulings
+docs/rulings/LI-08-il-v2-2026-07-12.md and
+docs/rulings/LI-03-frb-v2-2026-07-12.md).
+
+- **IL1-A:** the emergence window is scanned — same-window mitigation reads
+  latency 0 and the published 100-point anchor is reachable (previously the
+  fastest responder read "did not act": 20 vs 85 for the identical edit a
+  month later); adjacency-not-sequence disclosure added.
+- **IL2-A:** KM right-censored headline median (unresolved chains censored
+  at follow-up): 1-responded + 5-ignored moves 85 → 20 (with the follow-up
+  bound as the value); a sole final-window emergence moves 20 → N/A (no
+  latency information); no-events stays N/A.
+- **IL4/IL5:** LOE/summary and completed-in-later-file activities excluded
+  from the emergence set (a hammock-only chain no longer drives LI-08 to
+  20); day figures follow the L9 data-date convention (withheld with a
+  disclosure, never negative).  IL6 standing disclosures added.
+- **FR2-A:** overdue forecasts (horizon ≤ 0) get their own scored bucket —
+  bands no longer exclude exactly the record's worst forecasts;
+  Σ bucket n == observations.
+- **FR3-A:** the scored band requires n ≥ 5 resolved forecasts (the
+  metric's own frb_apply_forward floor); below it LI-03 is NOT EVALUATED —
+  thin-record series that scored 100 by construction become ungraded.
+  FR4 standing disclosures added.
+- 8 new regression tests (U2–U8) + 3 existing tests updated to the ruled
+  conventions (bucket count 5; KM semantics; the Wave-0 FR1 anchor re-based
+  to an n=5 closed-form fixture, width 10.0 wd through the wiring).
+
+Suite: 279 passed, 1 skipped.
+
 ## Unreleased — LI kernel LOE exclusion PORTED (Wave 1c of the LI-02..LI-10 audit)
 
 **Check-affecting / number-changing for LI-04 (PCI) and LI-07 (CDI) on any

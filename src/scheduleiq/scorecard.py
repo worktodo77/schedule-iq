@@ -426,20 +426,36 @@ def _li02_score(sa: SeriesAnalysis, override: dict) -> tuple:
 
 
 def _li08_score(sa: SeriesAnalysis, override: dict) -> tuple:
-    """Design-specified Intervention Latency mapping (branches on whether a
-    median was observed vs. unresolved-only vs. no events)."""
+    """Design-specified Intervention Latency mapping (Wave-2 rulings IL1-A /
+    IL2-A, 2026-07-12).
+
+    - KM median reached: piecewise curve on the median latency (latency 0 is
+      now observable — the emergence window is scanned — so the published
+      100-point anchor is reachable).
+    - KM median NOT reached (the majority of chains went unresolved through
+      their follow-up): the ``unresolved_only_score`` (20) 'did-not-act'
+      branch, with the follow-up lower bound reported as the value — a
+      schedule that triages one chain and abandons five no longer scores
+      like a perfect responder.
+    - No latency information at all (no events, or every event censored at
+      zero follow-up — e.g. a sole final-window emergence with no response
+      opportunity beyond its own window): ungradeable N/A, never 20.
+    """
     try:
         from .analytics.li_record import run_li_record
         il = run_li_record(sa).il
     except Exception:
         return None, None, 0
-    if il.median_il_updates is not None:
+    if not il.events:
+        return None, None, 0
+    if il.median_reached and il.median_il_updates is not None:
         return (il.median_il_updates,
                _piecewise_score(il.median_il_updates, override["points"]),
                il.unresolved_count)
-    if il.unresolved_count > 0:
-        return None, override.get("unresolved_only_score", 20.0), il.unresolved_count
-    return None, None, 0
+    bound = il.follow_up_bound_updates
+    if bound is None or bound <= 0:
+        return None, None, il.unresolved_count       # no information: N/A
+    return bound, override.get("unresolved_only_score", 20.0), il.unresolved_count
 
 
 def _spec_cadence(sa: SeriesAnalysis, override: dict) -> tuple:

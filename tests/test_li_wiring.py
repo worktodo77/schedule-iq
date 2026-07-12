@@ -68,29 +68,28 @@ def _by_id(sa, matrix):
 
 # ---------------------------------------------------------------- FR1 (LI-03)
 def test_fr1_li03_band_width_is_real_not_fabricated_zero(matrix):
-    """Two resolved forecasts with working-day errors {0, +10}: the 0-30d
-    bucket reads P10=1.0 / P90=9.0 (linear-interpolated percentiles), so the
-    wired LI-03 value must be exactly 8.0 — not the fabricated 0 the old
+    """Five resolved forecasts (n >= 5, clearing the FR3 scoring floor) with
+    working-day errors {0, 0, 5, 10, 10}: the 0-30d bucket reads P10=0.0 /
+    P90=10.0 (linear-interpolated percentiles), so the wired LI-03 value must
+    be exactly 10.0 — not the fabricated 0 the old
     getattr(b, "p90", 0) - getattr(b, "p10", 0) read produced."""
     dd = datetime(2025, 1, 13, 8)
     f = datetime(2025, 2, 3, 17)                      # horizon 21d -> 0-30d bucket
     fin = datetime(2025, 12, 1, 17)
-    e_acts = [_a("F0", "F0", 5.0, ef=f), _a("F1", "F1", 5.0, ef=f),
-              _m("T", "T", ef=fin)]
-    l_acts = [_a("F0", "F0", 5.0, ef=None, af=f, rem=0,
-                 status=ActivityStatus.COMPLETED),
-              _a("F1", "F1", 5.0, ef=None, af=f + timedelta(days=14), rem=0,
-                 status=ActivityStatus.COMPLETED),   # +10 working days
-              _m("T", "T", ef=fin)]
-    rels = [Relationship("F0", "T"), Relationship("F1", "T")]
+    offs = [0, 0, 7, 14, 14]                          # cal days = 0/0/5/10/10 wd
+    e_acts = [_a(f"F{i}", f"F{i}", 5.0, ef=f) for i in range(5)] +              [_m("T", "T", ef=fin)]
+    l_acts = [_a(f"F{i}", f"F{i}", 5.0, ef=None, af=f + timedelta(days=offs[i]),
+                 rem=0, status=ActivityStatus.COMPLETED) for i in range(5)] +              [_m("T", "T", ef=fin)]
+    rels = [Relationship(f"F{i}", "T") for i in range(5)]
     sa = _sa([_s(dd, e_acts, rels), _s(datetime(2025, 3, 3, 8), l_acts, rels)])
     res = _by_id(sa, matrix)
 
     li03 = res["LI-03"]
-    assert li03.value == pytest.approx(8.0)
-    assert "width 8 working days" in li03.narrative
+    assert li03.value == pytest.approx(10.0)
+    assert "width 10 working days" in li03.narrative
     detail = li03.findings[0].detail
-    assert "bias +5.0d" in detail and "P10 +1.0d" in detail and "P90 +9.0d" in detail
+    assert "n=5" in detail and "bias +5.0d" in detail
+    assert "P10 +0.0d" in detail and "P90 +10.0d" in detail
     # the FR1 signature (fabricated zeros) must never reappear
     assert "bias +0.0d, band P10 +0.0d" not in detail
 

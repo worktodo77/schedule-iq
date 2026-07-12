@@ -455,9 +455,17 @@ class FRBResult:
     observations: list[FRBObservation] = field(default_factory=list)
     buckets: list[FRBBucket] = field(default_factory=list)
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
-_FRB_BUCKETS = [(0.0, 30.0, "0-30d"), (30.0, 90.0, "30-90d"),
+# Wave-2 ruling FR2 (2026-07-12): overdue forecasts (horizon <= 0 — an
+# unfinished activity whose forecast finish is on or before the data date)
+# get their own bucket, reported and scored like the others.  Excluding them
+# biased every band toward the well-behaved part of the record — overdue
+# work is precisely where forecast credibility dies — and made
+# len(observations) != sum(bucket n).
+_FRB_BUCKETS = [(float("-inf"), 0.0, "overdue(<=0d)"),
+               (0.0, 30.0, "0-30d"), (30.0, 90.0, "30-90d"),
                (90.0, 180.0, "90-180d"), (180.0, float("inf"), ">180d")]
 
 
@@ -539,6 +547,22 @@ def forecast_reliability_band(series_analysis) -> FRBResult:
     if not res.observations:
         res.reason = ("no activity in the series both carried a forecast finish "
                      "and later reported an actual finish")
+    res.disclosures = [
+        "Observation model: every update x every then-incomplete activity "
+        "whose forecast later resolves to an actual finish — one activity "
+        "re-forecast across several updates yields multiple AUTOCORRELATED "
+        "observations resolved by the same actual.",
+        "Error = actual minus forecast finish in working days on a fixed "
+        "Mon-Fri 8h calendar (so forecasts from different calendars band on "
+        "one scale); horizon = calendar days from the update's data date to "
+        "the forecast finish; overdue forecasts (horizon <= 0) carry their "
+        "own bucket (FR2 ruling, 2026-07-12).",
+        "Actual-finish matching is activity-CODE-keyed: a re-coded activity's "
+        "forecast never resolves (family convention, disclosed).",
+        "Scored basis: the largest bucket's P90-P10 width, gradeable only at "
+        "n >= 5 resolved forecasts (FR3 ruling — below the floor LI-03 is "
+        "NOT EVALUATED, matching frb_apply_forward's own banding floor).",
+    ]
     return res
 
 
@@ -710,15 +734,28 @@ class ILEvent:
     il_updates: Optional[int] = None
     il_days: Optional[float] = None
     unresolved: bool = False
+    # right-censoring time in update units for an unresolved event (Wave-2
+    # ruling IL2-A): the largest latency the record COULD have shown — the
+    # number of observed response windows minus one.  0 for a final-window
+    # emergence (one opportunity, no information beyond it).
+    censored_at_updates: Optional[int] = None
 
 
 @dataclass
 class ILResult:
     events: list[ILEvent] = field(default_factory=list)
+    # KM median response latency in update units (Wave-2 ruling IL2-A):
+    # resolved events are deaths at their latency, unresolved events are
+    # right-censored at their follow-up.  None when the KM median is not
+    # reached within follow-up (majority unresolved) — the follow-up lower
+    # bound is then carried in ``follow_up_bound_updates``.
     median_il_updates: Optional[float] = None
+    median_reached: bool = False
+    follow_up_bound_updates: Optional[float] = None
     median_il_days: Optional[float] = None
     unresolved_count: int = 0
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 def _connected_components(edges: list[tuple[str, str]], nodes: set[str]) -> list[set[str]]:
@@ -784,14 +821,52 @@ def _response_in(cs, chain_codes: set[str]) -> str:
 
 def intervention_latency(series_analysis) -> ILResult:
     """Per update pair, group activities whose total float turned negative
-    (TF_later < 0 <= TF_earlier) into connected chains; scan later
-    changesets for the first responsive edit touching that chain, measuring
-    latency in update pairs and calendar days (ANALYTICS_PROPOSAL §10.3)."""
+    (TF_later < 0 <= TF_earlier) into connected chains; scan changesets from
+    the EMERGENCE WINDOW onward for the first responsive edit touching that
+    chain, measuring latency in update pairs and calendar days
+    (ANALYTICS_PROPOSAL §10.3).
+
+    Conventions (Wave-2 rulings, 2026-07-12 —
+    docs/rulings/LI-08-il-v2-2026-07-12.md):
+
+    - *Same-window response (IL1-A):* the emergence changeset itself is
+      scanned, so a mitigation landing in the window the float turned
+      negative reads latency **0** (the published 100-point anchor is
+      reachable).  Causality is asserted by ADJACENCY, not sequence — a
+      same-window edit is observationally simultaneous with the emergence
+      (true, in kind, at every latency here); disclosed.
+    - *Censoring (IL2-A):* never-resolved chains are right-censored at their
+      follow-up (largest observable latency); the headline median is the
+      Kaplan-Meier estimate over resolved + censored events, so ignored
+      chains are no longer invisible to the median.  A final-window
+      emergence is censored at latency 0 (no information) rather than read
+      as "did not act" (subsumes IL3).
+    - *Population (IL4):* LOE/WBS-summary/hammock activities are excluded
+      from the emergence set (their float is derived from the work they
+      span — the spanned work's chain carries the emergence); activities
+      completed in the later file are excluded (a finished activity's float
+      is not a mitigable problem).
+    - *Day figures (IL5, the LHL L9 convention):* when data dates are
+      missing or non-increasing across the series, day figures are withheld
+      with a disclosure (never a negative day count); update-unit latencies
+      are unaffected.
+    """
     changesets = list(getattr(series_analysis, "changesets", []))
     res = ILResult()
     if not changesets:
         res.reason = "needs at least two schedules to observe float transitions"
         return res
+
+    # IL5 / L9 convention: day figures need usable, strictly increasing dates
+    dds = [changesets[0].earlier.data_date] + [cs.later.data_date
+                                               for cs in changesets]
+    if any(d is None for d in dds):
+        dates_ok, dates_problem = False, "one or more schedules lack a data date"
+    elif any(b <= a for a, b in zip(dds, dds[1:])):
+        dates_ok, dates_problem = False, ("data dates are not strictly "
+                                          "increasing across the series")
+    else:
+        dates_ok, dates_problem = True, ""
 
     for i, cs in enumerate(changesets):
         e, l = cs.earlier, cs.later
@@ -801,6 +876,10 @@ def intervention_latency(series_analysis) -> ILResult:
         for code in cs.float_deltas:
             ea, la = e_by_code.get(code), l_by_code.get(code)
             if ea is None or la is None:
+                continue
+            if ea.is_loe_or_summary or la.is_loe_or_summary:   # IL4a
+                continue
+            if la.completed:                                    # IL4b
                 continue
             tf_e = ea.total_float_days(e.cal_for(ea))
             tf_l = la.total_float_days(l.cal_for(la))
@@ -816,7 +895,7 @@ def intervention_latency(series_analysis) -> ILResult:
             ev = ILEvent(chain_codes=sorted(comp), emergence_pair_index=i,
                         emergence_label=f"{e.label()} -> {l.label()}",
                         emergence_date=l.data_date)
-            for j in range(i + 1, len(changesets)):
+            for j in range(i, len(changesets)):                 # IL1-A: incl. window i
                 detail = _response_in(changesets[j], comp)
                 if detail:
                     ev.response_pair_index = j
@@ -825,24 +904,60 @@ def intervention_latency(series_analysis) -> ILResult:
                     ev.response_detail = detail
                     ev.il_updates = j - i
                     rd = changesets[j].later.data_date
-                    if rd and l.data_date:
-                        ev.il_days = (rd - l.data_date).days
+                    if dates_ok and rd and l.data_date:
+                        ev.il_days = max(0, (rd - l.data_date).days)
                     break
             if ev.response_pair_index is None:
                 ev.unresolved = True
+                ev.censored_at_updates = len(changesets) - 1 - i
             res.events.append(ev)
 
-    resolved_updates = [ev.il_updates for ev in res.events
-                        if not ev.unresolved and ev.il_updates is not None]
+    res.unresolved_count = sum(1 for ev in res.events if ev.unresolved)
+    # KM headline (IL2-A): deaths at resolved latencies, right-censored at
+    # follow-up for unresolved chains
+    lifespans = ([(float(ev.il_updates), False) for ev in res.events
+                  if not ev.unresolved and ev.il_updates is not None]
+                 + [(float(ev.censored_at_updates), True) for ev in res.events
+                    if ev.unresolved and ev.censored_at_updates is not None])
+    if lifespans:
+        km = kaplan_meier(lifespans)
+        if km.median_reached:
+            res.median_il_updates = km.median
+            res.median_reached = True
+        else:
+            res.follow_up_bound_updates = km.median   # longest-follow-up bound
     resolved_days = [ev.il_days for ev in res.events
                      if not ev.unresolved and ev.il_days is not None]
-    res.unresolved_count = sum(1 for ev in res.events if ev.unresolved)
-    if resolved_updates:
-        res.median_il_updates = percentile(resolved_updates, 50)
     if resolved_days:
         res.median_il_days = percentile(resolved_days, 50)
     if not res.events:
         res.reason = "no activity transitioned from non-negative to negative total float"
+
+    res.disclosures = [
+        "Response = the first edit of any kind touching the chain (logic "
+        "added/modified, duration decrease, calendar change, resource/budget "
+        "increase) — responsiveness, deliberately NOT effectiveness "
+        "(acted-vs-worked stays split per §10.3).  The emergence window itself "
+        "is scanned, so latency 0 is observable; causality is asserted by "
+        "adjacency, not sequence — a same-window edit is observationally "
+        "simultaneous with the emergence.",
+        "Headline median = Kaplan-Meier over resolved latencies with "
+        "never-resolved chains right-censored at their follow-up, so ignored "
+        "chains are not invisible; when the KM curve never crosses 0.5 the "
+        "median is 'not reached' and only the follow-up lower bound is "
+        "reported.  A final-window emergence carries no latency information "
+        "(censored at 0).",
+        "Population: emergence = total float crossing 0 downward between two "
+        "non-null observations of the same code (new activities born negative "
+        "are not emergences); LOE/WBS-summary/hammock activities and "
+        "activities completed in the later file are excluded; chains are "
+        "undirected components over the later schedule's code-keyed edges.",
+        "Duration-decrease detection parses the change register's hour-format "
+        "duration strings; day figures use calendar days between data dates."
+        + ("" if dates_ok else
+           f"  DAY FIGURES WITHHELD ({dates_problem}); update-unit latencies "
+           "are unaffected."),
+    ]
     return res
 
 

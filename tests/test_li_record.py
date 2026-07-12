@@ -548,7 +548,7 @@ def test_t11_duplicate_tie_deletion_reads_as_merged_modification():
 def test_frb_has_at_least_one_populated_bucket(series):
     frb = forecast_reliability_band(series)
     assert any(b.n >= 1 for b in frb.buckets)
-    assert len(frb.buckets) == 4
+    assert len(frb.buckets) == 5          # incl. the overdue(<=0d) bucket (FR2)
     for obs in frb.observations:
         assert math.isfinite(obs.error_days)
         assert math.isfinite(obs.horizon_days)
@@ -618,14 +618,21 @@ def test_il_finds_emergence_events(series):
     assert il.events, "expected at least one negative-float emergence event " \
         "(fixture seeds negative float from update1)"
     resolved = [e for e in il.events if not e.unresolved]
-    assert (il.median_il_updates is not None) == bool(resolved)
+    # KM headline (Wave-2 IL2-A): exactly one of median / follow-up bound is
+    # populated whenever any event carries latency information
+    assert (il.median_il_updates is not None) == il.median_reached
+    if il.median_il_updates is None and il.events:
+        assert il.follow_up_bound_updates is not None or all(
+            e.unresolved and (e.censored_at_updates or 0) == 0 for e in il.events)
     assert il.unresolved_count == sum(1 for e in il.events if e.unresolved)
     assert il.unresolved_count + len(resolved) == len(il.events)
     for e in il.events:
         assert e.chain_codes
         if not e.unresolved:
-            assert e.il_updates is not None and e.il_updates >= 1
+            assert e.il_updates is not None and e.il_updates >= 0   # 0 = same-window (IL1-A)
             assert e.response_detail
+        else:
+            assert e.censored_at_updates is not None and e.censored_at_updates >= 0
 
 
 def test_il_no_negative_float_never_raises():
@@ -682,3 +689,169 @@ def test_run_li_record_never_raises_on_empty_series():
     assert bundle.bdi.reason
     assert bundle.il.reason
     assert bundle.mml.reason
+
+
+# ==========================================================================
+# Wave 2 — IL (LI-08) + FRB (LI-03) rulings (docs/rulings/LI-08-il-v2 +
+# LI-03-frb-v2, 2026-07-12; audit tests U2-U9)
+# ==========================================================================
+def _il_act(uid, tf_days, *, od=10, status=ActivityStatus.NOT_STARTED,
+            atype=ActivityType.TASK):
+    return Activity(uid=uid, code=uid, name=uid, atype=atype, status=status,
+                    total_float_hours=None if tf_days is None else tf_days * 8.0,
+                    original_duration_hours=od * 8.0,
+                    remaining_duration_hours=od * 8.0)
+
+
+def _il_sched(dd, acts, rels=()):
+    s = Schedule(project_id="IL", data_date=dd)
+    s.activities = {a.uid: a for a in acts}
+    s.relationships = list(rels)
+    return s
+
+
+def _il_sa(scheds):
+    from scheduleiq.compare.diff import compare
+    css = [compare(scheds[i], scheds[i + 1]) for i in range(len(scheds) - 1)]
+    return SeriesAnalysis(schedules=scheds, changesets=css)
+
+
+def _li08_override():
+    from scheduleiq.scorecard import load_spec
+    return load_spec()["series_curve_overrides"]["LI-08"]
+
+
+def test_u2_same_window_response_is_latency_zero_and_anchor_reachable():
+    """IL1-A: a duration halved in the SAME window the float turns negative
+    reads latency 0, and the published 100-point anchor fires (previously
+    the event read unresolved and scored 20 — the fastest responder got the
+    worst grade)."""
+    from scheduleiq.scorecard import _li08_score
+    s0 = _il_sched(_dd(0), [_il_act("X", 2.0, od=20), _il_act("Y", 20.0)],
+                   [_lhl_rel("X", "Y")])
+    s1 = _il_sched(_dd(30), [_il_act("X", -3.0, od=10), _il_act("Y", 20.0)],
+                   [_lhl_rel("X", "Y")])
+    s2 = _il_sched(_dd(60), [_il_act("X", -3.0, od=10), _il_act("Y", 20.0)],
+                   [_lhl_rel("X", "Y")])
+    sa = _il_sa([s0, s1, s2])
+    il = intervention_latency(sa)
+    ev = il.events[0]
+    assert not ev.unresolved and ev.il_updates == 0
+    assert il.median_reached and il.median_il_updates == 0.0
+    v, sc, off = _li08_score(sa, _li08_override())
+    assert sc == 100.0 and off == 0
+
+
+def test_u3_ignored_chains_pull_the_score_to_did_not_act():
+    """IL2-A: 1 chain responded in 1 update + 5 ignored -> KM median not
+    reached (S(1)=5/6) -> 20 with the follow-up bound as the value
+    (previously scored 85, identical to a perfect responder)."""
+    from scheduleiq.scorecard import _li08_score
+    def mk(dd, tfs, od0):
+        acts = [_il_act(f"N{i}", tfs, od=(od0 if i == 0 else 20))
+                for i in range(6)] + [_il_act("T", 20.0)]
+        rels = [_lhl_rel(f"N{i}", "T") for i in range(6)]
+        return _il_sched(dd, acts, rels)
+    s0 = mk(_dd(0), 2.0, 20)
+    s1 = mk(_dd(30), -4.0, 20)
+    s2 = mk(_dd(60), -4.0, 10)          # N0 duration halved in window 2
+    sa = _il_sa([s0, s1, s2])
+    il = intervention_latency(sa)
+    assert il.unresolved_count == 5
+    assert not il.median_reached and il.median_il_updates is None
+    assert il.follow_up_bound_updates == 1.0
+    v, sc, off = _li08_score(sa, _li08_override())
+    assert sc == 20.0 and off == 5 and v == 1.0
+
+
+def test_u4_sole_final_window_emergence_is_na_not_20():
+    """IL3 (subsumed by IL2-A): a 2-schedule series whose only emergence is
+    in the final window has zero latency information — censored at 0 —
+    and LI-08 is ungradeable, no longer 'did not act' (20)."""
+    from scheduleiq.scorecard import _li08_score
+    s0 = _il_sched(_dd(0), [_il_act("X", 2.0)], [])
+    s1 = _il_sched(_dd(30), [_il_act("X", -3.0)], [])
+    sa = _il_sa([s0, s1])
+    il = intervention_latency(sa)
+    assert il.events and il.events[0].censored_at_updates == 0
+    v, sc, off = _li08_score(sa, _li08_override())
+    assert sc is None and v is None
+    assert off == 1                     # still disclosed as an offender count
+
+
+def test_u5_loe_and_completed_excluded_from_emergence_population():
+    """IL4a/IL4b: a hammock flipping negative is not an emergence chain; an
+    activity completed in the later file is not a mitigable problem; a mixed
+    chain keeps its discrete member only."""
+    l0 = _il_act("L", 2.0, atype=ActivityType.LOE)
+    l1 = _il_act("L", -1.0, atype=ActivityType.LOE)
+    c0 = _il_act("C", 2.0)
+    c1 = _il_act("C", -1.0, status=ActivityStatus.COMPLETED)
+    x0, x1 = _il_act("X", 2.0), _il_act("X", -1.0)
+    rels = [_lhl_rel("L", "X")]
+    sa = _il_sa([_il_sched(_dd(0), [l0, c0, x0], rels),
+                 _il_sched(_dd(30), [l1, c1, x1], rels),
+                 _il_sched(_dd(60), [l1, c1, x1], rels)])
+    il = intervention_latency(sa)
+    assert len(il.events) == 1
+    assert il.events[0].chain_codes == ["X"]        # L and C excluded
+
+
+def test_u6_out_of_order_dates_withhold_day_figures_only():
+    """IL5 (the L9 convention): reversed data dates never yield a negative
+    il_days — day figures are withheld with a disclosure; the scored
+    update-unit latency is unaffected."""
+    s0 = _il_sched(_dd(60), [_il_act("X", 2.0, od=20)], [])
+    s1 = _il_sched(_dd(30), [_il_act("X", -3.0, od=20)], [])
+    s2 = _il_sched(_dd(0), [_il_act("X", -3.0, od=10)], [])
+    sa = _il_sa([s0, s1, s2])
+    il = intervention_latency(sa)
+    ev = il.events[0]
+    assert ev.il_updates == 1 and ev.il_days is None
+    assert il.median_il_days is None
+    assert any("DAY FIGURES WITHHELD" in d for d in il.disclosures)
+
+
+def test_u7_overdue_forecasts_are_bucketed_and_counts_reconcile():
+    """FR2: horizons -10/0/+10 all land in a bucket (the first two in
+    overdue(<=0d)); sum of bucket n equals the observation count."""
+    from datetime import timedelta as _td
+    dd = _dd(0)
+    def fa(uid, ef):
+        a = _il_act(uid, 5.0)
+        a.early_finish = ef
+        return a
+    def done(uid):
+        a = _il_act(uid, 5.0, status=ActivityStatus.COMPLETED)
+        a.remaining_duration_hours = 0.0
+        a.actual_finish = dd + _td(days=30)
+        return a
+    s0 = _il_sched(dd, [fa("O1", dd - _td(days=10)), fa("O2", dd),
+                        fa("O3", dd + _td(days=10))])
+    s1 = _il_sched(dd + _td(days=60), [done("O1"), done("O2"), done("O3")])
+    frb = forecast_reliability_band(_il_sa([s0, s1]))
+    assert len(frb.observations) == 3
+    assert sum(b.n for b in frb.buckets) == 3
+    overdue = next(b for b in frb.buckets if b.label.startswith("overdue"))
+    assert overdue.n == 2
+    assert frb.disclosures and any("AUTOCORRELATED" in d for d in frb.disclosures)
+
+
+def test_u8_thin_bucket_is_not_evaluated_through_the_wiring():
+    """FR3: a largest bucket with n < 5 leaves LI-03 NOT EVALUATED (None)
+    through li_series_results — a single resolved forecast can no longer
+    certify a forecaster at 100."""
+    from scheduleiq.analytics.li_wiring import li_series_results
+    from scheduleiq.metrics.engine import load_matrix
+    from datetime import timedelta as _td
+    dd = _dd(0)
+    f = _il_act("F1", 5.0)
+    f.early_finish = dd + _td(days=10)
+    d = _il_act("F1", 5.0, status=ActivityStatus.COMPLETED)
+    d.remaining_duration_hours = 0.0
+    d.actual_finish = dd + _td(days=10)
+    sa = _il_sa([_il_sched(dd, [f]), _il_sched(dd + _td(days=40), [d])])
+    r = next(x for x in li_series_results(sa, load_matrix())
+             if x.check.id == "LI-03")
+    assert r.value is None
+    assert "NOT EVALUATED" in r.narrative and "< 5" in r.narrative

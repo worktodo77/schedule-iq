@@ -584,6 +584,18 @@ assumed, no simulation — purely the record, which makes it very hard to
 rebut.  Complements CEI (binary, one period) and Monte Carlo (model-based);
 also calibrates the MC module's empirical mode.
 
+*Conventions (Wave-2 rulings FR2/FR3/FR4, 2026-07-12 —
+docs/rulings/LI-03-frb-v2-2026-07-12.md):* overdue forecasts (horizon ≤ 0 —
+unfinished work whose forecast finish is on or before the data date) carry
+their own bucket, reported and scored like the others (excluding them biases
+every band toward the well-behaved part of the record).  The scored band —
+the largest bucket's P90−P10 width — is gradeable only at **n ≥ 5** resolved
+forecasts, the same floor `frb_apply_forward` applies to live banding; below
+it LI-03 is NOT EVALUATED, never certified off a thin sample.  Standing
+disclosures on every result: the autocorrelated observation model, the fixed
+Mon–Fri 8 h error calendar, code-keyed actual matching, bucket boundaries,
+and the scored basis.
+
 ### 9.4 PCI — Path Concentration Index
 How concentrated the project's fate is across its near-critical paths:
 weight each top-N float path by the same exponential criticality kernel as
@@ -706,6 +718,20 @@ keeps eroding) distinguishes "didn't act" from "acted and it didn't work" —
 a distinction tribunals care about and nobody measures.  Decomposes into an
 emergence/response event log per path, each entry naming the triggering
 finding and the responsive edits (from the change register).
+
+*Conventions (Wave-2 rulings IL1-A/IL2-A/IL4/IL5, 2026-07-12 —
+docs/rulings/LI-08-il-v2-2026-07-12.md):* the emergence window itself is
+scanned, so same-window mitigation reads latency 0 (causality asserted by
+adjacency, not sequence — disclosed).  The headline median is a
+**Kaplan-Meier** estimate with never-resolved chains right-censored at their
+follow-up, so ignored chains reach the score; a KM median not reached
+(majority unresolved) scores the did-not-act branch with the follow-up lower
+bound as the value, and zero-information records (e.g. a sole final-window
+emergence) are NOT EVALUATED rather than 20.  Population: emergence = total
+float crossing 0 downward between two non-null observations;
+LOE/summary-attached activities and activities completed in the later file
+are excluded.  Day figures follow the L9 data-date convention (withheld,
+never negative).
 
 ### 10.4 BWI — Bow-Wave Index
 Quantifies work piling up against a fixed milestone.  For a selected

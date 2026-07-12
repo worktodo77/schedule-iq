@@ -33,9 +33,21 @@ behavior is directly visible in the source and a probe adds nothing.
 > - **Sequencing: APPROVED as proposed; Wave 0 authorized and implemented**
 >   (see CHANGELOG "LI wiring defect batch"; FR1/W1/W2 fixed with 7
 >   wiring-path regressions; suite 233 passed, 1 skipped).
-> - **Q-A (lineage-A port) remains OPEN** — Wave 1 stays gated on it.
->   Q-D..Q-H are deferred to their per-metric waves, per the FCBI Q1-Q7
->   practice.
+> - **Q-A (lineage-A port): RULED — port as-ruled** (triage round 2,
+>   2026-07-12).  **Wave 1 EXECUTED in full:** 1a LHL v0.4.5
+>   (docs/rulings/LI-02-lhl-port-2026-07-12.md), 1b RDI R1/R2 + BWI B1/B2
+>   (docs/rulings/LI-05-LI-09-rdi-bwi-port-2026-07-12.md), 1c kernel C1 LOE
+>   exclusion + mixed-path neutralization + CDI C2
+>   (docs/rulings/LI-04-LI-07-kernel-loe-port-2026-07-12.md); as-audited
+>   lineage-A records imported under docs/audit/ with provenance banners.
+>   Suite after Wave 1: 272 passed, 1 skipped; all FCBI anchors unchanged;
+>   pinned demo letters hold.  Findings resolved so far: FR1/W1/W2 (Wave 0),
+>   RDI-1/BDI-1 (sentinels), all LHL items, RDI-3/RDI-4/RDI-6(part),
+>   BWI-1/BWI-2, CDI-1(LOE part)/CDI-3, PCI-2/K3(kernel part).  Still open:
+>   K1/K2/K4/K5/K6 + PCI weight residual (Wave 3, under the Q-B new-kernel
+>   ruling), IL-1..6 + FRB FR2/FR3/FR4 (Wave 2, Q-D/Q-E), RDI-2, BDI-2..5,
+>   MML-1..5, CDI milestone/fallback membership (Waves 3-4).
+>   Q-D..Q-H remain open, asked per-wave per the FCBI Q1-Q7 practice.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 

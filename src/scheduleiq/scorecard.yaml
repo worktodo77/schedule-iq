@@ -452,18 +452,25 @@ series_curve_overrides:
   LI-02:
     special: true
     points: [[1, 0], [6, 70], [12, 100]]
-    censored_pass_threshold: 0.10
+    deaths_pass_threshold: 0.10
     not_reached_partial_score: 70.0
-    rationale: "Design-specified mapping (docs/REPORT_CARD_DESIGN.md and the
-      RC1 backlog item, verbatim): 100 if the Kaplan-Meier median survival
-      is >= 12 months, or the median was never reached with fewer than 10%
-      of relationships having 'died' (i.e. the network is so stable there
+    rationale: "Design-specified mapping (docs/REPORT_CARD_DESIGN.md; ported
+      LHL audit rulings L1/L10, v0.4.5): 100 if the Kaplan-Meier median
+      survival is >= 12 months, or the median was never reached with fewer
+      than 10% of relationships having DIED (the network is so stable there
       is not enough churn to even estimate a half-life); 70 at 6 months; 0
       at 1 month; linear between.  If the median was not reached but 10% or
       more of relationships have already changed, scored at the 70-point
-      (pass-mark) placeholder pending more update history for a confident
-      read — implemented in scorecard.py (_score_li02) because it branches
-      on censoring, not a single curve."
+      (pass-mark) placeholder pending more update history, with the
+      longest-follow-up lower bound reported as the value.  UNGRADEABLE
+      (excluded from the category weighting) when the day/months basis is
+      unavailable — missing or non-increasing data dates.  Implemented in
+      scorecard.py (_li02_score) because it branches on churn and data
+      quality, not a single curve; offender count = relationship deaths.
+      Previously the branch tested the CENSORED fraction (inverted — a
+      frozen network scored 70) and a reached median with unusable dates
+      fell into the censoring branch; both fixed per the ported LHL audit
+      (docs/rulings/LI-02-lhl-port-2026-07-12.md)."
   LI-03:
     points: [[0, 100], [20, 70], [60, 0]]
     rationale: "FRB empirical forecast-error band width (largest bucket),

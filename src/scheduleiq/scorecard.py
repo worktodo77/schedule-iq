@@ -390,21 +390,39 @@ def score(assessment: ScheduleAssessment, spec: Optional[dict] = None,
 # RC2 — score_series() : series card
 # ============================================================================
 def _li02_score(sa: SeriesAnalysis, override: dict) -> tuple:
-    """Design-specified LHL mapping (branches on censoring)."""
+    """Design-specified LHL mapping (branches on churn, per ported audit
+    rulings L1 + L10, v0.4.5).  Offender count = relationship deaths
+    (changed ties).
+
+    - Months basis unavailable (missing / non-increasing data dates):
+      UNGRADEABLE — never scored by any branch (previously, a reached median
+      with no usable dates fell into the censoring branch and could score
+      100 on a maximally churning series).
+    - Median reached: piecewise curve on median months.
+    - Median not reached: 100 when fewer than ``deaths_pass_threshold`` of
+      relationships DIED (the network is too stable to estimate a
+      half-life); else the 70-point placeholder.  (The prior branch tested
+      the CENSORED fraction — inverted vs its own published rationale; a
+      frozen network scored 70.)  The value reported alongside a not-reached
+      score is the longest-follow-up lower bound.
+    """
     try:
         from .analytics.li_record import run_li_record
         lhl = run_li_record(sa).lhl
     except Exception:
         return None, None, 0
     ov = lhl.overall
-    if not ov:
+    if not ov or not ov.n:
         return None, None, 0
-    if ov.median_reached and ov.median_months is not None:
-        return ov.median_months, _piecewise_score(ov.median_months, override["points"]), 0
-    censored_frac = (ov.censored / ov.n) if ov.n else 1.0
-    if censored_frac < override.get("censored_pass_threshold", 0.10):
-        return ov.median_months, 100.0, 0
-    return ov.median_months, override.get("not_reached_partial_score", 70.0), 0
+    deaths = ov.n - ov.censored
+    if ov.median_months is None:
+        return None, None, deaths          # no valid day/months basis: ungradeable
+    if ov.median_reached:
+        return ov.median_months, _piecewise_score(ov.median_months, override["points"]), deaths
+    deaths_frac = deaths / ov.n
+    if deaths_frac < override.get("deaths_pass_threshold", 0.10):
+        return ov.median_months, 100.0, deaths
+    return ov.median_months, override.get("not_reached_partial_score", 70.0), deaths
 
 
 def _li08_score(sa: SeriesAnalysis, override: dict) -> tuple:

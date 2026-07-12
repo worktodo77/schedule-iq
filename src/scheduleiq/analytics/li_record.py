@@ -61,17 +61,21 @@ def kaplan_meier(lifespans: list[tuple[float, bool]]) -> KMResult:
     When the curve never crosses 0.5 within the observed follow-up (heavily
     right-censored data, or very few events — common with short update series),
     the median is formally "not reached"; rather than surface an unusable
-    None/inf on a headline metric, the last observed event time is reported as
-    a conservative lower-bound estimate, flagged via ``median_reached=False``
-    so report text can qualify the number ("at least N months, not yet
-    resolved by the series' end") instead of silently overstating precision.
+    None/inf on a headline metric, the LONGEST OBSERVED FOLLOW-UP (the maximum
+    lifespan, censored observations included) is reported as the conservative
+    lower bound, flagged via ``median_reached=False`` so report text can
+    qualify the number ("at least N months of follow-up, not yet resolved")
+    instead of silently overstating precision.  (Ported ruling L2, v0.4.5: the
+    prior fallback used the last EVENT time, which with a single early death
+    degenerated to "at least 0.0" while every survivor had demonstrably lived
+    the full series — S(t) stays above 0.5 through the end of follow-up, so
+    the median provably exceeds the longest observed lifespan.)
     """
     res = KMResult(n=len(lifespans), censored=sum(1 for _, c in lifespans if c))
     if not lifespans:
         return res
     event_times = sorted({d for d, c in lifespans if not c})
     s = 1.0
-    last_t: Optional[float] = None
     for t in event_times:
         at_risk = sum(1 for d, _ in lifespans if d >= t)
         events = sum(1 for d, c in lifespans if d == t and not c)
@@ -79,12 +83,11 @@ def kaplan_meier(lifespans: list[tuple[float, bool]]) -> KMResult:
             continue
         s *= (1 - events / at_risk)
         res.curve.append(KMPoint(t=t, at_risk=at_risk, events=events, survival=s))
-        last_t = t
         if res.median is None and s <= 0.5:
             res.median = t
             res.median_reached = True
-    if res.median is None and last_t is not None:
-        res.median = last_t
+    if res.median is None:
+        res.median = max(d for d, _ in lifespans)
         res.median_reached = False
     return res
 
@@ -94,8 +97,9 @@ def kaplan_meier(lifespans: list[tuple[float, bool]]) -> KMResult:
 # --------------------------------------------------------------------------
 @dataclass
 class LHLVariant:
-    median_updates: Optional[float] = None
-    median_months: Optional[float] = None
+    median_days: Optional[float] = None       # primary basis (ported ruling L5/L7)
+    median_updates: Optional[float] = None    # derived: median_days / mean interval
+    median_months: Optional[float] = None     # median_days / 30.44
     median_reached: bool = False
     n: int = 0
     censored: int = 0
@@ -108,7 +112,10 @@ class LHLResult:
     off_path: Optional[LHLVariant] = None
     on_off_ratio: Optional[float] = None
     mean_update_interval_days: Optional[float] = None
-    exclude_first_pair: bool = True
+    exclude_first_pair: bool = True           # as REQUESTED by the caller
+    first_pair_excluded: bool = False         # what actually happened (ruling L6)
+    split_dropped: int = 0                    # instances unclassifiable on/off (ruling L8)
+    disclosures: list[str] = field(default_factory=list)
     reason: str = ""
 
 
@@ -119,31 +126,62 @@ class _RelInstance:
     last_alive_idx: int
     lag_state: tuple
     censored: bool = True
+    completed_at_idx: Optional[int] = None    # censored at completion (ruling L4b)
 
 
 def _relationship_signatures(sched: Schedule) -> dict[tuple, tuple]:
     """(pred_code, succ_code, rtype) -> sorted tuple of lag_hours values seen
     under that signature in ``sched`` (usually a single value; kept as a
-    tuple to tolerate the rare duplicate-relationship case)."""
+    tuple to tolerate the rare duplicate-relationship case — note the
+    consequence, disclosed: deleting ONE of two duplicates changes the tuple
+    and reads as a modification of the merged signature, audit X2).
+    Relationships with an LOE/WBS-summary/hammock endpoint are excluded from
+    the survival population (ruling L4a — hammock re-tying is bookkeeping,
+    not plan instability), as are relationships whose endpoints do not
+    resolve to an activity."""
     sig: dict[tuple, list] = {}
     for r in sched.relationships:
         p, q = sched.activities.get(r.pred_uid), sched.activities.get(r.succ_uid)
         if p is None or q is None:
+            continue
+        if p.is_loe_or_summary or q.is_loe_or_summary:
             continue
         key = (p.code, q.code, r.rtype.value)
         sig.setdefault(key, []).append(round(r.lag_hours, 3))
     return {k: tuple(sorted(v)) for k, v in sig.items()}
 
 
+def _completed_keys(sched: Schedule, keys) -> set:
+    """The subset of ``keys`` whose BOTH endpoints are completed in ``sched``
+    (used for censoring at completion, ruling L4b)."""
+    by_code = {a.code: a for a in sched.activities.values()}
+    out = set()
+    for key in keys:
+        p, q = by_code.get(key[0]), by_code.get(key[1])
+        if p is not None and q is not None and p.completed and q.completed:
+            out.add(key)
+    return out
+
+
 def _build_instances(scheds: list[Schedule]) -> list[_RelInstance]:
-    """Track every relationship signature's lifespan (in update-count units)
-    across ``scheds``.  A relationship dies at the first update where its
+    """Track every relationship signature's lifespan across ``scheds``.
+
+    A relationship DIES (event) at the first update where its
     (pred_code, succ_code, rtype) key is absent, OR present with a changed
-    lag (type changes are already captured by the key itself disappearing).
-    Still-open instances at the last schedule are right-censored."""
+    lag state (type changes are already captured by the key itself
+    disappearing).  It is CENSORED (still alive when observation stops) at
+    the last schedule, or — ruling L4b — at the first update where both its
+    endpoints are completed: logic attached to finished work is effectively
+    immortal and would otherwise inflate survival, so observation stops
+    there (its live history still counts; a completion-window lag edit is
+    treated as completion, i.e. cleanup noise on finished work, not churn).
+    Ties born with both endpoints already completed are never observed.
+    """
     instances: list[_RelInstance] = []
     open_inst: dict[tuple, _RelInstance] = {}
+    retired: set = set()          # completion-censored keys still present
     sigs = [_relationship_signatures(s) for s in scheds]
+    comps = [_completed_keys(s, sig.keys()) for s, sig in zip(scheds, sigs)]
     for idx, sig in enumerate(sigs):
         for key in list(open_inst):
             inst = open_inst[key]
@@ -151,6 +189,13 @@ def _build_instances(scheds: list[Schedule]) -> list[_RelInstance]:
                 inst.censored = False
                 instances.append(inst)
                 del open_inst[key]
+            elif key in comps[idx]:
+                inst.censored = True
+                inst.completed_at_idx = idx
+                inst.last_alive_idx = idx     # present (alive) at the completion
+                instances.append(inst)        # update — it counts for the on/off
+                del open_inst[key]            # split's "any update while alive"
+                retired.add(key)
             elif sig[key] != inst.lag_state:
                 inst.censored = False
                 instances.append(inst)
@@ -160,37 +205,80 @@ def _build_instances(scheds: list[Schedule]) -> list[_RelInstance]:
                                               lag_state=sig[key])
             else:
                 inst.last_alive_idx = idx
+        for key in list(retired):
+            if key not in sig:
+                retired.discard(key)
         for key, lag_state in sig.items():
-            if key not in open_inst:
-                open_inst[key] = _RelInstance(key=key, birth_idx=idx,
-                                              last_alive_idx=idx,
-                                              lag_state=lag_state)
+            if key in open_inst or key in retired:
+                continue
+            if key in comps[idx]:
+                continue                      # born on completed work: not observed
+            open_inst[key] = _RelInstance(key=key, birth_idx=idx,
+                                          last_alive_idx=idx,
+                                          lag_state=lag_state)
     instances.extend(open_inst.values())
     return instances
 
 
-def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResult:
-    """Kaplan-Meier median survival of a relationship signature, in months
-    (converted via the mean data-date interval of the schedules used), with
-    an on-driving-path vs. off-path split (classified by whether the edge was
-    part of ``driving_path`` in the update where it was first observed).
+_DAYS_PER_MONTH = 30.44
 
-    ``exclude_first_pair`` (default True, per ANALYTICS_PROPOSAL §9.2)
-    excludes the baseline-to-first-update transition as baseline-development
-    noise: implemented as dropping the baseline schedule from the survival
-    cohort entirely when at least three schedules are available, so the
-    series used starts its clock at the first update rather than the
-    baseline.
+
+def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResult:
+    """Kaplan-Meier median survival of a relationship signature, in months,
+    with an on-driving-path vs. off-path split.
+
+    Conventions (ported v0.4.5 audit rulings — see
+    docs/rulings/LI-02-lhl-port-2026-07-12.md, docs/audit/LHL_audit_2026-07-09.md
+    and ANALYTICS_PROPOSAL §9.2):
+
+    - *Units (L5):* each lifespan is measured directly in CALENDAR DAYS
+      between data dates (birth data-date -> death/censor date); KM runs in
+      days and months = days / 30.44.  No mean-cadence conversion, so
+      irregular update spacing cannot distort the median.  Requires the used
+      schedules to carry strictly increasing data dates; otherwise the
+      months basis is withheld (never negative, never a silent None — L9), a
+      degraded update-count median is reported for information only, and
+      LI-02 is ungradeable (L10).
+    - *Death dating (L7):* a deletion/modification is only known to fall
+      inside the window (last-seen, first-absent]; the death is dated at the
+      window MIDPOINT (standard interval-censored convention).
+    - *Censoring:* at the last data date, or at completion (L4b — see
+      ``_build_instances``).
+    - *Not reached (L2):* when S(t) never crosses 0.5 the reported median is
+      the longest observed follow-up, flagged ``median_reached=False``.
+    - *Split (L8):* an instance is ON-path if its edge was on the
+      tool-of-record driving path at ANY update while it was alive
+      ("ever became driving"); instances whose alive updates all lack a
+      resolvable driving path are dropped from the split (counted in
+      ``split_dropped``, disclosed).  Ratio > 1 = driving-path logic MORE
+      stable; suppressed unless both medians were actually reached.
+
+    ``exclude_first_pair`` (default True, per §9.2) drops the baseline
+    schedule from the survival cohort entirely when at least three schedules
+    are available (deaths in the baseline window are unobserved; ties born
+    in the baseline start their clock at update 1).  With exactly two
+    schedules the exclusion cannot apply and the pair is used;
+    ``first_pair_excluded`` reports what actually happened (L6).
     """
     schedules = list(getattr(series_analysis, "schedules", []))
     res = LHLResult(exclude_first_pair=exclude_first_pair)
     if len(schedules) < 2:
         res.reason = "needs at least two schedules to observe relationship survival"
         return res
-    scheds = schedules[1:] if (exclude_first_pair and len(schedules) >= 3) else schedules
-    if len(scheds) < 2:
-        res.reason = "insufficient schedules remain after excluding the first update pair"
-        return res
+    if exclude_first_pair and len(schedules) >= 3:
+        scheds = schedules[1:]
+        res.first_pair_excluded = True
+        res.disclosures.append(
+            "Baseline pair excluded (default): the baseline schedule is dropped "
+            "from the survival cohort — deaths in the baseline window are "
+            "unobserved and baseline-born ties start their clock at update 1.")
+    else:
+        scheds = schedules
+        if exclude_first_pair:
+            res.disclosures.append(
+                "Baseline-pair exclusion REQUESTED BUT NOT APPLIED: it needs at "
+                "least three schedules; with exactly two, the baseline pair is "
+                "the only observable window and is used.")
 
     try:
         instances = _build_instances(scheds)
@@ -201,33 +289,90 @@ def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResu
         res.reason = "no relationships observed in the series"
         return res
 
-    intervals = [(b.data_date - a.data_date).days for a, b in zip(scheds, scheds[1:])
-                if a.data_date and b.data_date]
+    res.disclosures.append(
+        "Signature = (pred code, succ code, link type), keyed by activity CODE: "
+        "a re-coded activity reads as logic death + rebirth (consistent with the "
+        "code-keyed logic-churn diff); a lag or type change ends a lifespan "
+        "(modification); parallel duplicate ties collapse into one signature "
+        "(sorted lag tuple), so deleting one duplicate reads as a modification "
+        "of the merged signature.")
+    res.disclosures.append(
+        "Population: relationships with an LOE/WBS-summary/hammock endpoint are "
+        "excluded; ties are censored at the update both endpoints complete; "
+        "ties born on already-completed work are not observed; relationships "
+        "with unresolvable endpoints are skipped.")
+
+    # -- time basis (rulings L5/L7/L9) -----------------------------------
+    dds = [s.data_date for s in scheds]
+    intervals = [(b - a).days for a, b in zip(dds, dds[1:])
+                 if a is not None and b is not None]
     mean_interval = sum(intervals) / len(intervals) if intervals else None
     res.mean_update_interval_days = mean_interval
+
+    if any(d is None for d in dds):
+        dates_ok, dates_problem = False, "one or more schedules lack a data date"
+    elif any(b <= a for a, b in zip(dds, dds[1:])):
+        dates_ok, dates_problem = False, ("data dates are not strictly "
+                                          "increasing across the series")
+    else:
+        dates_ok, dates_problem = True, ""
+
+    def lifespan_days(inst: _RelInstance) -> float:
+        birth = dds[inst.birth_idx]
+        if not inst.censored:
+            a, b = dds[inst.last_alive_idx], dds[inst.last_alive_idx + 1]
+            end = a + (b - a) / 2                 # midpoint of the dying window
+        elif inst.completed_at_idx is not None:
+            end = dds[inst.completed_at_idx]      # censored at completion
+        else:
+            end = dds[-1]                         # censored at end of follow-up
+        return (end - birth).total_seconds() / 86400.0
+
+    if dates_ok:
+        res.disclosures.append(
+            "Units: lifespans in calendar days between data dates; deaths dated "
+            "at the midpoint of the disappearance window; months = days / 30.44.")
+    else:
+        res.disclosures.append(
+            f"MONTHS BASIS UNAVAILABLE ({dates_problem}): update-count medians "
+            "are reported for information only (deaths dated at the last-seen "
+            "update); LI-02 is ungradeable on this series.")
 
     def to_variant(subset: list[_RelInstance]) -> Optional[LHLVariant]:
         if not subset:
             return None
+        if dates_ok:
+            km = kaplan_meier([(lifespan_days(i), i.censored) for i in subset])
+            days = km.median
+            return LHLVariant(
+                median_days=days,
+                median_updates=(days / mean_interval
+                                if days is not None and mean_interval else None),
+                median_months=(days / _DAYS_PER_MONTH if days is not None else None),
+                median_reached=km.median_reached, n=km.n, censored=km.censored)
         km = kaplan_meier([(float(i.last_alive_idx - i.birth_idx), i.censored)
                            for i in subset])
-        months = (km.median * mean_interval / 30.44
-                 if km.median is not None and mean_interval else None)
-        return LHLVariant(median_updates=km.median, median_months=months,
-                          median_reached=km.median_reached, n=km.n,
-                          censored=km.censored)
+        return LHLVariant(median_days=None, median_updates=km.median,
+                          median_months=None, median_reached=km.median_reached,
+                          n=km.n, censored=km.censored)
 
     res.overall = to_variant(instances)
+    ov = res.overall
+    res.disclosures.append(
+        f"Censoring: {ov.censored}/{ov.n} relationship instances censored "
+        f"({100.0 * ov.censored / ov.n:.0f}%)."
+        + ("" if ov.median_reached else
+           "  Median not reached within follow-up; the reported value is the "
+           "longest observed follow-up (a lower bound)."))
 
-    on_insts: list[_RelInstance] = []
-    off_insts: list[_RelInstance] = []
+    # -- on/off-path split (ruling L8: membership at ANY point in life) ---
     edge_cache: dict[int, Optional[set]] = {}
     path_errors: list[str] = []
-    for inst in instances:
-        b = inst.birth_idx
-        if b not in edge_cache:
+
+    def edges_at(idx: int) -> Optional[set]:
+        if idx not in edge_cache:
             try:
-                dp = driving_path(scheds[b])
+                dp = driving_path(scheds[idx])
                 if dp.steps and len(dp.steps) >= 2:
                     edges = set()
                     for i in range(len(dp.steps) - 1):
@@ -235,16 +380,25 @@ def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResu
                         if rel is not None:
                             edges.add((dp.steps[i].code, dp.steps[i + 1].code,
                                       rel.rtype.value))
-                    edge_cache[b] = edges
+                    edge_cache[idx] = edges
                 else:
-                    edge_cache[b] = None
+                    edge_cache[idx] = None
             except Exception as e:                   # pragma: no cover - defensive
-                edge_cache[b] = None
+                edge_cache[idx] = None
                 path_errors.append(str(e))
-        edges = edge_cache[b]
-        if edges is None:
+        return edge_cache[idx]
+
+    on_insts: list[_RelInstance] = []
+    off_insts: list[_RelInstance] = []
+    dropped = 0
+    for inst in instances:
+        alive = [edges_at(i) for i in range(inst.birth_idx, inst.last_alive_idx + 1)]
+        resolved = [e for e in alive if e is not None]
+        if not resolved:
+            dropped += 1
             continue
-        (on_insts if inst.key in edges else off_insts).append(inst)
+        (on_insts if any(inst.key in e for e in resolved) else off_insts).append(inst)
+    res.split_dropped = dropped
 
     if all(v is None for v in edge_cache.values()):
         res.reason = ("on/off-path split unavailable (driving path could not be "
@@ -254,9 +408,21 @@ def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResu
 
     res.on_path = to_variant(on_insts)
     res.off_path = to_variant(off_insts)
-    if (res.on_path and res.off_path and res.on_path.median_months is not None
+    res.disclosures.append(
+        "Split basis: an instance is on-path if its edge was on the "
+        "tool-of-record driving path at ANY update while alive; ratio > 1 = "
+        "driving-path logic MORE stable than off-path logic."
+        + (f"  {dropped} instance(s) unclassifiable (no resolvable driving path "
+           f"during their life) and dropped from the split." if dropped else ""))
+    if (res.on_path and res.off_path
+            and res.on_path.median_reached and res.off_path.median_reached
+            and res.on_path.median_months is not None
             and res.off_path.median_months not in (None, 0)):
         res.on_off_ratio = res.on_path.median_months / res.off_path.median_months
+    elif res.on_path and res.off_path:
+        res.disclosures.append(
+            "On/off ratio suppressed: one or both medians were not reached "
+            "(a ratio of lower bounds is not a ratio of half-lives).")
     return res
 
 

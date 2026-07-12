@@ -3,6 +3,35 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — LI-02 LHL v0.4.5 rulings PORTED (Wave 1a of the LI-02..LI-10 audit)
+
+**Check-affecting / number-changing for LI-02 (scored, weight 2).**  The 12
+LHL rulings adjudicated by the principal on the unmerged lineage-A branch
+(2026-07-10) are ported as-ruled onto this base (port ruling Q-A,
+2026-07-12; recorded ruling docs/rulings/LI-02-lhl-port-2026-07-12.md;
+as-audited record imported at docs/audit/LHL_audit_2026-07-09.md).
+
+- Scoring: **L1** deaths-based 100 branch (was inverted — tested the
+  censored fraction; a frozen network scored 70); **L10** ungradeable when
+  the months basis is unavailable (was: could score 100 on maximal churn
+  with missing data dates); offender count = relationship deaths.
+- Metric: **L5+L7** calendar-day KM with midpoint death dating (replaces
+  update-count × cadence-mean; first-window deletions are no longer
+  0-duration events); **L2** longest-follow-up lower bound when the median
+  is not reached + ratio suppression; **L4a** LOE/summary-attached ties
+  excluded; **L4b** censor at completion (born-on-completed ties
+  unobserved); **L9** missing/non-increasing data dates withhold the months
+  basis (never a negative figure); **L8** on/off split = membership at ANY
+  update while alive, incl. the completion-censor classification fix;
+  **L3** code keying affirmed + disclosed; **L6** effective-exclusion
+  reporting; **X1+X2** standing disclosures block (surfaced as LI-02
+  findings by the wiring).
+- Demo series: LI-02 member 70 → 100 ("at least 3.0 months", 1 death);
+  series letter D holds.  21 ported regression tests (T1–T11 + the L8
+  close-out) + 3 existing tests updated to the ruled conventions.
+
+Suite: 261 passed, 1 skipped.
+
 ## Unreleased — LI-05/LI-06 NOT EVALUATED sentinels (defect-class batch, ruled)
 
 **Check-affecting / number-changing at the Report Card surface.**  Ruled by

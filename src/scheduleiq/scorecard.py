@@ -401,8 +401,15 @@ def _li02_score(sa: SeriesAnalysis, override: dict) -> tuple:
         return None, None, 0
     if ov.median_reached and ov.median_months is not None:
         return ov.median_months, _piecewise_score(ov.median_months, override["points"]), 0
+    # Median not reached: award full marks only when the network is so stable
+    # that too FEW ties have DIED to even estimate a half-life (L1 ruling — the
+    # prior code tested the censored fraction, inverting this).  died_frac =
+    # 1 - censored_frac.
     censored_frac = (ov.censored / ov.n) if ov.n else 1.0
-    if censored_frac < override.get("censored_pass_threshold", 0.10):
+    died_frac = 1.0 - censored_frac
+    threshold = override.get("died_pass_threshold",
+                             override.get("censored_pass_threshold", 0.10))
+    if died_frac < threshold:
         return ov.median_months, 100.0, 0
     return ov.median_months, override.get("not_reached_partial_score", 70.0), 0
 

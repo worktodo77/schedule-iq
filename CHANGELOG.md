@@ -3,6 +3,45 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## 0.4.5 — 2026-07-09
+
+Check-affecting: **four LHL (LI-02) defect fixes** from the LHL audit
+(docs/audit/LHL_audit_2026-07-09.md), ruled by the methodology owner; each ships
+with the governance quartet.  LI-02 is a scored member — the demo series LI-02
+moves (see below); the pinned demo letter grades (C+/C/D per file, D for the
+series) held.  One audit item (L5, LOE population) is deferred pending a
+second-opinion methodology review and is NOT included here.
+
+- **L1 — scoring branch inversion.** `_li02_score` awarded full marks when the
+  median was not reached only if `censored_frac < 10%` (i.e. >90% of logic had
+  died) — the inverse of the spec ("< 10% *died* = too stable to estimate a
+  half-life = 100").  Now branches on the DIED fraction; the config key
+  `censored_pass_threshold` is renamed `died_pass_threshold`.  The demo series
+  (27/28 censored, median not reached) now scores LI-02 = **100**, not 70.
+- **L2 — death timing off-by-one.** A relationship death is now dated to the
+  first update in which the tie is absent/modified (event time = last-present +
+  1); a tie that survived one update interval no longer registers as dying at
+  age 0.  Censoring times are unchanged.  Understated half-lives corrected.
+- **L3 — signatures keyed by UID, not code.** Relationship identity is keyed by
+  `(pred_uid, succ_uid, type)` (matching `Relationship.key()`), so re-coding an
+  activity is no longer a spurious death; a type change still is.  The on/off
+  driving-path edge set was moved to UIDs in lockstep (else the whole cohort
+  would collapse to off-path).  Mirrors the BWI-B2 fix.
+- **L4 — on/off ratio guard.** `on_off_ratio` is published only when BOTH cohort
+  medians were genuinely reached (`on_off_ratio_reached`), with a disclosure
+  when suppressed — a ratio of two not-reached lower bounds is not a bound.
+- **L6 — standing disclosures.** `LHLResult` now carries methodology disclosures
+  (UID identity, mean-interval months conversion, death-timing, birth-time
+  on/off classification, first-pair exclusion, censoring %, and that LOE ties
+  are currently included pending the L5 ruling).
+- 5 new regression tests (scoring died-fraction, death timing, re-code vs type
+  change, ratio suppression, disclosures).  Full suite: 2087 passed, 2 skipped.
+- Governance quartet: matrix LI-02 row + scorecard.yaml (key rename) + impl
+  (scorecard.py, li_record.py) + tests; public_spec/scorecard.yaml regenerated.
+- **DEFERRED (not implemented):** L5 (exclude LOE/summary ties from the LHL
+  population) — spec-consistent as-is per §9.2; routed for a methodology
+  second opinion before ruling.
+
 ## 0.4.4 — 2026-07-09
 
 **R1 resolution (LI-05, RDI): planned-scope basis affirmed; companion

@@ -941,8 +941,8 @@ checks:
   - id: LI-02
     name: "LHL — Logic Half-Life"
     category: "LI Proprietary Indices"
-    description: "Kaplan-Meier median survival of relationship signatures across updates, in months; on/off driving-path split.  Short half-life = the network is a rolling narrative, not a plan."
-    formula: "KM median of (pred, succ, type) lifespans, right-censored; baseline pair excluded by default"
+    description: "Kaplan-Meier median survival of relationship signatures (keyed by persistent pred/succ UID, so a re-code is not a logic change) across updates, in months; on/off driving-path split.  A death is dated to the first update in which the tie is absent/modified; ties live at the last update are right-censored.  Short half-life = the network is a rolling narrative, not a plan.  Not-reached-median scoring branches on the DIED fraction (< 10% died = too stable to estimate = full marks); the on/off ratio is suppressed when either cohort median is not reached."
+    formula: "KM median of (pred_uid, succ_uid, type) lifespans (death time = last-present + 1), right-censored; baseline pair excluded by default"
     unit: index
     threshold: null
     direction: info

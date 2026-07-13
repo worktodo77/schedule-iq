@@ -440,7 +440,7 @@ series_curve_overrides:
   LI-02:
     special: true
     points: [[1, 0], [6, 70], [12, 100]]
-    censored_pass_threshold: 0.10
+    died_pass_threshold: 0.10
     not_reached_partial_score: 70.0
     rationale: "Design-specified mapping (docs/REPORT_CARD_DESIGN.md and the
       RC1 backlog item, verbatim): 100 if the Kaplan-Meier median survival
@@ -450,8 +450,10 @@ series_curve_overrides:
       at 1 month; linear between.  If the median was not reached but 10% or
       more of relationships have already changed, scored at the 70-point
       (pass-mark) placeholder pending more update history for a confident
-      read — implemented in scorecard.py (_score_li02) because it branches
-      on censoring, not a single curve."
+      read — implemented in scorecard.py (_li02_score) because it branches
+      on the DIED fraction (v0.4.5 L1 ruling: the prior key
+      'censored_pass_threshold' was compared against the censored fraction,
+      inverting the branch so stable networks scored 70 not 100)."
   LI-03:
     points: [[0, 100], [20, 70], [60, 0]]
     rationale: "FRB empirical forecast-error band width (largest bucket),

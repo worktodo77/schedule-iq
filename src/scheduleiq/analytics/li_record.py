@@ -107,9 +107,11 @@ class LHLResult:
     on_path: Optional[LHLVariant] = None
     off_path: Optional[LHLVariant] = None
     on_off_ratio: Optional[float] = None
+    on_off_ratio_reached: bool = False   # both cohort medians genuinely reached
     mean_update_interval_days: Optional[float] = None
     exclude_first_pair: bool = True
     reason: str = ""
+    disclosures: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -122,15 +124,20 @@ class _RelInstance:
 
 
 def _relationship_signatures(sched: Schedule) -> dict[tuple, tuple]:
-    """(pred_code, succ_code, rtype) -> sorted tuple of lag_hours values seen
+    """(pred_uid, succ_uid, rtype) -> sorted tuple of lag_hours values seen
     under that signature in ``sched`` (usually a single value; kept as a
-    tuple to tolerate the rare duplicate-relationship case)."""
+    tuple to tolerate the rare duplicate-relationship case).
+
+    Identity is keyed by persistent activity **UID**, not code (L3 ruling):
+    re-coding an activity between updates (a benign housekeeping edit, UID
+    stable) must not register as the death of its whole logic neighborhood.
+    This matches ``Relationship.key()`` and the BWI-B2 UID-first convention."""
     sig: dict[tuple, list] = {}
     for r in sched.relationships:
         p, q = sched.activities.get(r.pred_uid), sched.activities.get(r.succ_uid)
         if p is None or q is None:
             continue
-        key = (p.code, q.code, r.rtype.value)
+        key = (r.pred_uid, r.succ_uid, r.rtype.value)
         sig.setdefault(key, []).append(round(r.lag_hours, 3))
     return {k: tuple(sorted(v)) for k, v in sig.items()}
 
@@ -206,11 +213,20 @@ def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResu
     mean_interval = sum(intervals) / len(intervals) if intervals else None
     res.mean_update_interval_days = mean_interval
 
+    def _lifespan(i: _RelInstance) -> float:
+        # L2 ruling: a death is OBSERVED at the first update where the tie is
+        # absent (last_alive_idx + 1), so an event time is one update later than
+        # the last-seen-alive index.  Censoring times (tie still present at the
+        # last update) stay at last_alive_idx - birth_idx.
+        span = i.last_alive_idx - i.birth_idx
+        if not i.censored:
+            span += 1
+        return float(span)
+
     def to_variant(subset: list[_RelInstance]) -> Optional[LHLVariant]:
         if not subset:
             return None
-        km = kaplan_meier([(float(i.last_alive_idx - i.birth_idx), i.censored)
-                           for i in subset])
+        km = kaplan_meier([(_lifespan(i), i.censored) for i in subset])
         months = (km.median * mean_interval / 30.44
                  if km.median is not None and mean_interval else None)
         return LHLVariant(median_updates=km.median, median_months=months,
@@ -233,7 +249,12 @@ def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResu
                     for i in range(len(dp.steps) - 1):
                         rel = dp.steps[i].driving_rel
                         if rel is not None:
-                            edges.add((dp.steps[i].code, dp.steps[i + 1].code,
+                            # L3: match instance identity by UID, not code — the
+                            # instance keys are UID-based, so the driving-path
+                            # edge set must be too (else every instance would
+                            # fall to off-path).
+                            edges.add((dp.steps[i].activity.uid,
+                                      dp.steps[i + 1].activity.uid,
                                       rel.rtype.value))
                     edge_cache[b] = edges
                 else:
@@ -250,14 +271,61 @@ def logic_half_life(series_analysis, exclude_first_pair: bool = True) -> LHLResu
         res.reason = ("on/off-path split unavailable (driving path could not be "
                      "resolved for any update in the series); overall LHL only." +
                      (f"  ({'; '.join(path_errors)})" if path_errors else ""))
+        res.disclosures.extend(_lhl_disclosures(res))
         return res
 
     res.on_path = to_variant(on_insts)
     res.off_path = to_variant(off_insts)
+    # L4 ruling: only publish the on/off ratio when BOTH cohort medians were
+    # genuinely reached.  A ratio of two not-reached lower-bound fallbacks is
+    # not a bound on the true ratio and must not be presented as an ordinary one.
     if (res.on_path and res.off_path and res.on_path.median_months is not None
-            and res.off_path.median_months not in (None, 0)):
+            and res.off_path.median_months not in (None, 0)
+            and res.on_path.median_reached and res.off_path.median_reached):
         res.on_off_ratio = res.on_path.median_months / res.off_path.median_months
+        res.on_off_ratio_reached = True
+    elif (res.on_path and res.off_path
+          and (not res.on_path.median_reached or not res.off_path.median_reached)):
+        res.disclosures.append(
+            "On/off-path ratio suppressed: at least one cohort's Kaplan-Meier "
+            "median was not reached within the series (a ratio of lower-bound "
+            "estimates is not itself a bound).")
+    res.disclosures.extend(_lhl_disclosures(res))
     return res
+
+
+def _lhl_disclosures(res: LHLResult) -> list[str]:
+    """Standing LHL methodology disclosures (L6 ruling)."""
+    notes = [
+        "Relationship identity is keyed by persistent activity UID (pred_uid, "
+        "succ_uid, type); a re-code with stable UID is not a logic change, a "
+        "type change or a deletion is.",
+        "Lifespans are in update counts converted to months via the MEAN "
+        "data-date interval of the schedules used; on markedly irregular update "
+        "cadences the month figure is an average-cadence approximation.",
+        "A relationship's death is dated to the first update in which it is "
+        "absent/modified (event time = last-present + 1); ties still present at "
+        "the last update are right-censored.",
+        "On/off-driving-path classification is fixed at the update where the tie "
+        "is first observed; a tie that joins the driving path later stays in its "
+        "birth cohort.",
+        f"The baseline-to-first-update pair is "
+        f"{'excluded' if res.exclude_first_pair else 'included'} by "
+        "configuration (baseline-development noise); with < 3 schedules the full "
+        "series is used.",
+        "LOE/summary-attached relationships are currently included in the "
+        "survival population (§9.2 'each relationship ever observed'); a ruling "
+        "on excluding them is pending.",
+    ]
+    ov = res.overall
+    if ov and ov.n:
+        frac = ov.censored / ov.n
+        notes.append(
+            f"{ov.censored}/{ov.n} relationships right-censored "
+            f"({frac:.0%} still live at series end)"
+            + ("" if (ov.median_reached) else
+               "; the median was NOT reached — reported value is a lower bound."))
+    return notes
 
 
 # --------------------------------------------------------------------------

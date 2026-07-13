@@ -148,6 +148,100 @@ def test_lhl_degrades_gracefully_on_short_series():
     assert res.reason
 
 
+# -- v0.4.5 LHL audit fixes (L1-L4, L6) --------------------------------------
+from datetime import datetime as _dt                                    # noqa: E402
+from scheduleiq.ingest.model import (Activity as _Act, Relationship as _Rel,  # noqa: E402
+    Calendar as _Cal, ActivityType as _AT, ActivityStatus as _ST, RelType as _RT)
+
+_LCAL = _Cal(uid="1", name="5d", hours_per_day=8.0, is_default=True)
+
+
+def _lact(uid, code):
+    return _Act(uid=uid, code=code, name=code, atype=_AT.TASK, status=_ST.NOT_STARTED,
+                calendar_uid="1", original_duration_hours=80.0,
+                remaining_duration_hours=80.0, total_float_hours=0.0,
+                early_start=_dt(2025, 1, 1), early_finish=_dt(2025, 3, 1),
+                planned_start=_dt(2025, 1, 1), planned_finish=_dt(2025, 3, 1))
+
+
+def _lsched(acts, rels, dd):
+    s = Schedule(project_id="P", data_date=dd)
+    s.calendars = {"1": _LCAL}
+    for uid, code in acts:
+        s.activities[uid] = _lact(uid, code)
+    s.relationships = [_Rel(pred_uid=p, succ_uid=q, rtype=t, lag_hours=0.0)
+                       for p, q, t in rels]
+    return s
+
+
+def test_li02_not_reached_scores_on_died_fraction(monkeypatch):
+    """L1: when the KM median is not reached, full marks require FEW ties to
+    have DIED (too stable to estimate a half-life).  The prior code tested the
+    CENSORED fraction, inverting the branch so stable networks scored 70."""
+    from types import SimpleNamespace
+    from scheduleiq import scorecard as scm
+    override = {"points": [[1, 0], [6, 70], [12, 100]],
+                "died_pass_threshold": 0.10, "not_reached_partial_score": 70.0}
+
+    def fake(censored, n):
+        ov = lr.LHLVariant(median_updates=3.0, median_months=3.0,
+                           median_reached=False, n=n, censored=censored)
+        monkeypatch.setattr(lr, "run_li_record",
+                            lambda sa: SimpleNamespace(lhl=lr.LHLResult(overall=ov)))
+    fake(27, 28)      # 1/28 died = 3.6% < 10%  -> stable -> 100
+    assert scm._li02_score(None, override)[1] == 100.0
+    fake(20, 28)      # 8/28 died = 28.6% >= 10% -> churned -> 70
+    assert scm._li02_score(None, override)[1] == 70.0
+
+
+def test_lhl_death_recorded_at_first_absent_update():
+    """L2: a tie present in one update then deleted has lifespan 1 (death dated
+    to the first-absent update), not 0."""
+    u0 = _lsched([("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")],
+                 [("a", "b", _RT.FS), ("c", "d", _RT.FS)], _dt(2025, 1, 1))
+    u1 = _lsched([("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")],
+                 [], _dt(2025, 2, 1))                 # every tie deleted at update 1
+    lhl = logic_half_life(SeriesAnalysis(schedules=[u0, u1]), exclude_first_pair=False)
+    assert lhl.overall.median_updates == pytest.approx(1.0)   # not 0.0 (the bug)
+    assert lhl.overall.median_reached is True
+
+
+def test_lhl_recode_is_not_a_death_but_type_change_is():
+    """L3: identity is keyed by UID — re-coding an activity is not a logic death;
+    a relationship-type change is."""
+    r0 = _lsched([("a", "A"), ("b", "B")], [("a", "b", _RT.FS)], _dt(2025, 1, 1))
+    r1 = _lsched([("a", "A-RENAMED"), ("b", "B")], [("a", "b", _RT.FS)], _dt(2025, 2, 1))
+    insts = lr._build_instances([r0, r1])
+    assert len(insts) == 1 and insts[0].censored is True      # survived the re-code
+
+    t0 = _lsched([("a", "A"), ("b", "B")], [("a", "b", _RT.FS)], _dt(2025, 1, 1))
+    t1 = _lsched([("a", "A"), ("b", "B")], [("a", "b", _RT.SS)], _dt(2025, 2, 1))
+    tinsts = lr._build_instances([t0, t1])
+    assert any(not i.censored for i in tinsts)                # the FS tie died
+
+
+def test_lhl_on_off_ratio_suppressed_when_median_not_reached(series):
+    """L4: the on/off ratio is published only when BOTH cohort medians are
+    genuinely reached; otherwise it is suppressed and a disclosure carried."""
+    lhl = logic_half_life(series)
+    if lhl.on_path and lhl.off_path and not (
+            lhl.on_path.median_reached and lhl.off_path.median_reached):
+        assert lhl.on_off_ratio is None
+        assert lhl.on_off_ratio_reached is False
+        assert any("suppressed" in d for d in lhl.disclosures)
+    # invariant: a published ratio implies both medians were reached
+    assert (lhl.on_off_ratio is None) or lhl.on_off_ratio_reached
+
+
+def test_lhl_carries_standing_disclosures(series):
+    """L6: LHL outputs carry standing methodology disclosures."""
+    lhl = logic_half_life(series)
+    assert lhl.disclosures
+    assert any("UID" in d for d in lhl.disclosures)            # identity basis
+    assert any("mean" in d.lower() for d in lhl.disclosures)   # months conversion
+    assert any("LOE" in d for d in lhl.disclosures)            # LOE inclusion (pending L5)
+
+
 # ==========================================================================
 # N8 — FRB
 # ==========================================================================

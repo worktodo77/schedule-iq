@@ -3,6 +3,31 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — RW3-F6/F7 rulings adjudicated and executed (2026-07-13)
+
+**Check-affecting / number-changing for LI-05 RDI (and LI-09 BWI's
+projected break) on series carrying post-completion original-duration
+edits.**  The two methodology questions left open by review wave 3 were
+put to the principal and ruled (recorded in
+docs/rulings/LI-kernel-v2-2026-07-12.md):
+
+- **RW3-F7 — RULED: earlier endpoint; EXECUTED.**  The demonstrated-pace
+  planned-duration numerator (and the companion overrun ratio's planned
+  basis — same completions, commensurable) is read AS RECORDED AT THE
+  WINDOW'S EARLIER ENDPOINT, the same nonanticipative endpoint as the band
+  gate.  A post-completion OD edit in the completing file can no longer
+  move demonstrated pace (probe: OD 10→40 edit read demo 4.0, now 1.0;
+  overrun 0.125, now 0.5); the edit itself remains visible to the
+  DUR-family checks.  Standing disclosure updated; closed-form regression.
+- **RW3-F6 — RULED: keep all paths, disclosed; CLOSED, no numbers move.**
+  PCI's weights keep pricing every enumerated discrete-work path
+  (concentration describes network structure; a governed path is a real
+  path); governance is carried beside via the severity strip, matching the
+  approved D1 design.  The accurate disclosure landed with the review-wave
+  dispositions stands.
+
+Suite: 305 passed, 1 skipped.
+
 ## Unreleased — Review wave 3 dispositions (independent adversarial review of Waves 3/4, 2026-07-13)
 
 **Check-affecting for LI-05/LI-07/LI-09 on DEGRADED inputs only** (the fixed

@@ -684,7 +684,13 @@ non-target governance are **quarantined from the required-pace numerator
 and disclosed** — never priced by own-float fallback.  Demonstrated pace is
 **nonanticipative** (fixes audit RDI-2): a completion counts iff it was
 near-critical at the *earlier* endpoint of the window, so the measure no
-longer depends on whether the exporter nulls TF at completion.  An update
+longer depends on whether the exporter nulls TF at completion; and (ruling
+RW3-F7, 2026-07-13) its planned-duration numerator — and the companion
+overrun ratio's planned basis — is likewise read *as recorded at the
+earlier endpoint*, so a post-completion original-duration edit cannot move
+demonstrated pace (the edit stays visible to the DUR-family checks).  A
+window whose completions were all quarantined reads an *unknown* pace
+(None), never a fabricated 0.0 (review RW3-F1).  An update
 whose entire candidate population is quarantined yields required = None
 (not a fabricated 0); if every update degrades this way the series is NOT
 EVALUATED with the quarantine named in the reason.

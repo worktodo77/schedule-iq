@@ -118,12 +118,18 @@ behavior is directly visible in the source and a probe adds nothing.
 >   (RW3-F2..F7)** — all reproduced and dispositioned (5 fixed, 2 fixed as
 >   disclosure with the underlying methodology choice OPEN); full table in
 >   docs/rulings/LI-kernel-v2-2026-07-12.md.  Suite after dispositions:
->   304 passed, 1 skipped.  REMAINING OPEN: (i) TWO methodology questions
->   for the principal — RW3-F7 (demonstrated-numerator endpoint: later
->   update, as disclosed, vs earlier endpoint — number-changing) and
->   RW3-F6 (should PCI also quarantine governed PATHS — number-changing);
->   (ii) LI-04 anchor recalibration against real series (separate flagged
->   step, D4); (iii) the legacy-kernel formal retirement record at
+>   304 passed, 1 skipped.
+> - **RW3-F6/F7 methodology questions: RULED AND CLOSED** (2026-07-13).
+>   RW3-F7 ruled EARLIER ENDPOINT and executed (the demonstrated-pace
+>   planned numerator and the companion overrun basis read the window's
+>   earlier endpoint — post-completion OD edits can no longer move
+>   demonstrated pace; number-changing for LI-05/LI-09-break on edited
+>   series; closed-form regression).  RW3-F6 ruled KEEP ALL PATHS,
+>   disclosed (PCI weights are not governance-filtered, per the approved
+>   D1 design; severity strip carries governance beside) — closed, no
+>   numbers move.  Suite: 305 passed, 1 skipped.  REMAINING OPEN: (i)
+>   LI-04 anchor recalibration against real series (separate flagged
+>   step, D4); (ii) the legacy-kernel formal retirement record at
 >   eventual removal.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)

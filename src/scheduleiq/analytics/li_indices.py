@@ -1663,7 +1663,10 @@ def _demonstrated_series(sa, k2map: dict[int, _KernelV2],
     planned scope is retired at rate R, both per calendar working-day).
     "Actually" attaches to the completion DATES; overruns are captured as
     calendar time consumed per planned day retired (zero-completion windows
-    depress the P50 accrual anchor).  An elapsed-time numerator/denominator was
+    depress the P50 accrual anchor).  RW3-F7 ruling (2026-07-13): the planned
+    duration is read AS RECORDED AT THE WINDOW'S EARLIER ENDPOINT — the same
+    nonanticipative endpoint as the band gate — so a post-completion
+    original-duration edit cannot move demonstrated pace.  An elapsed-time numerator/denominator was
     rejected: elapsed spans are concurrency-non-additive (parallel work
     double-counts calendar time, accruing phantom debt on any concurrent
     schedule) or reward overruns outright.  The overrun signal ships separately
@@ -1727,7 +1730,14 @@ def _demonstrated_series(sa, k2map: dict[int, _KernelV2],
             evaluable += 1
             if d > band_days:
                 continue
-            done += a.duration_days(l.cal_for(a))
+            # RW3-F7 ruling: the planned-duration numerator is read AS
+            # RECORDED AT THE WINDOW'S EARLIER ENDPOINT (same nonanticipative
+            # endpoint as the band gate) — a post-completion OD edit in the
+            # completing file can no longer move demonstrated pace (the
+            # later-endpoint read let an OD 10 -> 40 edit turn demo 1.0 into
+            # 4.0, deflating accrued debt and suppressing BWI breaks)
+            ea = e_by_code[a.code]
+            done += ea.duration_days(e.cal_for(ea))
         if candidates > 0 and evaluable == 0:
             out.append(None)                       # RW3-F1: unknown, never 0.0
         else:
@@ -1758,6 +1768,7 @@ def _overrun_series(sa, k2map: dict[int, _KernelV2],
         planned = 0.0
         elapsed = 0.0
         ek = k2map.get(id(e))
+        e_by_code = {a.code: a for a in e.activities.values()}
         for a in l.activities.values():
             if a.is_loe_or_summary or a.is_milestone or not a.completed:
                 continue
@@ -1774,7 +1785,13 @@ def _overrun_series(sa, k2map: dict[int, _KernelV2],
             if a.actual_start is None:
                 missing_starts += 1
                 continue
-            planned += a.duration_days(l.cal_for(a))
+            # RW3-F7 ruling: planned read at the earlier endpoint — the SAME
+            # completions and the SAME planned basis as the demonstrated
+            # series (commensurability), immune to post-completion OD edits
+            ea = e_by_code.get(a.code)
+            if ea is None:                # unreachable: d resolved at start
+                continue                  # pragma: no cover - defensive
+            planned += ea.duration_days(e.cal_for(ea))
             elapsed += _working_days_5d(a.actual_start, af)
         tot_planned += planned
         tot_elapsed += elapsed
@@ -1797,13 +1814,14 @@ def _rdi_disclosures(scheds, missing_starts: int = 0,
         "were ALL quarantined (unresolved/governed/born-and-done) reads an "
         "UNKNOWN demonstrated pace (omitted from the P50 anchor), never a "
         "fabricated 0.0 (review RW3-F1).",
-        "MANIPULATION SURFACE (disclosed, review RW3-F7): the demonstrated "
-        "numerator reads each completion's planned duration as recorded in "
-        "the LATER update (the completing file) — a post-completion "
-        "original-duration edit therefore moves demonstrated pace (inflating "
-        "it deflates accrued debt and suppresses BWI's projected break).  "
-        "Cross-reference the DUR-family change checks on any contested "
-        "series; the numerator endpoint is flagged for principal ruling.",
+        "Demonstrated-pace numerator (ruling RW3-F7, 2026-07-13): each "
+        "completion's planned duration is read AS RECORDED AT THE WINDOW'S "
+        "EARLIER ENDPOINT — the same nonanticipative endpoint as the band "
+        "gate — so a post-completion original-duration edit in the "
+        "completing file cannot move demonstrated pace (the prior "
+        "later-endpoint read let such an edit deflate accrued debt and "
+        "suppress BWI's projected break; cross-reference the DUR-family "
+        "checks for the edit itself).",
         "Completed activities are excluded from the required-pace side and "
         "counted on the demonstrated-pace side (they are the achievement).",
         "Demonstrated pace = planned near-critical scope actually retired "

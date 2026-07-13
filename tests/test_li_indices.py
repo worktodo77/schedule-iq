@@ -2161,12 +2161,41 @@ def test_rw3_f6_pci_disclosure_does_not_overclaim_governance(indices_a1200):
     assert any("NOT governance-filtered" in d for d in ds)
 
 
-def test_rw3_f7_rdi_discloses_later_endpoint_numerator_surface(indices_a1200):
-    """RW3-F7 (disclosed, methodology ruling pending): the demonstrated
-    numerator reads planned duration from the LATER update, so a
-    post-completion OD edit moves demonstrated pace — the standing
-    disclosures must name the manipulation surface until the principal
-    rules on the endpoint."""
+def test_rw3_f7_demo_numerator_reads_earlier_endpoint():
+    """RW3-F7 (RULED 2026-07-13: earlier endpoint): a post-completion
+    original-duration edit in the completing file must not move
+    demonstrated pace — A1 planned 10d at the window start, completed with
+    OD edited to 40d: demo reads 1.0 (10d planned / 10wd window), not the
+    4.0 the old later-endpoint read produced.  The companion overrun ratio
+    uses the same earlier-endpoint planned basis (elapsed 5wd / planned
+    10d = 0.5, not 0.125)."""
+    from scheduleiq.analytics.li_indices import (_build_kernel_v2,
+                                                 _demonstrated_series,
+                                                 _overrun_series)
+    fin = _DD0 + timedelta(days=60)
+    rels = [Relationship("A1", "T")]
+    mile = lambda: _w1b_act("T", 0.0, od=0, rem=0, ef=fin,
+                            atype=ActivityType.FINISH_MILESTONE)
+    s0 = _w1b_sched(_DD0, [_w1b_act("A1", 0.0, od=10, ef=fin), mile()],
+                    rels, finish=fin)
+    s1 = _w1b_sched(_DD1, [
+        _w1b_act("A1", None, od=40, rem=0,               # OD edited 10 -> 40
+                 status=ActivityStatus.COMPLETED,
+                 As=_DD0 + timedelta(days=2),
+                 af=_DD0 + timedelta(days=9)), mile()], rels, finish=fin)
+    sa = SeriesAnalysis(schedules=[s0, s1])
+    k2map = {id(s): _build_kernel_v2(s, "T") for s in sa.schedules}
+    demo, _u, _g = _demonstrated_series(sa, k2map, 10.0)
+    assert demo == [pytest.approx(1.0)]                  # was 4.0 (later read)
+    overrun, _miss, series_ratio = _overrun_series(sa, k2map, 10.0)
+    assert overrun[0] == pytest.approx(0.5)              # 5wd elapsed / 10d planned
+    assert series_ratio == pytest.approx(0.5)
+
+
+def test_rw3_f7_rdi_discloses_earlier_endpoint_convention(indices_a1200):
+    """RW3-F7: the standing disclosures record the ruled earlier-endpoint
+    numerator convention (superseding the interim manipulation-surface
+    disclosure)."""
     ds = indices_a1200.rdi.disclosures
-    assert any("MANIPULATION SURFACE" in d and "LATER update" in d
-               for d in ds)
+    assert any("EARLIER ENDPOINT" in d and "RW3-F7" in d for d in ds)
+    assert not any("MANIPULATION SURFACE" in d for d in ds)

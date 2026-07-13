@@ -105,12 +105,26 @@ behavior is directly visible in the source and a probe adds nothing.
 >   is gone; LI-04's scored anchors are provisional pending recalibration).
 >   Legacy v0.4 helpers byte-identical, retired from the pipeline; FCBI /
 >   enumerator / white paper untouched; pinned demo letters hold (LI-04
->   ungraded).  Suite after Wave 3: 296 passed, 1 skipped.  REMAINING OPEN:
->   (i) the OWED independent adversarial review wave — review-wave-2's
->   territory plus Waves 3/4 (subagent capacity unavailable at landing;
->   review wave 2 ran at reduced scope, disclosed); (ii) LI-04 anchor
->   recalibration against real series (separate flagged step, D4); (iii)
->   the legacy-kernel formal retirement record at eventual removal.
+>   ungraded).  Suite after Wave 3: 296 passed, 1 skipped.
+> - **Review wave 3 (the owed independent wave): EXECUTED, loop closed**
+>   (2026-07-12/13).  Independent adversarial review over Waves 3/4 plus
+>   confirmation of review-wave-2's reduced-scope territory.  Clean with
+>   probe evidence: scope C (legacy kernel byte-identical; W1c-1/2/3 +
+>   RW2-1 re-derived fresh), FCBI byte-identity, 120-fresh-DAG oracle
+>   equivalence + exact cap boundary, 494-call never-raises sweep, honest
+>   sentinels, all Wave-3/4 closed-form anchors re-derived.  **1 MAJOR
+>   (RW3-F1: BWI projected break asserted against a fabricated 0.0
+>   demonstrated pace when the family basis was NOT EVALUATED) + 6 MINOR
+>   (RW3-F2..F7)** — all reproduced and dispositioned (5 fixed, 2 fixed as
+>   disclosure with the underlying methodology choice OPEN); full table in
+>   docs/rulings/LI-kernel-v2-2026-07-12.md.  Suite after dispositions:
+>   304 passed, 1 skipped.  REMAINING OPEN: (i) TWO methodology questions
+>   for the principal — RW3-F7 (demonstrated-numerator endpoint: later
+>   update, as disclosed, vs earlier endpoint — number-changing) and
+>   RW3-F6 (should PCI also quarantine governed PATHS — number-changing);
+>   (ii) LI-04 anchor recalibration against real series (separate flagged
+>   step, D4); (iii) the legacy-kernel formal retirement record at
+>   eventual removal.
 
 ## 0. PRECONDITION FINDING — two unreconciled development lineages (LIN-1)
 

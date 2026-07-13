@@ -3,6 +3,46 @@
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 
+## Unreleased — Review wave 3 dispositions (independent adversarial review of Waves 3/4, 2026-07-13)
+
+**Check-affecting for LI-05/LI-07/LI-09 on DEGRADED inputs only** (the fixed
+paths previously produced fabricated readings; no computable-path number
+moves).  Full disposition table in docs/rulings/LI-kernel-v2-2026-07-12.md.
+The owed independent review wave ran (scope: Waves 3/4 + review-wave-2's
+territory): scope C fully clean, FCBI byte-identity and 120-DAG oracle
+equivalence independently confirmed, 494-call never-raises sweep, all
+closed-form anchors re-derived.  1 MAJOR + 6 MINOR findings, all reproduced
+before fixing:
+
+- **RW3-F1 (MAJOR, BWI/RDI):** BWI no longer asserts a "projected break"
+  against a fabricated demonstrated pace of 0.0 when the family completion
+  basis is NOT EVALUATED — the break test is NOT EVALUATED with the reason
+  disclosed (the ratio itself, on BWI's own anchor basis, is unaffected).
+  A window whose completions were ALL quarantined reads an UNKNOWN
+  demonstrated pace (None), never 0.0 — no phantom P50 drag, no accrual
+  against a fabricated zero anchor; a series with required pace but no
+  demonstrated evidence is NOT EVALUATED.  Quarantined demo completions
+  are now disclosed on BwiResult.
+- **RW3-F2 (kernel v2):** family-target resolution is CODE-ONLY (exact
+  oracle mirror) — a UID/CODE collision can no longer bind the wrong
+  activity; BWI's pinned anchor keeps UID-first (B2).
+- **RW3-F3 (LI-06):** baseline_dilution_index type-hardens baseline_index
+  (never raises on float/str/None/bool).
+- **RW3-F4 (LI-07):** a fully-quarantined CDI board reads NOT EVALUATED
+  naming the quarantine counts, not the benign "no near-critical work".
+- **RW3-F5:** band_days validated (finite, >= 0) — invalid band leaves
+  CDI/RDI/BWI NOT EVALUATED (was: negative band → RDI 0.0 full-credit with
+  no reason); sensitivity-set members degrade to None points.
+- **RW3-F6 (LI-04, disclosure-only):** PCI's disclosure no longer claims a
+  governance quarantine it does not apply; path-level governance filtering
+  is flagged OPEN for the principal.
+- **RW3-F7 (LI-05, disclosure-only):** the later-endpoint demonstrated
+  numerator (post-completion OD edits move demonstrated pace) is disclosed
+  as a manipulation surface; the endpoint choice is flagged OPEN for the
+  principal.
+
+Suite: 304 passed, 1 skipped (8 new regressions).
+
 ## Unreleased — LI kernel v2 (Wave 3; rulings Q-B + design D1–D4, adjudicated 2026-07-12)
 
 **Check-affecting / number-changing for LI-04 PCI, LI-05 RDI, LI-07 CDI,

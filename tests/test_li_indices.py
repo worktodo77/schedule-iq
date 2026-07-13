@@ -1985,3 +1985,188 @@ def test_v2_pci_no_negative_float_premium():
     # severity strip carries the negative-float signal beside the index (D2)
     assert deep.n_severity[0] == pytest.approx(10.0)
     assert on_time.n_severity[0] == pytest.approx(0.0)
+
+
+# ==========================================================================
+# Review wave 3 — independent adversarial review of Waves 3/4 (2026-07-12,
+# disposition table in docs/rulings/LI-kernel-v2-2026-07-12.md).  Every
+# finding below was reproduced live before the fix; these regressions pin
+# the fixes.
+# ==========================================================================
+def _rw3_series():
+    """The RW3-F1 reproduction series: 3 updates, BWI anchor M1 present and
+    terminal throughout, W1 (planned 20d) completing in window 1
+    (demonstrated pace 2.0 on a valid family basis), W2 (15d) live."""
+    fin = _DD0 + timedelta(days=40)
+    rels = [Relationship("W1", "M1"), Relationship("W2", "M1")]
+
+    def mk(dd, done):
+        acts = [
+            _w1b_act("W1", None if done else 0.0, od=20,
+                     rem=0 if done else 20,
+                     status=(ActivityStatus.COMPLETED if done
+                             else ActivityStatus.NOT_STARTED),
+                     As=_DD0 if done else None,
+                     af=_DD0 + timedelta(days=9) if done else None,
+                     ef=None if done else fin),
+            _w1b_act("W2", 1.0, od=15, ef=fin),
+            _w1b_act("M1", 0.0, od=0, rem=0, ef=fin, bf=fin,
+                     atype=ActivityType.FINISH_MILESTONE),
+        ]
+        return _w1b_sched(dd, acts, rels, finish=fin)
+
+    return SeriesAnalysis(schedules=[mk(_DD0, False), mk(_DD1, True),
+                                     mk(_DD2, True)])
+
+
+def test_rw3_f1_bwi_break_never_asserted_on_fabricated_zero_pace():
+    """RW3-F1 (MAJOR): on identical schedule facts, degrading the FAMILY
+    basis (invalid fcbi_target) must not flip BWI's projected break from
+    None to asserted — the old code handed the break test a fabricated
+    demonstrated pace of 0.0 (every completion unresolved on the empty
+    family kernels) and 'outran' it at the first positive-density update.
+    Now the break test is NOT EVALUATED with the reason disclosed; the BWI
+    ratio itself (own anchor basis) is unaffected."""
+    sa = _rw3_series()
+    valid = run_li_indices(sa, fcbi_target="M1", bwi_target="M1").bwi
+    broken = run_li_indices(sa, fcbi_target="W2", bwi_target="M1").bwi
+    assert valid.projected_break_label is None       # demo 2.0 outpaces req
+    assert broken.projected_break_label is None      # was: asserted at U1
+    assert "NOT EVALUATED" in broken.interpretation
+    assert any("RW3-F1" in d for d in broken.disclosures)
+    # the ratio surface (own anchor basis) must be identical across the runs
+    assert [(r.density, r.bwi) for r in broken.rows] == \
+           [(r.density, r.bwi) for r in valid.rows]
+
+
+def test_rw3_f1_demo_window_all_quarantined_is_unknown_not_zero():
+    """RW3-F1 companion: a window that HAD a completion but whose every
+    completion was quarantined (here: born-and-done inside the window)
+    reads an UNKNOWN demonstrated pace (None) — never a fabricated 0.0
+    that would drag RDI's P50 anchor down and feed BWI's break test."""
+    from scheduleiq.analytics.li_indices import (_build_kernel_v2,
+                                                 _demonstrated_series)
+    fin = _DD0 + timedelta(days=40)
+    rels = [Relationship("X", "T")]
+    s0 = _w1b_sched(_DD0, [
+        _w1b_act("X", 0.0, od=10, ef=fin),
+        _w1b_act("T", 0.0, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE)], rels, finish=fin)
+    s1 = _w1b_sched(_DD1, [
+        _w1b_act("X", 0.0, od=10, ef=fin),
+        _w1b_act("B", None, od=10, rem=0, status=ActivityStatus.COMPLETED,
+                 As=_DD0 + timedelta(days=1), af=_DD0 + timedelta(days=8)),
+        _w1b_act("T", 0.0, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE)],
+        [Relationship("X", "T"), Relationship("B", "T")], finish=fin)
+    sa = SeriesAnalysis(schedules=[s0, s1])
+    k2map = {id(s): _build_kernel_v2(s, "T") for s in sa.schedules}
+    series, unresolved, governed = _demonstrated_series(sa, k2map, 10.0)
+    assert series == [None]                          # unknown, not 0.0
+    assert unresolved == 1 and governed == 0
+
+
+def test_rw3_f2_uid_code_collision_matches_oracle():
+    """RW3-F2: family-target resolution is CODE-ONLY, exactly like the
+    locked oracle — an activity whose UID collides with the family target
+    CODE must not hijack the reachable set / target margin (the old
+    UID-first read returned tmargin +7 instead of the true -2, silently
+    under-reading the severity strip)."""
+    from scheduleiq.analytics.li_indices import _target_distance, _v2_enumerate
+    fin = _DD0 + timedelta(days=60)
+    acts = [
+        _w1b_act("MFIN", 7.0, od=10, ef=fin),        # UID collides with code
+        _w1b_act("U1", 0.0, od=10, ef=fin),
+        _w1b_act("U3", 55.0, od=10, ef=fin),
+        _w1b_act("U2", -2.0, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE),
+    ]
+    acts[0].code = "TSK"
+    acts[1].code = "P1"
+    acts[2].code = "P3"
+    acts[3].code = "MFIN"                            # the intended target
+    s = _w1b_sched(_DD0, acts,
+                   [Relationship("U1", "U2"), Relationship("U3", "U2"),
+                    Relationship("U1", "MFIN")], finish=fin)
+    o_dist, o_dm, o_tm, o_cap = _target_distance(s, "MFIN")
+    v_dist, v_dm, v_tm, v_cap, _pm = _v2_enumerate(s, "MFIN")
+    assert v_dist == o_dist
+    assert v_dm == o_dm and v_tm == o_tm and v_cap == o_cap
+    assert v_tm == pytest.approx(-2.0)               # the true target margin
+
+
+def test_rw3_f3_bdi_non_integer_baseline_index_degrades_not_raises():
+    """RW3-F3: baseline_dilution_index must honor the never-raises contract
+    for non-int baseline_index types (float after a JSON round-trip, str,
+    None, bool) — degrade with a reason, exactly like the λ validator."""
+    from scheduleiq.analytics.li_record import baseline_dilution_index
+    fin = _DD0 + timedelta(days=40)
+    mk = lambda dd: _w1b_sched(dd, [
+        _w1b_act("X", 0.0, od=10, ef=fin),
+        _w1b_act("T", 0.0, od=0, rem=0, ef=fin,
+                 atype=ActivityType.FINISH_MILESTONE)],
+        [Relationship("X", "T")], finish=fin)
+    sa = SeriesAnalysis(schedules=[mk(_DD0), mk(_DD1)])
+    for bad in (0.5, 1.0, "0", None, True):
+        res = baseline_dilution_index(sa, baseline_index=bad)
+        assert res.reason and "integer" in res.reason
+    # a valid int 0 still computes (or degrades for a real reason, not type)
+    ok = baseline_dilution_index(sa, baseline_index=0)
+    assert "integer" not in (ok.reason or "")
+
+
+def test_rw3_f4_cdi_full_quarantine_names_the_quarantine(indices):
+    """RW3-F4: the demo series under the AUTO family target quarantines the
+    entire live population (A1200's deadline governs the network) — CDI's
+    empty board must say NOT EVALUATED and name the quarantine, never the
+    benign 'no near-critical work' reading."""
+    cdi = indices.cdi
+    assert not cdi.leaderboard
+    assert cdi.reason.startswith("NOT EVALUATED")
+    assert "quarantined" in cdi.reason
+    assert cdi.governed_total > 0
+
+
+def test_rw3_f5_invalid_band_not_evaluated_never_fabricated_clean():
+    """RW3-F5: a negative band previously emptied every membership test so
+    RDI read a full-credit 0.0 days of debt with reason "" (fabricated
+    clean); NaN inverted between metrics.  Both now degrade NOT EVALUATED
+    across CDI/RDI/BWI, and an invalid sensitivity-set member yields None
+    points."""
+    from scheduleiq.analytics.li_indices import kernel_band_sensitivity
+    sa = _rw3_series()
+    for bad in (-5.0, float("nan"), float("inf"), "ten", None):
+        r = run_li_indices(sa, fcbi_target="M1", band_days=bad)
+        assert r.rdi.rdi_days is None
+        assert r.rdi.reason.startswith("NOT EVALUATED")
+        assert "band" in r.rdi.reason
+        assert r.cdi.reason.startswith("NOT EVALUATED")
+        assert r.bwi.reason.startswith("NOT EVALUATED")
+    pts = kernel_band_sensitivity(sa, bands=(10.0, -3.0))
+    assert pts[1].rdi_days is None and pts[1].cdi_top_decile is None \
+        and pts[1].bwi_last is None
+    # band 0 stays legitimate (strictly driving work only)
+    r0 = run_li_indices(sa, fcbi_target="M1", band_days=0.0)
+    assert not (r0.rdi.reason or "").startswith("NOT EVALUATED — invalid band")
+
+
+def test_rw3_f6_pci_disclosure_does_not_overclaim_governance(indices_a1200):
+    """RW3-F6: PCI's weights are NOT governance-filtered (per the kernel-v2
+    ruling's PCI definition) — its disclosure must say exactly that instead
+    of claiming the activity-level quarantine it does not apply."""
+    ds = indices_a1200.pci.disclosures
+    assert ds
+    assert not any("traced through the network and quarantined" in d
+                   for d in ds)
+    assert any("NOT governance-filtered" in d for d in ds)
+
+
+def test_rw3_f7_rdi_discloses_later_endpoint_numerator_surface(indices_a1200):
+    """RW3-F7 (disclosed, methodology ruling pending): the demonstrated
+    numerator reads planned duration from the LATER update, so a
+    post-completion OD edit moves demonstrated pace — the standing
+    disclosures must name the manipulation surface until the principal
+    rules on the endpoint."""
+    ds = indices_a1200.rdi.disclosures
+    assert any("MANIPULATION SURFACE" in d and "LATER update" in d
+               for d in ds)

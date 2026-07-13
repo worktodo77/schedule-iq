@@ -652,6 +652,14 @@ def baseline_dilution_index(series_analysis, baseline_index: int = 0,
     if len(schedules) < 2:
         res.reason = "needs a baseline plus at least one update"
         return res
+    # RW3-F3: type-harden before the range check (never-raises, ruling Q-G;
+    # the λ-validator precedent) — a float/str/None index passed or blew up
+    # inside the guard and then raised at the list subscript
+    if isinstance(baseline_index, bool) or not isinstance(baseline_index, int):
+        res.reason = (f"baseline_index {baseline_index!r} is not an integer "
+                      "update index — pass the position of the reference "
+                      "schedule in the series")
+        return res
     if not (0 <= baseline_index < len(schedules) - 1):
         res.reason = (f"baseline_index {baseline_index} is not an earlier "
                       f"schedule of the {len(schedules)}-update series")

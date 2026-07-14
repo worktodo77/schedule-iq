@@ -150,8 +150,11 @@ def _match_activity_pairs(earlier: Schedule, later: Schedule):
     pairs: list[tuple[Activity, Activity]] = []
     e_used: set[int] = set()
     l_used: set[int] = set()
-    for uid in e_by_uid.keys() & l_by_uid.keys():
-        ea, la = e_by_uid[uid], l_by_uid[uid]
+    for ea in e_values:
+        uid = _activity_identity(ea)
+        if uid is None or uid not in e_by_uid or uid not in l_by_uid:
+            continue
+        la = l_by_uid[uid]
         pairs.append((ea, la))
         e_used.add(id(ea))
         l_used.add(id(la))
@@ -164,7 +167,9 @@ def _match_activity_pairs(earlier: Schedule, later: Schedule):
         e_by_code.setdefault(act.code, []).append(act)
     for act in l_remaining:
         l_by_code.setdefault(act.code, []).append(act)
-    for code in e_by_code.keys() & l_by_code.keys():
+    for code in e_by_code:
+        if code not in l_by_code:
+            continue
         ea_list, la_list = e_by_code[code], l_by_code[code]
         if len(ea_list) != 1 or len(la_list) != 1:
             continue
@@ -185,6 +190,14 @@ def compare(earlier: Schedule, later: Schedule) -> ChangeSet:
     pairs, deleted, added = _match_activity_pairs(earlier, later)
     cs.deleted = deleted
     cs.added = added
+    # Give a UID-less legacy counterpart the paired side's UID so relationship
+    # identity remains stable across a mixed legacy/current export pair.
+    e_rel_ids = {id(a): (a.uid or a.code) for a in deleted}
+    l_rel_ids = {id(a): (a.uid or a.code) for a in added}
+    for ea, la in pairs:
+        identity = ea.uid or la.uid or ea.code or la.code
+        e_rel_ids[id(ea)] = identity
+        l_rel_ids[id(la)] = identity
 
     for ea, la in pairs:
         code = la.code
@@ -246,17 +259,17 @@ def compare(earlier: Schedule, later: Schedule) -> ChangeSet:
 
     # Relationships are keyed by persistent endpoint UIDs; codes are retained
     # on RelChange solely as the human-readable display labels.
-    def rel_map(s: Schedule):
+    def rel_map(s: Schedule, rel_ids: dict[int, str]):
         m: dict[tuple, list[tuple]] = {}
         for r in s.relationships:
             p, q = s.activities.get(r.pred_uid), s.activities.get(r.succ_uid)
             if p and q:
-                pkey = _activity_identity(p) or p.code
-                qkey = _activity_identity(q) or q.code
+                pkey = rel_ids.get(id(p), _activity_identity(p) or p.code)
+                qkey = rel_ids.get(id(q), _activity_identity(q) or q.code)
                 m.setdefault((pkey, qkey), []).append((r, p, q))
         return m
 
-    em, lm = rel_map(earlier), rel_map(later)
+    em, lm = rel_map(earlier, e_rel_ids), rel_map(later, l_rel_ids)
     for key, items in lm.items():
         display_p, display_q = items[0][1].code, items[0][2].code
         if key not in em:

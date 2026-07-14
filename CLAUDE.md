@@ -27,6 +27,27 @@ time:
 This applies symmetrically — we hold our own conclusions to the same bar when
 Codex reviews our work.
 
+## Review -> merge -> hand-off loop (Codex implements, Claude reviews)
+
+When Codex is the primary implementer and Claude is the reviewer/planner, on
+**approval** of a chunk of Codex's work Claude ALWAYS, in this order:
+
+1. **Push** — ensure the approved work is on the canonical feature branch
+   (rebasing Claude's own review/planning artifacts on top as needed; the branch
+   is shared, so `git fetch` + rebase before every push).
+2. **Merge** — merge the approved feature-branch work to `main` on
+   `worktodo77/schedule-iq`. This is the ship gate; the principal has delegated
+   it to Claude *on approval only*. (Merge target is `main` unless the principal
+   names another; during the matrix-branch adoption, `main` accumulates approved
+   work and the matrix cutover is a separate reconciliation into `main`.)
+3. **Hand off** — surface a ready-to-paste prompt for the principal to relay to
+   Codex that (a) reports the review result and what merged, and (b) directs the
+   next chunk of work.
+
+"Approval" = a reviewer verdict of SIGN OFF / CONCUR with **no blocking items**,
+reached under the reproduce-don't-trust bar above. If blocking items remain, do
+NOT merge — return them to Codex first. Never merge un-reviewed work.
+
 ## Git
 
 - Commit as `Claude <noreply@anthropic.com>`; end messages with the

@@ -954,7 +954,7 @@ checks:
   - id: LI-03
     name: "FRB — Forecast Reliability Band"
     category: "LI Proprietary Indices"
-    description: "Empirical error band on the scheduler's own forecasts: central-80% interval of (actual - forecast finish) working days, bucketed by forecast horizon; bias and dispersion reported separately."
+    description: "Empirical error band on the scheduler's own forecasts: central-80% interval of (actual - forecast finish) working days, bucketed by forecast horizon; bias and dispersion reported separately. Activity identity is keyed by persistent UID (a re-code is not a new outcome); code/name are display labels."
     formula: "per horizon bucket: median, P10, P90 of realized forecast errors"
     unit: days
     threshold: null
@@ -993,7 +993,7 @@ checks:
   - id: LI-06
     name: "BDI — Baseline Dilution Index"
     category: "LI Proprietary Indices"
-    description: "Share of the latest driving path (by working-day length) attributable to post-baseline activities or logic — how much of today's completion story was never in the contract baseline."
+    description: "Share of the latest driving path (by working-day length) attributable to post-baseline activities or logic — how much of today's completion story was never in the contract baseline. Activity and relationship identity is keyed by persistent UID (a re-code is not post-baseline); code/name are display labels."
     formula: "100 x post-baseline step-days / total step-days along the latest driving path"
     unit: percent
     threshold: null
@@ -1019,7 +1019,7 @@ checks:
   - id: LI-08
     name: "IL — Intervention Latency"
     category: "LI Proprietary Indices"
-    description: "Median updates (and days) from a chain first showing negative float to the first responsive edit on that chain (logic, duration, calendar, or resources).  Quantifies mitigation responsiveness; distinguishes 'did not act' from 'acted and it did not work'."
+    description: "Median updates (and days) from a chain first showing negative float to the first responsive edit on that chain (logic, duration, calendar, or resources).  Quantifies mitigation responsiveness; distinguishes 'did not act' from 'acted and it did not work'. Activity identity is keyed by persistent UID (a re-code is not a new emergence); code/name are display labels."
     formula: "median over emergence events of (first responsive update - emergence update); unresolved counted separately"
     unit: index
     threshold: null
@@ -1045,7 +1045,7 @@ checks:
   - id: LI-10
     name: "MML — Measured-Mile Locator"
     category: "LI Proprietary Indices"
-    description: "Per trade/WBS: disruption contrast ratio (most-impacted window productivity / cleanest window productivity) with candidate periods located; flags when no clean mile exists.  Preliminary — period selection confirmed by the expert."
+    description: "Per trade/WBS: disruption contrast ratio (most-impacted window productivity / cleanest window productivity) with candidate periods located; flags when no clean mile exists.  Preliminary — period selection confirmed by the expert. Activity identity is keyed by persistent UID (a re-code is not a new productivity observation); code/name are display labels."
     formula: "min-window productivity / max-window productivity per top-level WBS; resource-based where loaded, activity-day basis otherwise"
     unit: ratio
     threshold: null

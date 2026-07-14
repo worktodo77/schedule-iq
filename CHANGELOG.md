@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (v0.4.6 candidate) - 2026-07-14
+## 0.4.6 — 2026-07-14
 
 Check-affecting: **R-ID family identity implementation** from
 docs/plans/li_family_rulings_2026-07-14.md. The shared change register and the

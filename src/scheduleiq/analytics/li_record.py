@@ -31,6 +31,7 @@ from typing import Optional
 
 from ..ingest.model import Activity, Schedule
 from ..intake._util import working_days_between
+from ..compare.diff import match_activity
 from .paths import driving_path
 from .statistical import percentile
 
@@ -412,7 +413,6 @@ def forecast_reliability_band(series_analysis) -> FRBResult:
         res.reason = "needs at least two schedules to observe a forecast outcome"
         return res
 
-    code_index = [{a.code: a for a in s.activities.values()} for s in schedules]
     for i, u in enumerate(schedules[:-1]):
         if u.data_date is None:
             continue
@@ -423,7 +423,7 @@ def forecast_reliability_band(series_analysis) -> FRBResult:
             horizon = (f - u.data_date).days
             for j in range(i + 1, len(schedules)):
                 l = schedules[j]
-                la = code_index[j].get(a.code)
+                la = match_activity(schedules[j], a)
                 if la and la.actual_finish and l.data_date and la.actual_finish <= l.data_date:
                     e = working_days_between(None, f, la.actual_finish)
                     if e is not None:
@@ -528,12 +528,11 @@ def baseline_dilution_index(series_analysis) -> BDIResult:
         res.reason = dp.reason or "latest schedule has no driving path"
         return res
 
-    base_codes = {a.code for a in baseline.activities.values()}
     base_edges = set()
     for r in baseline.relationships:
         p, q = baseline.activities.get(r.pred_uid), baseline.activities.get(r.succ_uid)
         if p and q:
-            base_edges.add((p.code, q.code, r.rtype.value))
+            base_edges.add((p.uid or p.code, q.uid or q.code, r.rtype.value))
 
     changesets = list(getattr(series_analysis, "changesets", []))
     total_len = 0.0
@@ -541,11 +540,19 @@ def baseline_dilution_index(series_analysis) -> BDIResult:
     for i, step in enumerate(dp.steps):
         length = _step_length_days(latest, step.activity)
         total_len += length
-        in_baseline_act = step.code in base_codes
+        baseline_act = match_activity(baseline, step.activity)
+        in_baseline_act = baseline_act is not None
         edge = None
         if step.driving_rel is not None and i + 1 < len(dp.steps):
-            edge = (step.code, dp.steps[i + 1].code, step.driving_rel.rtype.value)
-            edge_in_baseline = edge in base_edges
+            next_step = dp.steps[i + 1]
+            edge = (step.activity.uid or step.code,
+                    next_step.activity.uid or next_step.code,
+                    step.driving_rel.rtype.value)
+            bp = match_activity(baseline, step.activity)
+            bq = match_activity(baseline, next_step.activity)
+            edge_in_baseline = (bp is not None and bq is not None
+                                and (bp.uid or bp.code, bq.uid or bq.code,
+                                     step.driving_rel.rtype.value) in base_edges)
         else:
             edge_in_baseline = True     # terminal node: nothing to test for (b)
         baseline_original = in_baseline_act and edge_in_baseline
@@ -558,7 +565,9 @@ def baseline_dilution_index(series_analysis) -> BDIResult:
         label = "NOT FOUND — REVIEW"
         if not in_baseline_act:
             for cs in changesets:
-                if any(a.code == step.code for a in cs.added):
+                if any((a.uid and step.activity.uid and a.uid == step.activity.uid)
+                       or (not a.uid and not step.activity.uid and a.code == step.code)
+                       for a in cs.added):
                     label = cs.later.label()
                     break
             res.decomposition.append(BDIElement(
@@ -570,8 +579,12 @@ def baseline_dilution_index(series_analysis) -> BDIResult:
             rtype_val = edge[2]
             for cs in changesets:
                 for lc in cs.logic_changes:
-                    if (lc.kind == "added" and lc.pred_code == pred_code
-                            and lc.succ_code == succ_code
+                    uid_match = (getattr(lc, "pred_uid", None) == pred_code
+                                 and getattr(lc, "succ_uid", None) == succ_code)
+                    code_match = (getattr(lc, "pred_uid", None) is None
+                                  and lc.pred_code == step.code
+                                  and lc.succ_code == dp.steps[i + 1].code)
+                    if (lc.kind == "added" and (uid_match or code_match)
                             and lc.detail.split()[0] == rtype_val):
                         label = cs.later.label()
                         break
@@ -647,16 +660,26 @@ def _budget_units_sum(act: Activity) -> float:
     return sum(r.budget_units for r in act.resources)
 
 
-def _response_in(cs, chain_codes: set[str]) -> str:
-    """First responsive edit in ``cs`` touching any code in ``chain_codes``:
-    logic added/modified, a duration decrease, a calendar change, or a
-    resource/budget-units increase.  Empty string if none found."""
+def _response_in(cs, chain_uids: set[str]) -> str:
+    """First responsive edit in cs touching any stable chain UID.
+
+    Change records retain display codes, but their optional UID fields let a
+    response survive a code re-code between emergence and response.
+    """
+    chain_codes = {a.code for a in cs.earlier.activities.values()
+                   if (a.uid or a.code) in chain_uids}
+    chain_codes.update(a.code for a in cs.later.activities.values()
+                       if (a.uid or a.code) in chain_uids)
     for lc in cs.logic_changes:
-        if lc.kind in ("added", "modified") and (lc.pred_code in chain_codes
-                                                  or lc.succ_code in chain_codes):
+        uid_match = (getattr(lc, "pred_uid", None) in chain_uids
+                     or getattr(lc, "succ_uid", None) in chain_uids)
+        code_match = (getattr(lc, "pred_uid", None) is None
+                      and (lc.pred_code in chain_codes or lc.succ_code in chain_codes))
+        if lc.kind in ("added", "modified") and (uid_match or code_match):
             return f"logic {lc.kind}: {lc.pred_code}->{lc.succ_code} ({lc.detail})"
     for ch in cs.duration_changes:
-        if ch.code in chain_codes:
+        if getattr(ch, "uid", None) in chain_uids or (
+                getattr(ch, "uid", None) is None and ch.code in chain_codes):
             try:
                 before, after = float(ch.before.rstrip("h")), float(ch.after.rstrip("h"))
             except ValueError:
@@ -664,16 +687,17 @@ def _response_in(cs, chain_codes: set[str]) -> str:
             if after < before:
                 return f"duration decrease on {ch.code}: {ch.before} -> {ch.after}"
     for ch in cs.calendar_changes:
-        if ch.code in chain_codes:
+        if getattr(ch, "uid", None) in chain_uids or (
+                getattr(ch, "uid", None) is None and ch.code in chain_codes):
             return f"calendar change on {ch.code}: {ch.before} -> {ch.after}"
-    e_by_code = {a.code: a for a in cs.earlier.activities.values()}
-    l_by_code = {a.code: a for a in cs.later.activities.values()}
-    for code in sorted(chain_codes):
-        ea, la = e_by_code.get(code), l_by_code.get(code)
+    e_by_uid = {a.uid or a.code: a for a in cs.earlier.activities.values()}
+    l_by_uid = {a.uid or a.code: a for a in cs.later.activities.values()}
+    for uid in sorted(chain_uids):
+        ea, la = e_by_uid.get(uid), l_by_uid.get(uid)
         if ea is not None and la is not None:
             eb, lb = _budget_units_sum(ea), _budget_units_sum(la)
             if lb > eb + 1e-6:
-                return f"resource/budget increase on {code}: {eb:.1f} -> {lb:.1f} units"
+                return f"resource/budget increase on {la.code}: {eb:.1f} -> {lb:.1f} units"
     return ""
 
 
@@ -690,25 +714,27 @@ def intervention_latency(series_analysis) -> ILResult:
 
     for i, cs in enumerate(changesets):
         e, l = cs.earlier, cs.later
-        e_by_code = {a.code: a for a in e.activities.values()}
-        l_by_code = {a.code: a for a in l.activities.values()}
-        neg_codes: set[str] = set()
-        for code in cs.float_deltas:
-            ea, la = e_by_code.get(code), l_by_code.get(code)
+        e_by_uid = {a.uid or a.code: a for a in e.activities.values()}
+        l_by_uid = {a.uid or a.code: a for a in l.activities.values()}
+        neg_uids: set[str] = set()
+        for uid in e_by_uid.keys() & l_by_uid.keys():
+            ea, la = e_by_uid[uid], l_by_uid[uid]
             if ea is None or la is None:
                 continue
             tf_e = ea.total_float_days(e.cal_for(ea))
             tf_l = la.total_float_days(l.cal_for(la))
             if tf_e is not None and tf_l is not None and tf_l < 0 <= tf_e:
-                neg_codes.add(code)
-        if not neg_codes:
+                neg_uids.add(uid)
+        if not neg_uids:
             continue
 
-        edges = [(p.code, q.code) for r in l.relationships
+        edges = [(p.uid or p.code, q.uid or q.code) for r in l.relationships
                 if (p := l.activities.get(r.pred_uid)) is not None
                 and (q := l.activities.get(r.succ_uid)) is not None]
-        for comp in _connected_components(edges, neg_codes):
-            ev = ILEvent(chain_codes=sorted(comp), emergence_pair_index=i,
+        for comp in _connected_components(edges, neg_uids):
+            chain_codes = sorted(l_by_uid[uid].code if uid in l_by_uid
+                                 else e_by_uid[uid].code for uid in comp)
+            ev = ILEvent(chain_codes=chain_codes, emergence_pair_index=i,
                         emergence_label=f"{e.label()} -> {l.label()}",
                         emergence_date=l.data_date)
             for j in range(i + 1, len(changesets)):
@@ -858,7 +884,6 @@ def measured_mile_locator(series_analysis, events: Optional[list[tuple]] = None)
     for node in top_nodes:
         wr = MMLWbsResult(wbs_code=node.code, wbs_name=node.name)
         for e, l in zip(schedules, schedules[1:]):
-            e_by_code = {a.code: a for a in e.activities.values()}
             cal = _default_cal(l)
             work_hours = _mml_working_hours(cal, e.data_date, l.data_date)
             work_days = working_days_between(cal, e.data_date, l.data_date) or 0.0
@@ -870,7 +895,7 @@ def measured_mile_locator(series_analysis, events: Optional[list[tuple]] = None)
                 if top is None or top.uid != node.uid:
                     continue
                 n_acts += 1
-                ea = e_by_code.get(la.code)
+                ea = match_activity(e, la)
                 if ea is not None:
                     resource_delta += (sum(r.actual_units for r in la.resources)
                                       - sum(r.actual_units for r in ea.resources))

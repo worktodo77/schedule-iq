@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased (v0.4.6 candidate) - 2026-07-14
+
+Check-affecting: **R-ID family identity implementation** from
+docs/plans/li_family_rulings_2026-07-14.md. The shared change register and the
+portable BDI/IL/MML/FRB lookups now match activities and relationship endpoints
+by persistent UID first; codes remain display labels. Code fallback is limited
+to an unambiguous legacy row with no UID. A pure UID-stable re-code is not a
+change; a different present UID is a true replacement (added/deleted).
+
+- Added UID/re-code regression coverage for the shared register and all four
+  affected LI metrics.
+- The matrix-lineage-only LOE, basis, kernel, and other parallel-branch changes
+  are intentionally not duplicated on this branch.
+
 Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
 can state which checks changed between versions used on a matter.
 

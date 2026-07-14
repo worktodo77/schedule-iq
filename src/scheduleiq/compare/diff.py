@@ -1,9 +1,10 @@
 """Version-to-version schedule comparison (the change register).
 
-Activities are matched on activity code (task_code / MSP ID) — the analyst-
-facing identifier that survives export/import — with uid fallback.  Every
-category of change a delay expert screens for at intake is captured, most
-importantly retroactive changes to previously reported actual dates.
+Activities and relationship endpoints are matched UID-first. Code/name remain
+analyst-facing display labels; an unambiguous code fallback is used only for a
+legacy export row with no UID. Every category of change a delay expert screens
+for at intake is captured, most importantly retroactive changes to previously
+reported actual dates.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ class FieldChange:
     before: str
     after: str
     flag: str = ""          # extra severity annotation (e.g. RETROACTIVE)
+    uid: Optional[str] = None  # stable activity identity; code remains display-only
 
 
 @dataclass
@@ -30,6 +32,8 @@ class RelChange:
     pred_code: str
     succ_code: str
     detail: str
+    pred_uid: Optional[str] = None
+    succ_uid: Optional[str] = None
 
 
 @dataclass
@@ -85,55 +89,146 @@ def _d(x: Optional[datetime]) -> str:
     return x.strftime("%Y-%m-%d") if x else "—"
 
 
+def _activity_identity(act: Activity) -> Optional[str]:
+    """Return the persistent identity, or None for a legacy UID-less row."""
+    return act.uid or None
+
+
+def match_activity(schedule: Schedule, source: Activity) -> Optional[Activity]:
+    """Resolve source activity in schedule using UID-first identity.
+
+    Code fallback is allowed only when the source row or the candidate legacy
+    row has no UID. If both rows carry different UIDs, they are a replacement,
+    not a rename.
+    """
+    if source.uid:
+        exact = schedule.activities.get(source.uid)
+        if exact is not None:
+            return exact
+    candidates = [a for a in schedule.activities.values() if a.code == source.code]
+    if len(candidates) != 1:
+        return None
+    candidate = candidates[0]
+    if source.uid and candidate.uid:
+        return None
+    return candidate
+
+
+def _match_activity_pairs(earlier: Schedule, later: Schedule):
+    """Pair activities UID-first, with an intentionally narrow legacy fallback.
+
+    A pair with two present-but-different UIDs is never matched by code: that
+    is the ruled true-replacement case. Code fallback is permitted only when
+    at least one side has no UID and the code is unambiguous.
+    """
+    e_values, l_values = list(earlier.activities.values()), list(later.activities.values())
+    e_by_uid: dict[str, Activity] = {}
+    l_by_uid: dict[str, Activity] = {}
+    e_dupes: set[str] = set()
+    l_dupes: set[str] = set()
+    for act in e_values:
+        uid = _activity_identity(act)
+        if uid is None:
+            continue
+        if uid in e_by_uid:
+            e_dupes.add(uid)
+        else:
+            e_by_uid[uid] = act
+    for act in l_values:
+        uid = _activity_identity(act)
+        if uid is None:
+            continue
+        if uid in l_by_uid:
+            l_dupes.add(uid)
+        else:
+            l_by_uid[uid] = act
+    for uid in e_dupes:
+        e_by_uid.pop(uid, None)
+    for uid in l_dupes:
+        l_by_uid.pop(uid, None)
+
+    pairs: list[tuple[Activity, Activity]] = []
+    e_used: set[int] = set()
+    l_used: set[int] = set()
+    for uid in e_by_uid.keys() & l_by_uid.keys():
+        ea, la = e_by_uid[uid], l_by_uid[uid]
+        pairs.append((ea, la))
+        e_used.add(id(ea))
+        l_used.add(id(la))
+
+    e_remaining = [a for a in e_values if id(a) not in e_used]
+    l_remaining = [a for a in l_values if id(a) not in l_used]
+    e_by_code: dict[str, list[Activity]] = {}
+    l_by_code: dict[str, list[Activity]] = {}
+    for act in e_remaining:
+        e_by_code.setdefault(act.code, []).append(act)
+    for act in l_remaining:
+        l_by_code.setdefault(act.code, []).append(act)
+    for code in e_by_code.keys() & l_by_code.keys():
+        ea_list, la_list = e_by_code[code], l_by_code[code]
+        if len(ea_list) != 1 or len(la_list) != 1:
+            continue
+        ea, la = ea_list[0], la_list[0]
+        if ea.uid and la.uid:
+            continue
+        pairs.append((ea, la))
+        e_used.add(id(ea))
+        l_used.add(id(la))
+
+    return (pairs,
+            [a for a in e_values if id(a) not in e_used],
+            [a for a in l_values if id(a) not in l_used])
+
+
 def compare(earlier: Schedule, later: Schedule) -> ChangeSet:
     cs = ChangeSet(earlier=earlier, later=later)
-    e_by_code = {a.code: a for a in earlier.activities.values()}
-    l_by_code = {a.code: a for a in later.activities.values()}
+    pairs, deleted, added = _match_activity_pairs(earlier, later)
+    cs.deleted = deleted
+    cs.added = added
 
-    cs.added = [a for c, a in l_by_code.items() if c not in e_by_code]
-    cs.deleted = [a for c, a in e_by_code.items() if c not in l_by_code]
-
-    for code, ea in e_by_code.items():
-        la = l_by_code.get(code)
-        if la is None:
-            continue
+    for ea, la in pairs:
+        code = la.code
+        uid = _activity_identity(la) or _activity_identity(ea)
         if ea.name != la.name:
-            cs.name_changes.append(FieldChange(code, la.name, "name", ea.name, la.name))
+            cs.name_changes.append(FieldChange(code, la.name, "name", ea.name, la.name,
+                                               uid=uid))
         if abs(ea.original_duration_hours - la.original_duration_hours) > 0.01:
             flag = "IN-PROGRESS" if la.in_progress else ("COMPLETED" if la.completed else "")
             cs.duration_changes.append(FieldChange(
                 code, la.name, "original duration",
                 f"{ea.original_duration_hours:.0f}h", f"{la.original_duration_hours:.0f}h",
-                flag))
+                flag, uid))
         # retroactive actual-date changes: both files report an actual, and it moved
         for fld in ("actual_start", "actual_finish"):
             ev, lv = getattr(ea, fld), getattr(la, fld)
             if ev and lv and ev != lv:
                 cs.actual_date_changes.append(FieldChange(
-                    code, la.name, fld.replace("_", " "), _d(ev), _d(lv), "RETROACTIVE"))
+                    code, la.name, fld.replace("_", " "), _d(ev), _d(lv), "RETROACTIVE",
+                    uid))
             elif ev and not lv:
                 cs.actual_date_changes.append(FieldChange(
-                    code, la.name, fld.replace("_", " "), _d(ev), "removed", "RETROACTIVE"))
+                    code, la.name, fld.replace("_", " "), _d(ev), "removed", "RETROACTIVE",
+                    uid))
         for fld in ("planned_start", "planned_finish"):
             ev, lv = getattr(ea, fld), getattr(la, fld)
             if not la.completed and ev and lv and ev != lv:
                 cs.planned_date_changes.append(FieldChange(
-                    code, la.name, fld.replace("_", " "), _d(ev), _d(lv)))
+                    code, la.name, fld.replace("_", " "), _d(ev), _d(lv), uid=uid))
         if (ea.constraint, ea.constraint_date) != (la.constraint, la.constraint_date):
             cs.constraint_changes.append(FieldChange(
                 code, la.name, "constraint",
                 f"{ea.constraint.value} {_d(ea.constraint_date)}",
-                f"{la.constraint.value} {_d(la.constraint_date)}"))
+                f"{la.constraint.value} {_d(la.constraint_date)}", uid=uid))
         ec = earlier.calendars.get(ea.calendar_uid)
         lc = later.calendars.get(la.calendar_uid)
         if (ec.name if ec else ea.calendar_uid) != (lc.name if lc else la.calendar_uid):
             cs.calendar_changes.append(FieldChange(
                 code, la.name, "calendar",
                 ec.name if ec else str(ea.calendar_uid),
-                lc.name if lc else str(la.calendar_uid)))
+                lc.name if lc else str(la.calendar_uid), uid=uid))
         if ea.status != la.status:
             cs.status_changes.append(FieldChange(
-                code, la.name, "status", ea.status.value, la.status.value))
+                code, la.name, "status", ea.status.value, la.status.value, uid=uid))
         # WBS re-parenting: compare resolved node code/name, not raw uid
         ewbs = earlier.wbs.get(ea.wbs_uid)
         lwbs = later.wbs.get(la.wbs_uid)
@@ -141,7 +236,7 @@ def compare(earlier: Schedule, later: Schedule) -> ChangeSet:
         l_wbs_label = (lwbs.code or lwbs.name) if lwbs else (la.wbs_uid or "")
         if e_wbs_label != l_wbs_label:
             cs.wbs_changes.append(FieldChange(
-                code, la.name, "wbs", e_wbs_label, l_wbs_label))
+                code, la.name, "wbs", e_wbs_label, l_wbs_label, uid=uid))
         if ea.total_float_hours is not None and la.total_float_hours is not None:
             hpd = 8.0
             cal = later.cal_for(la)
@@ -149,34 +244,41 @@ def compare(earlier: Schedule, later: Schedule) -> ChangeSet:
                 hpd = cal.hours_per_day
             cs.float_deltas[code] = (la.total_float_hours - ea.total_float_hours) / hpd
 
-    # relationships keyed by (pred code, succ code); track type/lag changes
+    # Relationships are keyed by persistent endpoint UIDs; codes are retained
+    # on RelChange solely as the human-readable display labels.
     def rel_map(s: Schedule):
-        by_uid = s.activities
-        m: dict[tuple, list] = {}
+        m: dict[tuple, list[tuple]] = {}
         for r in s.relationships:
-            p, q = by_uid.get(r.pred_uid), by_uid.get(r.succ_uid)
+            p, q = s.activities.get(r.pred_uid), s.activities.get(r.succ_uid)
             if p and q:
-                m.setdefault((p.code, q.code), []).append(r)
+                pkey = _activity_identity(p) or p.code
+                qkey = _activity_identity(q) or q.code
+                m.setdefault((pkey, qkey), []).append((r, p, q))
         return m
 
     em, lm = rel_map(earlier), rel_map(later)
-    for key, rels in lm.items():
+    for key, items in lm.items():
+        display_p, display_q = items[0][1].code, items[0][2].code
         if key not in em:
-            for r in rels:
-                cs.logic_changes.append(RelChange("added", key[0], key[1],
-                                                  f"{r.rtype.value} lag {r.lag_hours:g}h"))
+            for r, p, q in items:
+                cs.logic_changes.append(RelChange(
+                    "added", p.code, q.code,
+                    f"{r.rtype.value} lag {r.lag_hours:g}h",
+                    _activity_identity(p) or p.code, _activity_identity(q) or q.code))
         else:
-            e_sigs = sorted((r.rtype.value, r.lag_hours) for r in em[key])
-            l_sigs = sorted((r.rtype.value, r.lag_hours) for r in rels)
+            e_sigs = sorted((r.rtype.value, r.lag_hours) for r, _, _ in em[key])
+            l_sigs = sorted((r.rtype.value, r.lag_hours) for r, _, _ in items)
             if e_sigs != l_sigs:
                 cs.logic_changes.append(RelChange(
-                    "modified", key[0], key[1],
-                    f"{e_sigs} -> {l_sigs}"))
-    for key, rels in em.items():
+                    "modified", display_p, display_q,
+                    f"{e_sigs} -> {l_sigs}", key[0], key[1]))
+    for key, items in em.items():
         if key not in lm:
-            for r in rels:
-                cs.logic_changes.append(RelChange("deleted", key[0], key[1],
-                                                  f"{r.rtype.value} lag {r.lag_hours:g}h"))
+            for r, p, q in items:
+                cs.logic_changes.append(RelChange(
+                    "deleted", p.code, q.code,
+                    f"{r.rtype.value} lag {r.lag_hours:g}h",
+                    _activity_identity(p) or p.code, _activity_identity(q) or q.code))
 
     # calendar *definition* changes (CAL-04): calendars present in both,
     # matched by uid first, falling back to name for calendars whose uid

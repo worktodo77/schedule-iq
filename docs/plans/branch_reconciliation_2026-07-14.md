@@ -94,6 +94,39 @@ everything to). If verification finds problems, fall back to C.
    Q-B/Q-F/Q-G/D1-D4/RW3-*) and a **verification plan** for kernel-v2 + FCBI
    v0.5.6 before we cut over.
 
+## DECISION (principal, 2026-07-14) — supersedes R-FORK
+
+- **Canonical target: Option A — adopt `claude/li-metrics-audit-matrix` as
+  canonical, gated on independent verification** of its kernel-v2 + FCBI-v0.5.6
+  (reproduce-don't-trust).
+- **In parallel: keep implementing on our v0.4.5 branch** (implementation NOT
+  paused).
+
+**Reconciling the two (planner resolution).** Because the matrix branch is the
+adoption target, work on our branch is steered to the **portable deltas** — the
+things the matrix lineage does NOT already have — so nothing built now is thrown
+away; it becomes exactly the set forward-ported into the matrix branch at
+cutover:
+- **Build on ours (unique / portable):** the family **UID-first identity**
+  ruling R-ID *including* **BDI-B2** (verified absent on the matrix branch); the
+  LHL **"L8" completion-censor** finding from xom1ah; anything our audits found
+  that the matrix branch lacks.
+- **Do NOT re-implement on ours (matrix already has, verified):** BDI-B1
+  (`bdi_pct=None`), BDI-B4/B5 basis/target, LOE zero-length/exclusion across
+  BDI/IL, MML M1/M3/M4 revisions. Re-doing these is the waste the pause was meant
+  to avoid; adopt them via the matrix branch instead. (If a specific one is
+  wanted on ours before cutover for a live demo, call it out.)
+
+**Critical-path work (planner/reviewer, Claude):**
+1. **Matrix-branch verification** — the Option-A gate: reproduce kernel-v2 and
+   FCBI-v0.5.6 behavior/soundness; confirm their ported v0.4.5 rulings match
+   ours; list any defects. Cutover proceeds only if it passes.
+2. **Rulings concordance** — map our C1/B1/R2/L1/L5/R-ID… ↔ their
+   Q-B/Q-F/Q-G/Q-H/D1-D4/RW-* so the two rule-sets are unified, not just merged.
+3. **Review the FRB audit Codex just pushed** (`69769b9`) and cross-check it
+   against the matrix branch's existing `IL_FRB_audit_2026-07-10` — dedupe
+   before either drives implementation.
+
 ## How this happened (so it doesn't recur)
 Parallel agents/sessions branched from the same v0.2.0 import and worked the same
 backlog independently, with no shared "canonical branch" lock. The mirror

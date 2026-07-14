@@ -19,11 +19,20 @@ number reproducible and cited.
   at commit c0a64bf (2026-07-07); all v0.3 work is on branch
   `claude/scheduleiq-v0.3-engine-port-rx96cl` (pushed, current).  Merging
   that branch to main is the principal's call.
-- **Mirror**: expert-assist branch `claude/scheduleiq-v0.3-engine-port-rx96cl`
-  carries a synced `schedule-iq/` subtree (per the migration plan: keep
-  syncing until the principal confirms the new repo, then remove the subtree from
-  expert-assist in a final commit).  Development history through v0.2.0 is
-  preserved on expert-assist branch `claude/acumen-fuse-replacement-ler9kq`.
+- **Migration CONFIRMED (2026-07-14, principal's ruling).**  `worktodo77/schedule-iq`
+  is the sole canonical home.  The expert-assist `schedule-iq/` subtree mirror is
+  **RETIRED** — it is no longer synced and must not be read from (it went stale
+  and a reviewer once fetched it by mistake).  The final step is to remove the
+  `schedule-iq/` subtree from expert-assist in a closing commit on that repo.
+  Development history through v0.2.0 remains preserved on the expert-assist
+  branch `claude/acumen-fuse-replacement-ler9kq` for provenance only.
+- **Divergent branches (2026-07-14): being reconciled then retired.**  Several
+  parallel LI-metrics lineages exist on the remote
+  (`claude/li-metrics-audit-matrix-mdadj5` = "LI kernel v2",
+  `claude/fcbi-v0.5-implementation-yvsdts` = "FCBI v0.5.6",
+  `claude/lhl-implementation-audit-xom1ah` = LHL split).  Canonical is this
+  branch (v0.4.5+).  A reconciliation pass (salvage good ideas -> then retire the
+  forks) is planned before they are abandoned; do not build on them.
 - Engine port source: `worktodo77/mip39-schedule-analysis-tool` (read-only
   reference; keep it in session scope for provenance questions).
 

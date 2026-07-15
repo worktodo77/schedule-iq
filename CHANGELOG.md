@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.8 — 2026-07-14
+
+Presentation-only desktop release. Reworked the PySide6 application into a
+polished light/dark workspace with dedicated Files, Report Card, Checks,
+Trends, Paths, Forensics, and Settings views; added inline pipeline figures,
+searchable check drill-down, a score gauge, category bars, run-progress states,
+and a branded app icon. Preserved all existing run modes, overlays, threshold
+controls, output options, and privileged/weight-0 warnings. Hardened the
+Windows PyInstaller bundle and added headless launch/population smoke coverage.
+No check, metric, score, threshold, kernel, or methodology changed.
+
 ## 0.4.7 — 2026-07-14
 
 Check-affecting: **R-ID provocative extension**. The LI-12 DDI target, the

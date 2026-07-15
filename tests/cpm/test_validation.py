@@ -14,12 +14,14 @@ Coverage:
 """
 
 import os, sys
+from datetime import date
 SRC = os.path.join(os.path.dirname(__file__), "..", "..", "src")
 sys.path.insert(0, os.path.abspath(SRC))
 
 import pytest
 
 from scheduleiq.cpm.models import Activity, Relationship  # noqa: E402
+from scheduleiq.cpm.network import ActivityNetwork, topological_sort  # noqa: E402
 from scheduleiq.cpm.validation import (  # noqa: E402
     ISSUE_CATALOG,
     NetworkValidator,
@@ -626,6 +628,90 @@ class TestCheckCircularLogic:
         )
         issues = v.check_circular_logic()
         assert issues[0].activity_ids == sorted(["Z", "A", "M"])
+
+    def test_parallel_typed_relationships_do_not_create_false_cycle(self):
+        """A legal FF+SS pair is one reachability edge for cycle detection."""
+        activities = [_act("A"), _act("B")]
+        relationships = [_rel("A", "B", "FF"), _rel("A", "B", "SS")]
+        assert NetworkValidator(activities, relationships).check_circular_logic() == []
+        assert topological_sort(ActivityNetwork(activities, relationships)) == ["A", "B"]
+
+    def test_exact_duplicate_rows_do_not_create_net006_and_still_warn_net008(self):
+        activities = [_act("A"), _act("B")]
+        relationships = [_rel("A", "B"), _rel("A", "B")]
+        validator = NetworkValidator(activities, relationships)
+        assert validator.check_circular_logic() == []
+        codes = {issue.issue_code for issue in validator.validate_all().issues}
+        assert "NET-008" in codes
+        assert "NET-006" not in codes
+        assert topological_sort(ActivityNetwork(activities, relationships)) == ["A", "B"]
+
+    def test_cycle_with_parallel_rows_still_detected(self):
+        activities = [_act("A"), _act("B")]
+        relationships = [
+            _rel("A", "B", "FF"),
+            _rel("A", "B", "SS"),
+            _rel("B", "A", "FS"),
+        ]
+        issues = NetworkValidator(activities, relationships).check_circular_logic()
+        assert len(issues) == 1
+        assert issues[0].issue_code == "NET-006"
+        with pytest.raises(ValueError, match="[Cc]ycle"):
+            topological_sort(ActivityNetwork(activities, relationships))
+
+    def test_all_pinned_cycle_is_allowed(self):
+        activities = [
+            Activity("A", original_duration=1,
+                     pinned_early_start=date(2025, 3, 3),
+                     pinned_early_finish=date(2025, 3, 3)),
+            Activity("B", original_duration=1,
+                     pinned_early_start=date(2025, 3, 4),
+                     pinned_early_finish=date(2025, 3, 4)),
+        ]
+        relationships = [_rel("A", "B"), _rel("B", "A")]
+        assert NetworkValidator(activities, relationships).check_circular_logic() == []
+        assert set(topological_sort(ActivityNetwork(activities, relationships))) == {"A", "B"}
+
+    def test_partially_pinned_network_with_unpinned_cycle_still_blocks(self):
+        """Pinning an unrelated successor must not hide a remaining open cycle."""
+        activities = [
+            _act("A"),
+            _act("B"),
+            Activity("C", original_duration=1,
+                     pinned_early_start=date(2025, 3, 3),
+                     pinned_early_finish=date(2025, 3, 3)),
+        ]
+        relationships = [_rel("A", "B"), _rel("B", "A"), _rel("A", "C")]
+        issues = NetworkValidator(activities, relationships).check_circular_logic()
+        assert len(issues) == 1
+        assert set(issues[0].activity_ids) == {"A", "B"}
+        with pytest.raises(ValueError, match="[Cc]ycle"):
+            topological_sort(ActivityNetwork(activities, relationships))
+
+    def test_validator_and_engine_topology_have_same_cycle_verdict(self):
+        """The validator and scheduler must agree on the same effective graph."""
+        cases = [
+            ([_act("A"), _act("B")], [_rel("A", "B", "FF"), _rel("A", "B", "SS")]),
+            ([_act("A"), _act("B")], [_rel("A", "B"), _rel("A", "B")]),
+            ([_act("A"), _act("B"), _act("C")],
+             [_rel("A", "B"), _rel("B", "C")]),
+            ([_act("A"), _act("B")], [_rel("A", "B"), _rel("B", "A")]),
+            ([_act("A"), _act("B")],
+             [_rel("A", "B", "FF"), _rel("A", "B", "SS"), _rel("B", "A")]),
+        ]
+        for activities, relationships in cases:
+            validator_clean = not NetworkValidator(
+                activities, relationships
+            ).check_circular_logic()
+            try:
+                topological_sort(ActivityNetwork(activities, relationships))
+            except ValueError:
+                scheduler_clean = False
+            else:
+                scheduler_clean = True
+            assert validator_clean is scheduler_clean, (
+                f"validator/topological_sort disagreement for {relationships!r}"
+            )
 
 
 # ---------------------------------------------------------------------------

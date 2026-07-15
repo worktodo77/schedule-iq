@@ -653,7 +653,12 @@ class NetworkValidator:
         while queue:
             aid = queue.popleft()
             visited.add(aid)
-            for succ in sorted(set(succs.get(aid, []))):
+            # ``in_degree`` is incremented once per relationship row above.
+            # Decrement once per row as well: multiple PDM relationship types
+            # between one endpoint pair are legal constraints, and must not
+            # strand the successor as a false cycle.  This also keeps the
+            # validator's multigraph bookkeeping identical to topological_sort.
+            for succ in sorted(succs.get(aid, [])):
                 in_degree[succ] -= 1
                 if in_degree[succ] == 0:
                     queue.append(succ)

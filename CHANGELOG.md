@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.3 — 2026-07-15
+
+Check-affecting: **NET-006 validator repair**. Cycle detection incremented Kahn
+in-degree once per relationship row but decremented once per unique successor,
+so legal parallel PDM rows between one endpoint pair (for example FF+SS, or
+exact duplicate rows) stranded the successor and everything downstream as a
+false circular dependency. In-degree accounting is now symmetric with the CPM
+topological sorter, which already ordered these graphs correctly. Schedules
+previously refused with a blocking NET-006 may now proceed to the ADR-0007
+handshake; genuine cycles still block, NET-008 still reports duplicate rows, and
+the ADR-019 pinned-cycle allowance is unchanged. No check formula, metric,
+score, threshold, kernel, or methodology changed.
+
 ## 0.5.2 — 2026-07-15
 
 Presentation-only desktop bug fix. The Forensics view now shows the exact

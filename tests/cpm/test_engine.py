@@ -1137,11 +1137,13 @@ class TestEngineValidation:
         with pytest.raises(ValueError):
             _run(acts, rels)
 
-    def test_raises_for_project_start_not_in_table(self):
+    def test_project_start_outside_table_is_covered_by_growth(self):
         acts = [_act("A", 3)]
         outside = date(2000, 1, 3)  # Monday, not in _TABLE
-        with pytest.raises(ValueError, match="not in the workday"):
-            run_analysis(acts, [], outside, _TABLE, _CAL)
+        table = dict(_TABLE)
+        result = run_analysis(acts, [], outside, table, _CAL)
+        assert result.is_valid is True
+        assert outside in table
 
 
 # ---------------------------------------------------------------------------

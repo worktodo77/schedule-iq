@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.4 — 2026-07-15
+
+Check-affecting engine robustness prerequisites: non-working date snapping now
+derives its search bound from each calendar's longest closure in the built table
+span and discloses closures beyond the legacy 14-day window; the CPM entry point
+grows and retries under-sized workday tables on classified coverage errors. These
+changes convert calendar/table crashes into analyzable runs but do not relax the
+SET-02 99% handshake gate or claim Petrobras analysis is valid. XER calendar
+spans encoded finish-first (overnight) are now parsed instead of silently
+discarded, and weekday sections retain all spans instead of truncating
+multi-span days. This changes parsed work-pattern/working-exception data (it is
+inert for current CPM hours, which continue to use ``day_hr_cnt``); no metric,
+score, threshold, kernel, or methodology changed.
+
 ## 0.5.3 — 2026-07-15
 
 Check-affecting: **NET-006 validator repair**. Cycle detection incremented Kahn

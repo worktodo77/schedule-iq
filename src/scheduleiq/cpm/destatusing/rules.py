@@ -279,9 +279,13 @@ def _workdays_between(
 ) -> float:
     """Count workdays from start (exclusive) to end (inclusive). Returns 0.0 if start >= end."""
     if not calendar.is_workday(start):
-        start = _adjust_nonworkday(start, calendar, is_start=True)
+        start = _adjust_nonworkday(
+            start, calendar, is_start=True, workday_table=workday_table
+        )
     if not calendar.is_workday(end):
-        end = _adjust_nonworkday(end, calendar, is_start=False)
+        end = _adjust_nonworkday(
+            end, calendar, is_start=False, workday_table=workday_table
+        )
     if start >= end:
         return 0.0
     start_num = workday_table.get(start)

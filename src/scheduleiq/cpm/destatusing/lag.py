@@ -113,7 +113,9 @@ def _wd(
 ) -> int:
     """Return the workday number for d, adjusting non-workdays first."""
     if not calendar.is_workday(d):
-        d = _adjust_nonworkday(d, calendar, is_start=is_start)
+        d = _adjust_nonworkday(
+            d, calendar, is_start=is_start, workday_table=workday_table
+        )
     num = workday_table.get(d)
     if num is None:
         raise ValueError(

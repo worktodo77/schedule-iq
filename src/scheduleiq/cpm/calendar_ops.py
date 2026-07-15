@@ -13,7 +13,8 @@ from CPW-P6 Manual pp. 41–42:
 
 Phase 2 simplifications (ADR-002):
   - Integer workday numbers (no hour-level precision; deferred to Phase 3).
-  - No exception dates (holidays). Work days are determined solely by weekday.
+  - Calendar exception dates (holidays/shutdowns) are honored; working-time
+    exceptions are outside this day-granularity model.
   - Single calendar model; multi-calendar logic deferred.
 
 Source: CPW-P6 Manual pp. 41–42 (Lag Analysis subsection).
@@ -22,6 +23,7 @@ Source: CPW-P6 Manual pp. 41–42 (Lag Analysis subsection).
 from __future__ import annotations
 
 from datetime import date, timedelta
+from functools import lru_cache
 from typing import Any, Optional
 
 from .models import Calendar
@@ -221,7 +223,9 @@ def date_to_workday(
         return workday_table[d]
 
     # Non-workday — apply CPW adjustment rule
-    adjusted = _adjust_nonworkday(d, calendar, is_start)
+    adjusted = _adjust_nonworkday(
+        d, calendar, is_start, workday_table=workday_table
+    )
 
     if adjusted not in workday_table:
         raise ValueError(
@@ -232,19 +236,123 @@ def date_to_workday(
     return workday_table[adjusted]
 
 
-def _adjust_nonworkday(d: date, calendar: Calendar, is_start: bool) -> date:
+@lru_cache(maxsize=128)
+def _nonworking_runs_cached(
+    work_days: frozenset[int],
+    exception_dates: frozenset[date],
+    start: date,
+    end: date,
+) -> tuple[tuple[date, date, int], ...]:
+    """Return contiguous non-working runs for a calendar/date span.
+
+    The cache key contains only immutable calendar state and the table span, so
+    repeated lag arithmetic in a large schedule does not rescan several years
+    of dates for every relationship.
+    """
+    calendar = Calendar(
+        name="cached-calendar",
+        work_days=set(work_days),
+        exception_dates=exception_dates,
+    )
+    runs: list[tuple[date, date, int]] = []
+    run_start: Optional[date] = None
+    current = start
+    while current <= end:
+        if calendar.is_workday(current):
+            if run_start is not None:
+                runs.append((run_start, current - timedelta(days=1),
+                             (current - run_start).days))
+                run_start = None
+        elif run_start is None:
+            run_start = current
+        current += timedelta(days=1)
+    if run_start is not None:
+        runs.append((run_start, end, (end - run_start).days + 1))
+    return tuple(runs)
+
+
+def find_nonworking_runs(
+    calendar: Calendar,
+    start: date,
+    end: date,
+    *,
+    minimum_days: int = 1,
+) -> list[dict[str, Any]]:
+    """List contiguous non-working periods in ``[start, end]``.
+
+    The result is deterministic and contains ``start``, ``end`` and ``days``
+    for each run whose length is at least ``minimum_days``.  It is used by the
+    bridge to disclose long shutdowns that can affect engine-computed dates.
+    """
+    if start > end:
+        return []
+    runs = _nonworking_runs_cached(
+        frozenset(calendar.work_days),
+        frozenset(calendar.exception_dates),
+        start,
+        end,
+    )
+    return [
+        {"start": run_start, "end": run_end, "days": days}
+        for run_start, run_end, days in runs
+        if days >= minimum_days
+    ]
+
+
+def nonworking_search_bound(
+    calendar: Calendar,
+    start: date,
+    end: date,
+) -> int:
+    """Return the calendar-derived snap bound for a table date span.
+
+    The bound is the longest contiguous non-working run in the span.  A minimum
+    of one day keeps the loop useful for a single-date exception while avoiding
+    a fixed global search window.  Callers without a table retain the legacy
+    defensive bound in ``_adjust_nonworkday``.
+    """
+    runs = find_nonworking_runs(calendar, start, end)
+    return max((run["days"] for run in runs), default=1)
+
+
+def _table_span(workday_table: dict[date, int]) -> tuple[date, date]:
+    """Return table bounds without rescanning a chronologically built dict."""
+    try:
+        first = next(iter(workday_table))
+        last = next(reversed(workday_table))
+        if first <= last:
+            return first, last
+    except (StopIteration, TypeError):
+        pass
+    return min(workday_table), max(workday_table)
+
+
+def _adjust_nonworkday(
+    d: date,
+    calendar: Calendar,
+    is_start: bool,
+    *,
+    workday_table: Optional[dict[date, int]] = None,
+) -> date:
     """
     Move d to the nearest workday in the direction specified by is_start.
 
     is_start=True  → next higher workday (forward in time).
     is_start=False → next lower workday (backward in time).
 
-    Raises ValueError if no workday is found within 14 calendar days
-    (guards against misconfigured calendars with no workdays).
+    When a workday table is supplied, the search bound is derived from that
+    calendar's longest non-working run in the table span.  Without a table the
+    legacy 14-day defensive bound is retained for low-level callers.
     """
     step = timedelta(days=1) if is_start else timedelta(days=-1)
     candidate = d + step
-    limit = 14  # safety bound
+    if workday_table:
+        table_start, table_end = _table_span(workday_table)
+        limit = nonworking_search_bound(
+            calendar, table_start, table_end
+        )
+    else:
+        limit = 14  # defensive bound for callers without a table
 
     for _ in range(limit):
         if calendar.is_workday(candidate):
@@ -252,9 +360,27 @@ def _adjust_nonworkday(d: date, calendar: Calendar, is_start: bool) -> date:
         candidate += step
 
     direction = "forward" if is_start else "backward"
+    if workday_table:
+        if not any(
+            calendar.is_workday(table_start + timedelta(days=offset))
+            for offset in range((table_end - table_start).days + 1)
+        ):
+            raise ValueError(
+                f"No workday found {direction} from {d} in calendar "
+                f"{calendar.name!r}; the calendar has no working date in the "
+                f"table span {table_start}..{table_end}. Check calendar "
+                "configuration."
+            )
+        raise ValueError(
+            f"No workday found within the calendar-derived {limit}-day "
+            f"closure bound {direction} from {d} in calendar "
+            f"{calendar.name!r}; the date lies inside a non-working closure "
+            "beyond the available table span."
+        )
     raise ValueError(
-        f"No workday found within 14 days {direction} from {d} "
-        f"in calendar {calendar.name!r}. Check calendar configuration."
+        f"No workday found within the 14-day defensive bound {direction} from {d} "
+        f"in calendar {calendar.name!r}; check calendar configuration or closure "
+        "length."
     )
 
 
@@ -301,8 +427,8 @@ def is_table_coverage_error(exc: BaseException) -> bool:
     within 14 days ... Check calendar configuration") — growing the window cannot
     fix a calendar with no workdays, so that must fail loudly, not loop/retry.
 
-    Used by api.engine_runner.build_resources_with_growth (retry-on-underflow) and
-    by destatusing.engine (re-raise so the underflow reaches that backstop instead
+    Used by the CPM engine's bounded retry-on-underflow wrapper and by
+    destatusing.engine (re-raise so the underflow reaches that backstop instead
     of being masked as a DST_011 rule-application failure)."""
     if not isinstance(exc, ValueError):
         return False

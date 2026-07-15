@@ -11,7 +11,7 @@ Source: CPW-P6 Manual pp. 41-42 (Lag Analysis subsection).
 Phase 2 simplifications (ADR-002):
   - Integer workday lags only (fractional lags require hour-level precision,
     deferred to Phase 3).
-  - Single calendar; no exception dates.
+  - Single calendar; exception dates on that Calendar are honored.
   - Non-workday anchor dates are adjusted using the CALC-001 rule before
     lag arithmetic is applied.
 
@@ -77,7 +77,7 @@ def apply_lag(
       SS / SF → anchor is predecessor Early Start  (anchor_is_start=True)
 
     Source: CPW-P6 Manual pp. 41-42 (Lag Analysis subsection)
-    Assumption: Single calendar; no exception dates (ADR-002).
+    Assumption: Single calendar; exception dates are carried by Calendar (ADR-002).
     Assumption: FS lag=0 → constrained_es = pred_ef (same workday, P6 convention).
     Limitation: Integer lags only; fractional lags deferred to Phase 3.
 
@@ -98,7 +98,10 @@ def apply_lag(
     lag_int = _require_integer_lag(lag_workdays, "apply_lag (CALC-002)")
 
     if not calendar.is_workday(anchor):
-        anchor = _adjust_nonworkday(anchor, calendar, is_start=anchor_is_start)
+        anchor = _adjust_nonworkday(
+            anchor, calendar, is_start=anchor_is_start,
+            workday_table=workday_table,
+        )
 
     anchor_num = workday_table.get(anchor)
     if anchor_num is None:
@@ -139,7 +142,7 @@ def compute_lag_between(
       to_is_start=True    → advance to_date to next workday (start-type).
 
     Source: CPW-P6 Manual pp. 41-42 (Lag Analysis subsection)
-    Assumption: Single calendar; no exception dates (ADR-002).
+    Assumption: Single calendar; exception dates are carried by Calendar (ADR-002).
     Limitation: Returns integer workday count only.
 
     Args:
@@ -158,9 +161,15 @@ def compute_lag_between(
                     non-workday adjustment.
     """
     if not calendar.is_workday(from_date):
-        from_date = _adjust_nonworkday(from_date, calendar, is_start=from_is_start)
+        from_date = _adjust_nonworkday(
+            from_date, calendar, is_start=from_is_start,
+            workday_table=workday_table,
+        )
     if not calendar.is_workday(to_date):
-        to_date = _adjust_nonworkday(to_date, calendar, is_start=to_is_start)
+        to_date = _adjust_nonworkday(
+            to_date, calendar, is_start=to_is_start,
+            workday_table=workday_table,
+        )
 
     from_num = workday_table.get(from_date)
     if from_num is None:

@@ -510,8 +510,8 @@ def run_destatusing(inp: DestatusingInput) -> DestatusingResult:
                 # too short for this activity's dates) is NOT a per-activity rule
                 # failure — masking it as DST_011 and returning the UNMODIFIED
                 # activity would silently feed wrong remaining_duration/% into CPM.
-                # Re-raise it so the caller's build_resources_with_growth backstop
-                # grows the table and retries. Genuine rule-application failures
+                # Re-raise it so the public CPM engine's bounded coverage
+                # backstop grows the table and retries. Genuine rule-application failures
                 # (anything else) still degrade to DST_011 + original copy.
                 if is_table_coverage_error(exc):
                     raise

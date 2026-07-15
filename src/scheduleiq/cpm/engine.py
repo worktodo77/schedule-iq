@@ -92,10 +92,15 @@ Explicitly excluded (LIM references):
 from __future__ import annotations
 
 import copy
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Optional
 
-from .calendar_ops import _adjust_nonworkday, nearest_workday_index as _wd_index
+from .calendar_ops import (
+    _adjust_nonworkday,
+    build_workday_table,
+    is_table_coverage_error,
+    nearest_workday_index as _wd_index,
+)
 from .calendar_registry import CalendarRegistry, LagCalendarStrategy
 from .constraints import (
     ConstraintApplication,
@@ -727,7 +732,7 @@ def _compute_floats(
 # INFRA-007: CPM engine — public entry point
 # ---------------------------------------------------------------------------
 
-def run_analysis(
+def _run_analysis_once(
     activities: list[Activity],
     relationships: list[Relationship],
     project_start: date,
@@ -839,7 +844,10 @@ def run_analysis(
 
     # -- Adjust project_start to workday if needed -------------------------
     if not calendar.is_workday(project_start):
-        adjusted = _adjust_nonworkday(project_start, calendar, is_start=True)
+        adjusted = _adjust_nonworkday(
+            project_start, calendar, is_start=True,
+            workday_table=workday_table,
+        )
         warning_log.add(AnalysisWarning(
             code="ENG-001",
             category=WarningCategory.SCHEDULE_INTEGRITY,
@@ -941,9 +949,11 @@ def run_analysis(
             snapped = con.cdate
             orig: Optional[date] = None
             if con.cdate is not None and not _c_cal.is_workday(con.cdate):
+                _c_wt = (act_workday_tables or {}).get(con.act_id, workday_table)
                 snapped = _adjust_nonworkday(
                     con.cdate, _c_cal,
                     is_start=constraint_is_start_anchored(con.ctype),
+                    workday_table=_c_wt,
                 )
                 orig = con.cdate
             work = SchedulingConstraint(con.act_id, con.ctype, snapped)
@@ -1197,8 +1207,8 @@ def run_analysis(
     # masking it as DST_011 with unmodified durations) — so if a caller passes an
     # under-sized table here, that ValueError propagates by design. Do NOT "fix" it
     # by re-masking (that reintroduces silent-wrong durations into CPM); the right
-    # fix is for the caller to size/grow its table (no in-tree caller passes
-    # destatusing_input — the API/CLI run destatusing via build_resources_with_growth).
+    # fix is for the caller to size/grow its table; the public run_analysis
+    # wrapper owns the bounded workday-table growth backstop.
     #
     # Import is lazy (W1a port severance): mip39.destatusing/scheduleiq.cpm's
     # destatusing package is ported separately, in parallel, and must not be a
@@ -1226,3 +1236,75 @@ def run_analysis(
         destatusing_result=dst_result,
         simulation_result=sim_result,
     )
+
+
+_MAX_TABLE_GROWTH_RETRIES = 8
+
+
+def run_analysis(
+    activities: list[Activity],
+    relationships: list[Relationship],
+    project_start: date,
+    workday_table: dict[date, int],
+    calendar: Calendar,
+    convention: EFConvention = EFConvention.INCLUSIVE_DAY,
+    calendar_registry: Optional[CalendarRegistry] = None,
+    lag_strategy: Optional[LagCalendarStrategy] = None,
+    destatusing_input: Optional[Any] = None,
+    constraints: Optional[list[SchedulingConstraint]] = None,
+    statusing_mode: StatusingMode = StatusingMode.RETAINED_LOGIC,
+    constraint_log_out: Optional[list[ConstraintApplication]] = None,
+) -> AnalysisResult:
+    """Run CPM with a bounded, coverage-aware workday-table backstop.
+
+    The first attempt uses the caller's table unchanged.  If engine-computed
+    dates fall outside that table, the table is expanded symmetrically by an
+    exponentially growing calendar-day pad and the complete analysis is retried.
+    Only errors classified by :func:`is_table_coverage_error` are retried;
+    genuine calendar/configuration errors and all other failures propagate.
+    The supplied dictionary is expanded in place so an ``EngineInputs`` holder
+    and its registry remain coherent for downstream consumers.
+    """
+    pad_days = 60
+    last_error: Optional[ValueError] = None
+    log_start = len(constraint_log_out) if constraint_log_out is not None else 0
+    for attempt in range(_MAX_TABLE_GROWTH_RETRIES + 1):
+        try:
+            return _run_analysis_once(
+                activities=activities,
+                relationships=relationships,
+                project_start=project_start,
+                workday_table=workday_table,
+                calendar=calendar,
+                convention=convention,
+                calendar_registry=calendar_registry,
+                lag_strategy=lag_strategy,
+                destatusing_input=destatusing_input,
+                constraints=constraints,
+                statusing_mode=statusing_mode,
+                constraint_log_out=constraint_log_out,
+            )
+        except ValueError as exc:
+            if not is_table_coverage_error(exc):
+                raise
+            last_error = exc
+            if constraint_log_out is not None:
+                del constraint_log_out[log_start:]
+            if attempt >= _MAX_TABLE_GROWTH_RETRIES:
+                break
+            if not workday_table:
+                raise
+            lo = min(workday_table) - timedelta(days=pad_days)
+            hi = max(workday_table) + timedelta(days=pad_days)
+            expanded = build_workday_table(calendar, lo, hi)
+            workday_table.clear()
+            workday_table.update(expanded)
+            if calendar_registry is not None:
+                calendar_registry.ensure_workday_tables(lo, hi)
+            pad_days *= 2
+
+    assert last_error is not None  # the loop only exits after a coverage error
+    raise ValueError(
+        "CPM analysis exhausted the bounded workday-table growth retries; "
+        f"last coverage error: {last_error}"
+    ) from last_error

@@ -36,7 +36,11 @@ from typing import Optional
 
 from ..ingest.model import (Activity as IngestActivity, Calendar as IngestCalendar,
                             ConstraintType as IngestConstraintType, Schedule)
-from .calendar_ops import build_workday_table
+from .calendar_ops import (
+    build_workday_table,
+    find_nonworking_runs,
+    nonworking_search_bound,
+)
 from .calendar_registry import CalendarEntry, CalendarRegistry, LagCalendarStrategy
 from .constraints import (ConstraintType as CpmConstraintType, SchedulingConstraint,
                          StatusingMode)
@@ -374,6 +378,25 @@ def build_engine_inputs(
     hi = max(seen_dates) + timedelta(days=400)
     workday_table = build_workday_table(default_cal, lo, hi)
     registry.ensure_workday_tables(lo, hi)
+
+    # Long closures are legitimate P6 calendar data, but the engine must know
+    # when its non-workday snap search is crossing one.  Disclose every closure
+    # longer than the legacy 14-day diagnostic window for every imported
+    # calendar; the actual snap bound is derived per calendar from this table
+    # span rather than from a global constant.
+    for uid, cpm_cal in sorted(cpm_cals.items()):
+        closures = find_nonworking_runs(cpm_cal, lo, hi, minimum_days=15)
+        if not closures:
+            continue
+        bound = nonworking_search_bound(cpm_cal, lo, hi)
+        for closure in closures:
+            disclosures.append(
+                f"calendar {cpm_cal.name!r} (uid {uid}) has a "
+                f"{closure['days']}-day non-working closure "
+                f"{closure['start'].isoformat()} through "
+                f"{closure['end'].isoformat()}; closure-aware engine snap "
+                f"bound is {bound} days."
+            )
 
     return EngineInputs(
         activities=cpm_acts,

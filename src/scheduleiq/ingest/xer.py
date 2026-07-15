@@ -110,25 +110,52 @@ def read_tables(path: str, encoding: str = "cp1252") -> tuple[dict, list[str]]:
 # --------------------------------------------------------------------------
 # Calendar-data blob:  (0||CalendarData()( (0||DaysOfWeek()(...)) (0||Exceptions()(...)) ))
 # Weekday keys are P6 numbering 1=Sunday..7=Saturday; work spans are
-# s|08:00 ... f|17:00 pairs; exceptions are d|<days since 1899-12-30>.
+# s|08:00 ... f|17:00 pairs (P6 also emits overnight f|12:00|s|01:00
+# pairs); exceptions are d|<days since 1899-12-30>.
 # --------------------------------------------------------------------------
+_SPAN_RE = re.compile(
+    r"(?:"
+    r"s\|(?P<start>\d{2}:\d{2})\|f\|(?P<finish>\d{2}:\d{2})"
+    r"|"
+    r"f\|(?P<finish_rev>\d{2}:\d{2})\|s\|(?P<start_rev>\d{2}:\d{2})"
+    r")"
+)
+
+
+def _parse_span_pairs(text: str) -> list[tuple[str, str]]:
+    """Parse both normal and finish-first P6 working-span encodings."""
+    spans: list[tuple[str, str]] = []
+    for match in _SPAN_RE.finditer(text):
+        start = match.group("start") or match.group("start_rev")
+        finish = match.group("finish") or match.group("finish_rev")
+        spans.append((start, finish))
+    return spans
+
+
 def parse_calendar_data(blob: str, cal: Calendar) -> None:
     if not blob:
         return
     dow = re.search(r"DaysOfWeek\(\)(.*?)(?:\(0\|\|(?:VIEW|Exceptions))", blob, re.S)
     dow_text = dow.group(1) if dow else blob
-    for m in re.finditer(r"\(0\|\|([1-7])\(\)([^)]*(?:\([^)]*\)[^)]*)*)\)", dow_text):
+    # A weekday section is marked by ``(0||N()``; child span entries use
+    # ``(0||N(`` without the empty ``()``. Anchor the section split on the
+    # former so multiple spans (including finish-first overnight spans) stay
+    # attached to their weekday.
+    for m in re.finditer(
+        r"\(0\|\|([1-7])\(\)(.*?)(?=\(0\|\|[1-7]\(\)|$)",
+        dow_text,
+        re.S,
+    ):
         p6_day = int(m.group(1))
         body = m.group(2)
-        spans = re.findall(r"s\|(\d{2}:\d{2})\|f\|(\d{2}:\d{2})", body)
+        spans = _parse_span_pairs(body)
         iso = 7 if p6_day == 1 else p6_day - 1        # P6 1=Sun -> ISO 7
-        cal.work_patterns[iso] = WorkPattern(weekday=iso,
-                                             spans=[(s, f) for s, f in spans])
+        cal.work_patterns[iso] = WorkPattern(weekday=iso, spans=spans)
     exc = re.search(r"Exceptions\(\)(.*)$", blob, re.S)
     if exc:
         for m in re.finditer(r"d\|(\d+)\)\(([^)]*)\)", exc.group(1)):
             day = _EPOCH_1899 + timedelta(days=int(m.group(1)))
-            spans = re.findall(r"s\|(\d{2}:\d{2})\|f\|(\d{2}:\d{2})", m.group(2))
+            spans = _parse_span_pairs(m.group(2))
             if spans:
                 cal.exceptions_work[day] = WorkPattern(weekday=day.isoweekday(),
                                                        spans=spans).hours

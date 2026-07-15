@@ -19,6 +19,8 @@ from scheduleiq.cpm.models import Calendar  # noqa: E402
 from scheduleiq.cpm.calendar_ops import (  # noqa: E402
     build_workday_table,
     date_to_workday,
+    find_nonworking_runs,
+    nonworking_search_bound,
     workday_to_date,
     _adjust_nonworkday,
 )
@@ -274,3 +276,20 @@ class TestAdjustNonworkday:
         no_work_cal.is_workday = lambda d: False  # type: ignore[method-assign]
         with pytest.raises(ValueError, match="No workday found within"):
             _adjust_nonworkday(date(2024, 1, 6), no_work_cal, is_start=True)
+
+    def test_table_bound_tracks_long_calendar_closure(self):
+        closure = frozenset(
+            date(2024, 1, 8) + timedelta(days=i) for i in range(21)
+        )
+        cal = Calendar(name="Shutdown", exception_dates=closure)
+        table = build_workday_table(cal, date(2024, 1, 1), date(2024, 2, 9))
+        runs = find_nonworking_runs(cal, min(table), max(table), minimum_days=15)
+        assert runs == [{
+            "start": date(2024, 1, 6),
+            "end": date(2024, 1, 28),
+            "days": 23,
+        }]
+        assert nonworking_search_bound(cal, min(table), max(table)) == 23
+        assert _adjust_nonworkday(
+            date(2024, 1, 8), cal, is_start=True, workday_table=table
+        ) == date(2024, 1, 29)

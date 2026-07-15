@@ -6,6 +6,7 @@ handshakes at 100%.  demo_cpm_divergent.xer shifts exactly three activities'
 stored dates, so it lands at a deterministic 75%.  The old demo_baseline.xer is
 known CPM-inconsistent and must degrade gracefully (not error).
 """
+import copy
 import os
 import subprocess
 import sys
@@ -106,6 +107,45 @@ def test_build_reference_provenance_and_population(cpm_sched):
     assert len(ref.activities) == 12                 # real activities only
     assert ref.source == "schedule of record (XER)"
     assert ref.tool == cpm_sched.source_tool
+
+
+def test_build_reference_remaps_completed_dates_to_actuals(cpm_sched):
+    """Completed P6 early fields are placeholders; actuals are the live pin check."""
+    ref = build_reference(cpm_sched)
+    completed = [a for a in cpm_sched.real_activities if a.completed]
+    assert completed
+    for activity in completed:
+        record = ref.activities[activity.uid]
+        assert activity.actual_start is not None
+        assert activity.actual_finish is not None
+        assert record.early_start == activity.actual_start.date()
+        assert record.early_finish == activity.actual_finish.date()
+        assert record.late_start is None
+        assert record.late_finish is None
+        live_fields = [
+            name for name in (
+                "early_start", "early_finish", "late_start", "late_finish",
+                "total_float", "free_float", "is_critical", "original_duration",
+            ) if getattr(record, name) is not None
+        ]
+        assert len(set(live_fields) - {"original_duration"}) > 0
+
+    not_started = next(a for a in cpm_sched.real_activities if a.not_started)
+    record = ref.activities[not_started.uid]
+    assert record.early_start is not None
+    assert record.late_start is not None
+
+
+def test_build_reference_excludes_completed_without_actual_dates(cpm_sched):
+    """A malformed completed row cannot fall through to a duration-only pass."""
+    malformed = copy.deepcopy(cpm_sched)
+    activity = next(a for a in malformed.real_activities if a.completed)
+    activity.actual_finish = None
+
+    ref = build_reference(malformed)
+
+    assert activity.uid not in ref.activities
+    assert "excluded 1 completed activity" in ref.notes
 
 
 # --------------------------------------------------------------- SET-02 check

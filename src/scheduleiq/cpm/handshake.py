@@ -112,9 +112,13 @@ def build_reference(sched: Schedule) -> ReferenceSchedule:
 
     Per real activity, the stored early/late dates, total/free float (hours ->
     workdays via the activity calendar hours/day, rounded half away from zero),
-    criticality, and floored original duration are carried through.  ``None``
-    reference fields are skipped by the comparison framework, so a file that does
-    not store (say) late dates simply does not have them compared.
+    criticality, and floored original duration are carried through. Completed
+    activities are remapped for the engine's status semantics: their actual
+    start/finish dates become the reference early start/finish (ADR-019 pins
+    completed work to those dates), while P6 late fields are omitted because
+    they are status artifacts. ``None`` reference fields are skipped by the
+    comparison framework, so a file that does not store (say) late dates simply
+    does not have them compared.
     """
     ref = ReferenceSchedule(
         schedule_id=f"record::{sched.project_id or sched.project_name or 'schedule'}",
@@ -125,7 +129,14 @@ def build_reference(sched: Schedule) -> ReferenceSchedule:
         calendar_convention="p6_compatibility",
     )
     thr_hr = sched.settings.critical_float_threshold_hours
+    missing_completed_actuals: list[str] = []
     for a in sched.real_activities:
+        if a.completed and (a.actual_start is None or a.actual_finish is None):
+            # Do not let a malformed completed row fall through to the
+            # duration-only comparison.  Leaving it out of the reference
+            # population is honest; run_handshake surfaces the count below.
+            missing_completed_actuals.append(a.code or a.uid)
+            continue
         hpd = _hpd(sched, a)
         tf = (_round_half_away(a.total_float_hours / hpd)
              if a.total_float_hours is not None else None)
@@ -138,18 +149,42 @@ def build_reference(sched: Schedule) -> ReferenceSchedule:
         else:
             crit = None
         od = 0 if a.is_milestone else int(math.floor(a.original_duration_hours / hpd + 1e-9))
+        # P6 exports use the data date as a placeholder in the stored early
+        # fields for completed activities.  The engine deliberately pins
+        # completed work to actual dates (ADR-019), so remap the reference to
+        # those actuals.  Late fields remain unset because P6's completed-status
+        # late dates are not a comparable forecast; the actual dates provide a
+        # falsifiable pinning check instead of a duration-only pass.
+        if a.completed:
+            early_start = a.actual_start.date() if a.actual_start else None
+            early_finish = a.actual_finish.date() if a.actual_finish else None
+            late_start = late_finish = None
+        else:
+            early_start = a.early_start.date() if a.early_start else None
+            early_finish = a.early_finish.date() if a.early_finish else None
+            late_start = a.late_start.date() if a.late_start else None
+            late_finish = a.late_finish.date() if a.late_finish else None
+
         ref.add_activity(ReferenceScheduledActivity(
             act_id=a.uid,
-            early_start=a.early_start.date() if a.early_start else None,
-            early_finish=a.early_finish.date() if a.early_finish else None,
-            late_start=a.late_start.date() if a.late_start else None,
-            late_finish=a.late_finish.date() if a.late_finish else None,
+            early_start=early_start,
+            early_finish=early_finish,
+            late_start=late_start,
+            late_finish=late_finish,
             total_float=tf,
             free_float=ff,
             is_critical=crit,
             original_duration=od,
             notes=a.code,
         ))
+    if missing_completed_actuals:
+        ref.notes = (
+            "SET-02 excluded "
+            f"{len(missing_completed_actuals)} completed activit"
+            f"{'y' if len(missing_completed_actuals) == 1 else 'ies'} "
+            "from the comparison population because actual start/finish "
+            "dates were incomplete."
+        )
     return ref
 
 
@@ -203,6 +238,10 @@ def run_handshake(
         constraint_log_out=constraint_log,
     )
 
+    reference = build_reference(sched)
+    if reference.notes:
+        inputs.disclosures.append(reference.notes)
+
     if not result.is_valid:
         blocking = [f"{i.issue_code}: {i.message}"
                    for i in result.validation.issues if i.blocking]
@@ -227,7 +266,6 @@ def run_handshake(
         _HANDSHAKE_CACHE[key] = hs
         return hs
 
-    reference = build_reference(sched)
     comparison = compare_schedules(
         analysis_result=result,
         reference=reference,

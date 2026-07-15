@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.5 — 2026-07-15
+
+Check-affecting: **SET-02 completed-activity reference repair**. The handshake
+compared the engine's actual-date-anchored completed activities against P6's
+stored early and late fields. Those fields carry the data date as a status
+placeholder rather than a schedule prediction, so the comparison measured a
+field-semantics mismatch and failed every completed activity by construction.
+The reference now remaps a completed activity's early start/finish to its actual
+start/finish — a falsifiable check that the engine pinned the work where ADR-019
+says it must — omits the completed-status late fields, and excludes any completed
+row missing either actual date from the population, disclosing the count rather
+than letting it fall through to a duration-only pass.
+
+Reported SET-02 rates rise because a measurement defect was removed, not because
+engine fidelity improved. The incomplete-activity match rate, which carries the
+engine-vs-record signal, is unchanged. No metric, score, threshold, kernel, or
+methodology changed.
+
 ## 0.5.4 — 2026-07-15
 
 Check-affecting engine robustness prerequisites: non-working date snapping now

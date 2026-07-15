@@ -155,7 +155,7 @@ def test_ddi_resolves_recode_target_by_uid():
     indices = SimpleNamespace(
         rdi=SimpleNamespace(rows=rows_rdi),
         bwi=SimpleNamespace(rows=rows_bwi),
-        fcbi=SimpleNamespace(cumulative=[0.0, 1.0]),
+        fcbi=SimpleNamespace(cumulative_burn=[0.0, 1.0]),
     )
     ddi = lp.directed_date_index(
         SeriesAnalysis(schedules), indices=indices, target="TARGET")

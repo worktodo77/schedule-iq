@@ -432,11 +432,23 @@ series_curve_overrides:
       population (the matrix check itself is a raw count with no population
       denominator).  Same 10%/30% convention as TRD-03."
   LI-01:
-    points: [[0, 100], [20, 70], [60, 0]]
-    rationale: "FCBI cumulative burn, in working days.  The working-day
-      scale is broadly comparable across mid-size commercial/industrial
-      schedules; very large or very short projects may need a profile
-      override (flagged for lead review — RC1 known limitation)."
+    # PROVISIONAL / UNGRADED (v0.5.0, 2026-07-10).  The LI-01 v0.5 governed
+    # revision (rulings O1-O7, docs/rulings/LI-01-fcbi-v0.5.md) changed the
+    # definition: the graded value is now the cumulative OPERATIONAL gross burn
+    # B (activity-days), not the old criticality-weighted sum Sum c*w, and
+    # basis-change windows are segmented out.  The prior anchors [0,20,60] were
+    # calibrated to the retired weighted-sum scale and are INVALIDATED.  No
+    # `points` curve is provided, so the scorecard engine leaves LI-01 ungraded
+    # (weight 0, shown informationally) — it contributes its value and
+    # decomposition to the card but not to the score — pending anchor
+    # recalibration against a real .xer series (HANDOFF §4 item 4 / RJL task L3).
+    provisional: true
+    rationale: "PROVISIONAL — ungraded pending anchor recalibration after the
+      v0.5 definition change (rulings O1-O7).  The graded value is now
+      cumulative operational gross burn B (activity-days); the retired
+      weighted-sum anchors do not apply.  Reported informationally with its B/C
+      decomposition, coverage, and negative-float severity; excluded from the
+      score until recalibrated on a real series."
   LI-02:
     special: true
     points: [[1, 0], [6, 70], [12, 100]]

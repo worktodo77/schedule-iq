@@ -49,14 +49,7 @@ def li_series_results(sa, matrix: list[CheckDef]) -> list[MetricResult]:
                      f"{getattr(b, 'contribution', 0):.1f}"
                      + (" [constraint-flagged]" if getattr(b, "constraint_flagged", False) else ""))
              for b in f.top_burners]
-    cum = f.cumulative[-1] if f.cumulative else 0.0
-    for w in f.windows:
-        pct = getattr(w, "fcbi_pct", None)
-        if pct is not None and pct > 100:
-            interp += ("  A normalized burn above 100% is real: erosion continued "
-                       "beyond the positive float available (paths driven deeper "
-                       "into negative float).")
-            break
+    cum = f.cumulative_burn[-1] if f.cumulative_burn else 0.0
     r = _res(by_id, "LI-01", cum, interp, finds)
     if r:
         out.append(r)

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 — 2026-07-14
+
+- Ported the governed FCBI v0.5 methodology: target-specific nonnegative
+  distance, B/C/W decomposition, quarantine and coverage, basis-change
+  segmentation, endpoint-timing sensitivity, and fixed-reference-hour margins.
+- Added the exact lazy float-path enumerator and mixed-calendar frontier
+  regression; reconciled target/activity identity to the UID-first R-ID rule.
+- Retired FCBI% and the old weighted-RF/own-float fallback; LI-01 is
+  provisional/ungraded pending recalibration of its new gross-burn anchors.
+  The recorded scorecard re-pin therefore holds: demo file grades remain
+  C+/C/D and the demo series remains D.
+
 ## 0.4.7 — 2026-07-14
 
 Check-affecting: **R-ID provocative extension**. The LI-12 DDI target, the

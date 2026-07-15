@@ -348,7 +348,7 @@ DDI_MIN_UPDATES = 3          # need >= 3 records to z-score the fundamentals
 DDI_DATE_TOL_DAYS = 1        # a held date is one within +-1 day of the prior update
 
 DDI_FUNDAMENTALS = ("RDI (recovery debt)", "BWI (bow-wave)",
-                    "FCBI (criticality-weighted burn)",
+                    "FCBI (gross operational burn)",
                     "constraint additions near target",
                     "uncompensated duration compressions")
 
@@ -492,7 +492,10 @@ def directed_date_index(sa, indices=None, target: Optional[str] = None) -> DdiRe
     bwi_series = [(ri.bwi.rows[i].bwi if i < len(ri.bwi.rows) else None)
                   for i in range(n)]
     # FCBI cumulative burn: n-1 windows -> align to updates with a leading 0.
-    fcbi_cum = list(ri.fcbi.cumulative)
+    # LI-01 v0.5 exposes cumulative gross operational burn B; keep the
+    # provocative DDI alignment on that new decomposition rather than the
+    # retired weighted-RF cumulative field.
+    fcbi_cum = list(ri.fcbi.cumulative_burn)
     fcbi_series: list[Optional[float]] = [0.0] + fcbi_cum if fcbi_cum else [None] * n
     fcbi_series = (fcbi_series + [None] * n)[:n]
 
@@ -526,7 +529,7 @@ def directed_date_index(sa, indices=None, target: Optional[str] = None) -> DdiRe
     res.fundamentals = {
         "RDI (recovery debt)": rdi_series,
         "BWI (bow-wave)": bwi_series,
-        "FCBI (criticality-weighted burn)": fcbi_series,
+        "FCBI (gross operational burn)": fcbi_series,
         "constraint additions near target": constraint_series,
         "uncompensated duration compressions": comp_series,
     }

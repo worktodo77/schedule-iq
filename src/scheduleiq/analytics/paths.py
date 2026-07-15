@@ -77,6 +77,9 @@ class FloatPath:
     constraints: list[str]
     pct_complete: float                     # length-weighted mean % complete
     rel_float_days: float = 0.0             # near-criticality of this path's own branch
+    # Branch-unique min total float in raw HOURS over discrete members only.
+    # FCBI v0.5 uses this fixed-reference-hours margin; legacy consumers ignore it.
+    rel_float_hours: Optional[float] = None
     # Additive metadata (does NOT affect rel_float_days or any tool-of-record
     # driving-path result): the uids of the branch unique to this path, exposed
     # so the LI-index kernel can compute a discrete-work-only relative float
@@ -377,10 +380,15 @@ def _finalize_path(schedule: Schedule, rank: int, steps: list[PathStep],
     uvals = [s.total_float_days for s in steps
              if s.activity.uid in unique_uids and s.total_float_days is not None]
     rel = min(uvals) if uvals else (mn if mn is not None else 0.0)
+    uvals_h = [s.activity.total_float_hours for s in steps
+               if s.activity.uid in unique_uids
+               and not s.activity.is_loe_or_summary
+               and s.activity.total_float_hours is not None]
+    rel_h = min(uvals_h) if uvals_h else None
     return FloatPath(rank=rank, steps=steps, min_float_days=mn, max_float_days=mx,
                      calendars=cals, constraints=cons, pct_complete=pc,
                      rel_float_days=rel if rel is not None else 0.0,
-                     unique_uids=set(unique_uids))
+                     rel_float_hours=rel_h, unique_uids=set(unique_uids))
 
 
 def float_paths(schedule: Schedule, target_uid: Optional[str] = None,
@@ -445,6 +453,128 @@ def float_paths(schedule: Schedule, target_uid: Optional[str] = None,
         found.append(full)
         used |= feeder_uids
     return out
+
+
+_MISS = object()        # sentinel distinguishing "unwalked" from a cached None
+
+
+def iter_float_paths(schedule: Schedule, target_uid: Optional[str] = None,
+                     tolerance_hours: float = DEFAULT_TOL_HOURS):
+    """Lazy generator yielding EXACTLY the paths of :func:`float_paths` — the same
+    ``FloatPath`` objects in the same order — one at a time and unbounded.  It runs
+    ``float_paths``'s own round structure VERBATIM: each round re-scans every found
+    path and recomputes every feeder under the CURRENT ``used`` set, then selects
+    the global minimum ``(native rel float, pred code)`` with the same first-found
+    tie-break.  It is therefore the reference algorithm restructured to stream,
+    not an approximation of it.
+
+    A prior best-first/priority-queue variant (v0.5.4) was WITHDRAWN in wave-4: it
+    cached each feeder against the ``used`` set current at push time and only
+    re-pushed when a revalidated feeder's rel ROSE.  But consuming an activity can
+    reroute a feeder's backward walk so its rel FALLS and its node sequence changes
+    entirely (``float_paths``'s native-rel order is genuinely non-monotone — a
+    later path can expose a lower-float branch hidden behind a since-consumed
+    activity).  That broke exact equivalence: divergent path sequences and, through
+    them, wrong per-activity distances and a frontier certificate computed on a
+    corrupted ``used`` set (wave-4 W4-01/W4-02).  Correctness over performance
+    (governed constraint): enumeration cost is bounded by the callers — the SOUND
+    convergence frontier and ``FCBI_PATHS_MAX`` cap in
+    :func:`li_indices._target_distance` — not by weakening the enumeration here.
+
+    Two per-round optimisations keep the selection and its tie-break IDENTICAL to
+    ``float_paths`` (verified byte-for-byte on a 500-DAG corpus, W4-03) while
+    removing its redundant work:
+
+    * the feeder walk from a predecessor ``p`` is MEMOISED by ``p.uid`` — it depends
+      only on ``used`` (fixed within the round), identical for every attachment; and
+    * an attachment activity is examined at most ONCE per round (``seen_attach``).
+      ``float_paths`` keys a candidate by ``(feeder rel, p.code)`` — INDEPENDENT of
+      which found path the attachment sits on — and keeps the first-seen among equal
+      keys.  A shared merge activity (e.g. the target) recurs as a step on many found
+      paths; re-examining it from a later found path only regenerates equal-key
+      candidates that the first-seen tie-break already discards, so skipping them
+      cannot change the winner.  This turns an O(paths·merge-degree) re-scan of a
+      wide near-critical fan into O(activities) per round.
+
+    Yields ``(native_rel_float_days, FloatPath, frozenset_of_used_uids)``.  The
+    used-set snapshot is ``float_paths``'s OWN cumulative used set AFTER the yielded
+    path; every not-yet-yielded path's unique members are a subset of the unused
+    activities, so a caller can derive a sound lower bound on every future path's
+    margin from ``reachable − used`` (used by the FCBI convergence frontier)."""
+    if not schedule.relationships:
+        return
+    target = _resolve_target(schedule, target_uid)
+    if target is None:
+        return
+    all_uids = {a.uid for a in schedule.activities.values()}
+    steps1 = _walk(schedule, target, tolerance_hours, allowed=all_uids)
+    if len(steps1) < 2:
+        return
+    used = {s.activity.uid for s in steps1}
+    found: list[list[PathStep]] = [steps1]
+    fp1 = _finalize_path(schedule, 1, steps1, used.copy())
+    yield fp1.rel_float_days, fp1, frozenset(used)
+    rank = 1
+
+    while True:
+        # per-round memo: p.uid -> (native_rel, feeder_steps) or None.  The walk
+        # from p depends only on ``used`` (fixed within a round), so it is identical
+        # across every attachment X — computing it once cannot change the selection.
+        memo: dict = {}
+        # ``float_paths`` walks each feeder with allowed = (all_uids - used) | {p.uid};
+        # every candidate ``p`` here is already unused (checked below), so that set is
+        # exactly ``all_uids - used`` for the whole round — build it once (read-only).
+        allowed_round = all_uids - used
+
+        def _feeder(p):
+            cached = memo.get(p.uid, _MISS)
+            if cached is not _MISS:
+                return cached
+            feeder = _walk(schedule, p, tolerance_hours, allowed=allowed_round)
+            if not feeder:
+                memo[p.uid] = None
+                return None
+            fvals = [s.total_float_days for s in feeder if s.total_float_days is not None]
+            res = (min(fvals) if fvals else 1e9, feeder)
+            memo[p.uid] = res
+            return res
+
+        best = None                          # (key, feeder, tail, feeder_uids)
+        seen_attach: set[str] = set()        # attachment activities handled this round
+        for fp in found:
+            for idx, step in enumerate(fp):
+                X = step.activity
+                if X.uid in seen_attach:     # first-seen (found, idx) already covers X;
+                    continue                 # later occurrences only re-tie, never win
+                seen_attach.add(X.uid)
+                for r in schedule.predecessors_of(X.uid):
+                    p = schedule.activities.get(r.pred_uid)
+                    if p is None or p.uid in used:
+                        continue
+                    fr = _feeder(p)
+                    if fr is None:
+                        continue
+                    rel, feeder0 = fr
+                    key = (rel, p.code)
+                    if best is None or key < best[0]:
+                        # attach the connecting rel p->X to a COPY of the head (the
+                        # memoised feeder is shared across attachments; the head's
+                        # float — hence ``rel`` — is unchanged by this annotation)
+                        feeder = list(feeder0)
+                        sat = _is_satisfied(schedule, p, X, r, tolerance_hours)
+                        feeder[-1] = _make_step(schedule, p, r, sat)
+                        best = (key, feeder, fp[idx:],
+                                {s.activity.uid for s in feeder})
+        if best is None:
+            break
+        _key, feeder, tail, feeder_uids = best
+        rank += 1
+        full = feeder + tail
+        fp = _finalize_path(schedule, rank, full, feeder_uids)
+        found.append(full)
+        used |= feeder_uids
+        yield fp.rel_float_days, fp, frozenset(used)
+
 
 
 # --------------------------------------------------------------------------

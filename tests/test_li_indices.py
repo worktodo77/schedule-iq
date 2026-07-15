@@ -18,8 +18,8 @@ sys.path.insert(0, SRC)
 
 from scheduleiq.ingest import load_many                             # noqa: E402
 from scheduleiq.ingest.model import (Activity, ActivityStatus,      # noqa: E402
-                                     ActivityType, ConstraintType,
-                                     Schedule)
+                                     ActivityType, ConstraintType, RelType,
+                                     Relationship, Schedule)
 from scheduleiq.compare.diff import compare                         # noqa: E402
 from scheduleiq.trend.series import SeriesAnalysis, analyze_series  # noqa: E402
 from scheduleiq.analytics.li_indices import (                       # noqa: E402
@@ -58,188 +58,312 @@ def test_kernel_weights_closed_form():
     assert kernel_weight(-5.0, 5.0) == pytest.approx(2.0)
 
 
-# ==================================================================== FCBI
-def test_fcbi_burns_across_series(indices):
-    fcbi = indices.fcbi
+# ============================================ FCBI v0.5 (LI-01 governed O1-O7)
+# Probe set §P of the LI-01 v0.5 revision, built as hand-built in-memory series.
+# Every activity carries a finish date so float_paths enumerates a real path to
+# the target milestone m (the v0.5 distance basis, ruling O1).
+from datetime import timedelta                                      # noqa: E402
+
+_H = 8.0
+_DFIN = datetime(2025, 6, 30, 17)
+
+
+def _a(uid, code, tf_days, *, atype=ActivityType.TASK,
+       status=ActivityStatus.NOT_STARTED, constraint=ConstraintType.NONE,
+       cdate=None, od=10, rem=10, ef=_DFIN, af=None, tf_hours=None, xf=None):
+    return Activity(uid=uid, code=code, atype=atype, status=status,
+                    total_float_hours=(tf_hours if tf_hours is not None
+                                       else (None if tf_days is None else tf_days * _H)),
+                    original_duration_hours=od * _H, remaining_duration_hours=rem * _H,
+                    early_start=(ef - timedelta(days=od)) if ef else None,
+                    early_finish=ef, actual_finish=af, constraint=constraint,
+                    constraint_date=cdate, expected_finish=xf)
+
+
+def _m(uid, code, tf_days=0.0, constraint=ConstraintType.NONE, cdate=None, ef=_DFIN):
+    return _a(uid, code, tf_days, atype=ActivityType.FINISH_MILESTONE, od=0, rem=0,
+              constraint=constraint, cdate=cdate, ef=ef)
+
+
+def _s(dd, acts, rels):
+    sc = Schedule(project_id="P", data_date=dd, activities={a.uid: a for a in acts})
+    sc.relationships = list(rels)
+    return sc
+
+
+def _fcbi(scheds, target="T"):
+    css = [compare(scheds[i], scheds[i + 1]) for i in range(len(scheds) - 1)]
+    sa = SeriesAnalysis(schedules=scheds, changesets=css)
+    return run_li_indices(sa, fcbi_target=target).fcbi
+
+
+def test_fcbi_demo_series_v05(series):
+    """v0.5 on the seeded three-update demo (target = A1200, the constrained
+    completion deadline).  Window 1 is operational with positive gross burn and
+    a computed coverage; window 2 correctly fires the basis-change gate (the
+    fixture flips retained-logic and edits a calendar in update 2) and is
+    segmented out of the operational trend (ruling O7.9)."""
+    fcbi = run_li_indices(series, fcbi_target="A1200").fcbi
     assert fcbi.reason == ""
-    # seeded float erosion => strictly positive burn in every window
-    assert fcbi.windows and all(w.fcbi > 0 for w in fcbi.windows)
-    # cumulative curve is non-decreasing (burn is never netted down)
-    cum = fcbi.cumulative
-    assert cum == sorted(cum)
-    assert cum[-1] > 0
-    # recovery tracked separately and never negative
-    assert all(w.fcbi_recovery >= 0 for w in fcbi.windows)
-    # a non-empty, contribution-ranked top-burner decomposition
+    assert fcbi.target_code == "A1200"
+    w0 = fcbi.windows[0]
+    assert not w0.basis_change and w0.burn_gross > 0
+    assert w0.coverage is not None and 0.0 < w0.coverage <= 1.0
+    assert w0.burn_rate is not None and w0.working_days is not None
+    # B is unweighted gross; W = B*C is the weighted diagnostic
+    assert w0.burn_weighted == pytest.approx(w0.burn_gross * w0.burn_proximity)
+    # update 2 changed the scheduling basis -> basis-change window, segmented
+    w1 = fcbi.windows[1]
+    assert w1.basis_change and w1.basis_change_reasons
+    assert fcbi.cumulative_burn[1] is None
+    # decomposition ranked by weighted contribution; no weight exceeds 1 (O1)
     assert fcbi.top_burners
-    contribs = [b.contribution for b in fcbi.top_burners]
-    assert contribs == sorted(contribs, reverse=True)
+    assert all(0.0 < b.weight <= 1.0 and b.distance_days >= 0.0
+               for b in fcbi.top_burners)
 
 
-def test_fcbi_exact_two_update_pair():
-    """Two updates, no logic (so RF = each activity's own total float).  Weight
-    uses min(RF_(u-1), RF_u) per the audit item-3 ruling; expected values are
-    expressed through kernel_weight so the arithmetic is self-documenting:
-        X: 0d -> -3d  burn 3d, w = 2^-(min(0,-3)/5)  = 2^(3/5)
-        Y: 5d -> +9d  recovery 4d, w = 2^-(min(5,9)/5) = 2^-1 = 0.50
-        Z: 10d -> 8d  burn 2d, w = 2^-(min(10,8)/5)  = 2^-(8/5)
-        FCBI+  = 3*w_X + 2*w_Z
-        FCBI-  = 4*w_Y
-        FCBI%  = 100 * FCBI+ / (5*w_Y + 10*w_Z)   (X's TF=0 excluded from stock)
+def test_fcbi_p1_worked_example():
+    """P1 — X(0->-3 driver), Y(5->9 recovery), Z(10->8).  v0.5 must give
+    X d=0, Z d=10, no weight above 1.0; B=5, C=0.7, W=B*C=3.5."""
+    rels = [Relationship("X", "T"), Relationship("Y", "T"), Relationship("Z", "T")]
+    e = _s(datetime(2025, 1, 6, 8),
+           [_a("X", "X", 0.0), _a("Y", "Y", 5.0), _a("Z", "Z", 10.0), _m("T", "T", 0.0)], rels)
+    l = _s(datetime(2025, 2, 6, 8),
+           [_a("X", "X", -3.0), _a("Y", "Y", 9.0), _a("Z", "Z", 8.0), _m("T", "T", -3.0)], rels)
+    w = _fcbi([e, l]).windows[0]
+    byc = {b.code: b for b in w.top_burners}
+    assert byc["X"].distance_days == pytest.approx(0.0)      # driver
+    assert byc["Z"].distance_days == pytest.approx(10.0)     # 10 - 0
+    assert all(b.weight <= 1.0 for b in w.top_burners)       # no over-critical premium
+    assert w.burn_gross == pytest.approx(5.0)                # B = c_X(3) + c_Z(2)
+    assert w.burn_proximity == pytest.approx(0.7)            # C = (3*1 + 2*0.25)/5
+    assert w.burn_weighted == pytest.approx(3.5)             # W = B*C = old weighted sum
+    assert w.recov_gross == pytest.approx(4.0)               # Y regained 4d
+    assert w.recov_proximity == pytest.approx(0.5)           # C- = w(d_Y=5)
+
+
+def _p2(dd, qtf):
+    r = [Relationship("D", "T"), Relationship("Q", "T")]
+    return _s(dd, [_a("D", "D", 0.0), _a("Q", "Q", qtf, od=30, rem=30), _m("T", "T", 0.0)], r)
+
+
+def test_fcbi_p2_monotonic_cadence():
+    """P2 — d 10->0, c=10, one window vs two.  The min-endpoint timing is
+    cadence-dependent (10 as one window, 7.5 as two): the counterexample that
+    supersedes the v0.4.2 min-RF ruling (O3)."""
+    one = _fcbi([_p2(datetime(2025, 1, 6, 8), 10.0),
+                 _p2(datetime(2025, 2, 6, 8), 0.0)]).windows[0]
+    assert one.timing.start == pytest.approx(2.5)
+    assert one.timing.end == pytest.approx(10.0)
+    assert one.timing.min_endpoint == pytest.approx(10.0)
+    two = _fcbi([_p2(datetime(2025, 1, 6, 8), 10.0), _p2(datetime(2025, 1, 20, 8), 5.0),
+                 _p2(datetime(2025, 2, 6, 8), 0.0)])
+    assert sum(x.timing.start for x in two.windows) == pytest.approx(3.75)
+    assert sum(x.timing.end for x in two.windows) == pytest.approx(7.5)
+    assert sum(x.timing.min_endpoint for x in two.windows) == pytest.approx(7.5)
+
+
+def test_fcbi_p3_identity_w_equals_b_times_c():
+    """P3 — W = B*C on any fixture window with positive burn."""
+    w = _fcbi([_p2(datetime(2025, 1, 6, 8), 10.0),
+               _p2(datetime(2025, 2, 6, 8), 4.0)]).windows[0]
+    assert w.burn_gross > 0
+    assert w.burn_weighted == pytest.approx(w.burn_gross * w.burn_proximity)
+
+
+def test_fcbi_p4_sensitivity_set_not_bounds():
+    """P4 — opposite-direction burners (moving driver): the min-endpoint
+    aggregate strictly EXCEEDS both endpoint aggregates, proving the
+    endpoint-timing set is a sensitivity set, not a band/bounds (O3)."""
+    def p4(dd, dr, a_tf, b_tf):
+        r = [Relationship("DR", "T"), Relationship("A", "T"), Relationship("B", "T")]
+        return _s(dd, [_a("DR", "DR", dr, od=40, rem=40), _a("A", "A", a_tf, od=40, rem=40),
+                       _a("B", "B", b_tf, od=40, rem=40), _m("T", "T", 0.0)], r)
+    w = _fcbi([p4(datetime(2025, 1, 6, 8), 0.0, 8.0, 12.0),
+               p4(datetime(2025, 2, 6, 8), -20.0, 2.0, -19.0)]).windows[0]
+    assert w.timing.min_endpoint > w.timing.start + 1e-6
+    assert w.timing.min_endpoint > w.timing.end + 1e-6
+
+
+def test_fcbi_p5_zero_burn_c_not_applicable():
+    """P5 — zero-burn window: C reported NOT APPLICABLE with a labelled
+    reason, never 0 (O2)."""
+    w = _fcbi([_p2(datetime(2025, 1, 6, 8), 0.0),
+               _p2(datetime(2025, 2, 6, 8), 0.0)]).windows[0]
+    assert w.burn_gross == pytest.approx(0.0)
+    assert w.burn_proximity is None
+    assert "NOT APPLICABLE" in w.burn_proximity_reason
+
+
+def test_fcbi_p6_target_shift_basis_change():
+    """P6 — target completion date pulled 10d earlier on an otherwise unchanged
+    network: basis-change window fires, zero operational burn, requirement-
+    induced margin change reported separately (O7.9)."""
+    def p6(dd, cdate, ttf):
+        r = [Relationship("A", "T")]
+        return _s(dd, [_a("A", "A", 0.0),
+                       _m("T", "T", ttf, constraint=ConstraintType.MANDATORY_FINISH,
+                          cdate=cdate)], r)
+    res = _fcbi([p6(datetime(2025, 1, 6, 8), _DFIN, 0.0),
+                 p6(datetime(2025, 2, 6, 8), _DFIN - timedelta(days=10), -10.0)])
+    w = res.windows[0]
+    assert w.basis_change and w.basis_change_reasons
+    assert w.burn_gross == pytest.approx(0.0)               # zero execution erosion
+    assert res.cumulative_burn[0] is None                    # segmented out of trend
+    assert w.requirement_margin_change == pytest.approx(10.0)
+    assert w.n_severity == pytest.approx(10.0)               # target 10d negative
+
+
+def test_fcbi_p7_propagated_governance_quarantine():
+    """P7 — A -> M(constrained) -> completion.  A carries no constraint of its
+    own, but its late dates are governed by M; predicate (3) routes A's burn to
+    quarantine and coverage reflects it (O6)."""
+    def p7(dd, atf):
+        r = [Relationship("A", "M"), Relationship("M", "C")]
+        return _s(dd, [_a("A", "A", atf, od=10, rem=10),
+                       _m("M", "M", 0.0, constraint=ConstraintType.MANDATORY_FINISH,
+                          ef=_DFIN - timedelta(days=5)),
+                       _m("C", "C", 5.0, ef=_DFIN)], r)
+    w = _fcbi([p7(datetime(2025, 1, 6, 8), 2.0),
+               p7(datetime(2025, 2, 6, 8), -1.0)], target="C").windows[0]
+    assert "A" in {q.code for q in w.quarantine}
+    assert "A" not in {b.code for b in w.top_burners}
+    assert w.coverage is not None and w.coverage < 1.0
+    assert w.quarantine_burn > 0
+
+
+def test_fcbi_p8_split_changes_b():
+    """P8 — subdividing a burning activity changes B: the disclosed granularity
+    property (B is a gross activity-day aggregate, not a stock, O2)."""
+    def whole(dd, tf):
+        r = [Relationship("D", "T"), Relationship("W", "T")]
+        return _s(dd, [_a("D", "D", 0.0), _a("W", "W", tf, od=20, rem=20), _m("T", "T", 0.0)], r)
+    def split(dd, tf):
+        r = [Relationship("D", "T"), Relationship("W1", "T"), Relationship("W2", "T")]
+        return _s(dd, [_a("D", "D", 0.0), _a("W1", "W1", tf, od=10, rem=10),
+                       _a("W2", "W2", tf, od=10, rem=10), _m("T", "T", 0.0)], r)
+    bw = _fcbi([whole(datetime(2025, 1, 6, 8), 4.0), whole(datetime(2025, 2, 6, 8), 0.0)]).windows[0]
+    bs = _fcbi([split(datetime(2025, 1, 6, 8), 4.0), split(datetime(2025, 2, 6, 8), 0.0)]).windows[0]
+    assert bw.burn_gross != pytest.approx(bs.burn_gross)
+
+
+def test_fcbi_p9_unequal_windows_burn_rate():
+    """P9 — unequal windows (21d, ~90d): burn-rate normalization present in
+    every window's output (O7.10)."""
+    r9 = _fcbi([_p2(datetime(2025, 1, 6, 8), 10.0), _p2(datetime(2025, 2, 4, 8), 6.0),
+                _p2(datetime(2025, 6, 9, 8), 0.0)])
+    assert all(x.burn_rate is not None and x.working_days is not None for x in r9.windows)
+    assert r9.windows[0].working_days != pytest.approx(r9.windows[1].working_days)
+
+
+def test_fcbi_p10_tier1_tolerance():
+    """P10 — sub-precision hour jitter (< Tier-1 hour tolerance) produces zero
+    burn; tolerance applied in HOURS before the hour->day conversion (O4)."""
+    def p10(dd, tf_hours):
+        r = [Relationship("D", "T"), Relationship("J", "T")]
+        return _s(dd, [_a("D", "D", 0.0), _a("J", "J", None, tf_hours=tf_hours),
+                       _m("T", "T", 0.0)], r)
+    w = _fcbi([p10(datetime(2025, 1, 6, 8), 40.0),
+               p10(datetime(2025, 2, 6, 8), 40.0 - 0.25)]).windows[0]   # 0.25h < 0.5h tol
+    assert w.burn_gross == pytest.approx(0.0)
+
+
+def test_fcbi_p11_completion_omission():
+    """P11 — an activity burning 15d then completing in-window appears in the
+    completion-omission diagnostic with prior float and weight, and NOT in B
+    (O5)."""
+    def p11(dd, btf, done):
+        r = [Relationship("B", "T"), Relationship("L", "T")]
+        b = _a("B", "B", btf, od=20, rem=(0 if done else 20),
+               status=ActivityStatus.COMPLETED if done else ActivityStatus.NOT_STARTED,
+               af=datetime(2025, 1, 20, 17) if done else None)
+        return _s(dd, [b, _a("L", "L", 2.0, od=10, rem=10), _m("T", "T", 0.0)], r)
+    w = _fcbi([p11(datetime(2025, 1, 6, 8), 5.0, False),
+               p11(datetime(2025, 2, 6, 8), -10.0, True)]).windows[0]
+    co = {c.code: c for c in w.completion_omission}
+    assert "B" in co
+    assert co["B"].prior_pos_float_days == pytest.approx(5.0)
+    assert co["B"].prior_weight is not None
+    assert "B" not in {b.code for b in w.top_burners}       # excluded from B
+    assert w.completed_in_window == 1
+
+
+def test_fcbi_worked_example_anchor_v05():
+    """The v0.5 worked-example regression anchor (supersedes X/Y/Z; the briefing
+    exhibit).  Exercises a d=0 driver, a governed->quarantined activity,
+    coverage < 100%, and the N/dN+ negative-float severity output.
+
+        DRV : TF 0 -> -4  driver, d=0, w=1        (eligible burn 4)
+        NEAR: TF 5 -> 2   near-critical, d=5, w=0.5 (eligible burn 3)
+        GOV : TF 1 -> -2  governed by GATE(MANDFIN) -> quarantined (burn 3)
+        COMP: TF 0 -> -4  target terminal -> N=4, dN+=4
+    B = 4+3 = 7 ; W = 4*1 + 3*0.5 = 5.5 ; C = 5.5/7 ; coverage = 7/(7+3) = 0.7
     """
-    def act(uid, code, tf_hours):
-        return Activity(uid=uid, code=code, atype=ActivityType.TASK,
-                        total_float_hours=tf_hours)
+    rels = [Relationship("DRV", "COMP"), Relationship("NEAR", "COMP"),
+            Relationship("GOV", "GATE"), Relationship("GATE", "COMP")]
 
-    earlier = Schedule(project_id="SYN", data_date=datetime(2025, 1, 6, 8),
-                       activities={a.uid: a for a in
-                                   [act("X", "X", 0.0), act("Y", "Y", 40.0),
-                                    act("Z", "Z", 80.0)]})
-    later = Schedule(project_id="SYN", data_date=datetime(2025, 2, 6, 8),
-                     activities={a.uid: a for a in
-                                 [act("X", "X", -24.0), act("Y", "Y", 72.0),
-                                  act("Z", "Z", 64.0)]})
-    sa = SeriesAnalysis(schedules=[earlier, later],
-                        changesets=[compare(earlier, later)])
-    w_X, w_Y, w_Z = kernel_weight(-3, 5), kernel_weight(5, 5), kernel_weight(8, 5)
-    exp_fcbi = 3 * w_X + 2 * w_Z
-    exp_rec = 4 * w_Y
-    exp_pct = 100.0 * exp_fcbi / (5 * w_Y + 10 * w_Z)
-    w = run_li_indices(sa).fcbi.windows[0]
-    assert w.fcbi == pytest.approx(exp_fcbi)          # ~5.2069
-    assert w.fcbi_recovery == pytest.approx(exp_rec)  # 2.0
-    assert w.fcbi_pct == pytest.approx(exp_pct)       # ~89.793
-
-
-# ---- audit governance-quartet tests (FCBI_audit_2026-07-08.md) --------------
-def _syn(uid_tf, status=None, rels=None):
-    """Build a one-schedule Schedule from {code: tf_hours}; optional per-code
-    status dict and relationship list (pred_code, succ_code)."""
-    from scheduleiq.ingest.model import Calendar, Relationship, RelType
-    cal = Calendar(uid="1", name="5d", hours_per_day=8.0, is_default=True)
-    s = Schedule(project_id="SYN", data_date=datetime(2025, 1, 6, 8))
-    s.calendars = {"1": cal}
-    for code, tf in uid_tf.items():
-        st = (status or {}).get(code, ActivityStatus.NOT_STARTED)
-        a = Activity(uid=code, code=code, name=code, atype=ActivityType.TASK,
-                     status=st, calendar_uid="1", total_float_hours=tf,
-                     original_duration_hours=80.0, remaining_duration_hours=80.0,
-                     early_start=datetime(2025, 1, 1), early_finish=datetime(2025, 2, 1),
-                     planned_start=datetime(2025, 1, 1), planned_finish=datetime(2025, 2, 1))
-        if st == ActivityStatus.COMPLETED:
-            a.actual_start, a.actual_finish = datetime(2025, 1, 2), datetime(2025, 1, 20)
-        s.activities[code] = a
-    for pc, sc in (rels or []):
-        s.relationships.append(Relationship(pred_uid=pc, succ_uid=sc,
-                                            rtype=RelType.FS, lag_hours=0.0))
-    return s
+    def build(dd, drv, near, gov, comp):
+        return _s(dd, [_a("DRV", "DRV", drv), _a("NEAR", "NEAR", near),
+                       _a("GOV", "GOV", gov),
+                       _m("GATE", "GATE", 0.0, constraint=ConstraintType.MANDATORY_FINISH,
+                          ef=_DFIN - timedelta(days=2)),
+                       _m("COMP", "COMP", comp, ef=_DFIN)], rels)
+    w = _fcbi([build(datetime(2025, 3, 3, 8), 0.0, 5.0, 1.0, 0.0),
+               build(datetime(2025, 4, 7, 8), -4.0, 2.0, -2.0, -4.0)], target="COMP").windows[0]
+    byc = {b.code: b for b in w.top_burners}
+    assert byc["DRV"].distance_days == pytest.approx(0.0) and byc["DRV"].weight == pytest.approx(1.0)
+    assert byc["NEAR"].distance_days == pytest.approx(5.0)
+    assert w.burn_gross == pytest.approx(7.0)
+    assert w.burn_weighted == pytest.approx(5.5)
+    assert w.burn_proximity == pytest.approx(5.5 / 7.0)
+    assert w.coverage == pytest.approx(0.7)
+    assert w.quarantine_burn == pytest.approx(3.0)
+    assert "GOV" in {q.code for q in w.quarantine}
+    assert w.n_severity == pytest.approx(4.0) and w.n_deepening == pytest.approx(4.0)
 
 
-def _fcbi_of(*scheds):
-    sa = SeriesAnalysis(schedules=list(scheds),
-                        changesets=[compare(scheds[i], scheds[i + 1])
-                                    for i in range(len(scheds) - 1)])
-    return run_li_indices(sa).fcbi
+
+def test_fcbi_target_recode_is_uid_invariant():
+    """A UID-stable target re-code must not change the FCBI target basis."""
+    rels = [Relationship("A", "T")]
+    e = _s(datetime(2025, 1, 6, 8),
+           [_a("A", "A", 0.0), _m("T", "T", 0.0)], rels)
+    l = _s(datetime(2025, 2, 6, 8),
+           [_a("A", "A", -4.0), _m("T", "T-RECODED", -4.0)],
+           [Relationship("A", "T")])
+    r = _fcbi([e, l], target="T")
+    assert r.reason == ""
+    assert r.windows[0].burn_gross == pytest.approx(4.0)
+    assert r.windows[0].top_burners[0].weight == pytest.approx(1.0)
 
 
-def test_fcbi_item1_completed_excluded_and_exporter_invariant():
-    """Item 1 — an activity that burns then completes must contribute ZERO to
-    both burn and recovery, and must score identically whether the exporter
-    wrote TF=0 or TF=null for the completed activity (no phantom burn)."""
-    e = _syn({"A": 120.0, "B": 0.0}, rels=[("A", "B")])
-    comp0 = _syn({"A": 0.0, "B": 0.0},
-                 status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
-    compN = _syn({"A": None, "B": 0.0},
-                 status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
-    w0 = _fcbi_of(e, comp0).windows[0]
-    wN = _fcbi_of(e, compN).windows[0]
-    assert w0.fcbi == pytest.approx(0.0) and w0.fcbi_recovery == pytest.approx(0.0)
-    assert wN.fcbi == pytest.approx(w0.fcbi)
-    assert wN.fcbi_recovery == pytest.approx(w0.fcbi_recovery)
-    # recovery side too: a completed activity that "regained" float is excluded
-    e2 = _syn({"A": 40.0, "B": 0.0}, rels=[("A", "B")])
-    l2 = _syn({"A": 200.0, "B": 0.0},
-              status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
-    assert _fcbi_of(e2, l2).windows[0].fcbi_recovery == pytest.approx(0.0)
-
-
-def test_fcbi_item3_weight_uses_min_over_window():
-    """Item 3 — A (its path's min-float member via a floaty target Z) goes
-    RF 20d -> 0d while burning 20d.  min(20,0)=0 -> weight 1.0 -> contribution
-    20.0 (start-of-window weighting would give 2^-4 = 0.0625 -> 1.25)."""
-    from scheduleiq.ingest.model import Relationship, RelType
-    def s(tf_a):
-        sc = _syn({"A": tf_a, "Z": 200.0})
-        sc.activities["A"].early_finish = datetime(2025, 2, 1)
-        sc.activities["Z"].early_finish = datetime(2025, 3, 1)   # Z resolves as target
-        sc.activities["Z"].planned_finish = datetime(2025, 3, 1)
-        sc.relationships.append(Relationship(pred_uid="A", succ_uid="Z",
-                                            rtype=RelType.FS, lag_hours=0.0))
-        return sc
-    b = _fcbi_of(s(160.0), s(0.0)).windows[0].top_burners[0]
-    assert b.code == "A"
-    assert b.weight == pytest.approx(1.0)
-    assert b.contribution == pytest.approx(20.0)
-
-
-def test_fcbi_item4_rf_basis_falls_back_to_own_float_when_no_path():
-    """Item 4 (reproducibility lock) — a tied target-finish yields a <2-step
-    walk, float_paths()==[] , and RF falls back to each activity's OWN total
-    float rather than a shared path minimum."""
-    from scheduleiq.analytics.li_indices import _build_kernel
-    from scheduleiq.ingest.model import Relationship, RelType
-    sc = _syn({"A": 160.0, "Z": 200.0})           # both finish 2025-02-01 (tie)
-    sc.relationships.append(Relationship(pred_uid="A", succ_uid="Z",
-                                        rtype=RelType.FS, lag_hours=0.0))
-    k = _build_kernel(sc, 5.0)
-    assert k.rf["A"] == pytest.approx(20.0)        # own float, not a path min
-    assert k.rf["Z"] == pytest.approx(25.0)
-
-
-def test_fcbi_item5_windowing_not_additive():
-    """Item 5 — TF 10 -> 0 -> 10 : per-window FCBI+ total is 10 (burn then
-    regain), endpoint-only is 0 (net dTF zero).  Locks the intended
-    non-additive semantics."""
-    u0 = _syn({"A": 80.0, "Z": 0.0}, rels=[("A", "Z")])
-    u1 = _syn({"A": 0.0, "Z": 0.0}, rels=[("A", "Z")])
-    u2 = _syn({"A": 80.0, "Z": 0.0}, rels=[("A", "Z")])
-    per_window = sum(w.fcbi for w in _fcbi_of(u0, u1, u2).windows)
-    endpoint = sum(w.fcbi for w in _fcbi_of(u0, u2).windows)
-    assert per_window == pytest.approx(10.0)
-    assert endpoint == pytest.approx(0.0)
-
-
-def test_fcbi_item2_pct_undefined_is_labelled_not_bare_none():
-    """Item 2 — all-negative float stock: FCBI% is None but carries the
-    labelled reason, and absolute FCBI+ is still reported."""
-    e = _syn({"A": -40.0, "B": -80.0}, rels=[("A", "B")])
-    l = _syn({"A": -80.0, "B": -120.0}, rels=[("A", "B")])
-    w = _fcbi_of(e, l).windows[0]
-    assert w.fcbi_pct is None
-    assert w.pct_undefined_reason and "undefined" in w.pct_undefined_reason
-    assert w.fcbi > 0
-
-
-def test_fcbi_crossindex_completed_excluded_by_fcbi_kept_by_cdi():
-    """Item 1b lock — a near-critical activity completing in-window is excluded
-    from FCBI burn but still earns CDI dwell (retrospective vs live-work)."""
-    e = _syn({"A": 40.0, "B": 0.0}, rels=[("A", "B")])
-    l = _syn({"A": 0.0, "B": 0.0},
-             status={"A": ActivityStatus.COMPLETED}, rels=[("A", "B")])
-    sa = SeriesAnalysis(schedules=[e, l], changesets=[compare(e, l)])
-    res = run_li_indices(sa)
-    assert all("A" not in {b.code for b in w.top_burners} for w in res.fcbi.windows)
-    assert "A" in {row.code for row in res.cdi.leaderboard}
-
-
-def test_fcbi_disclosures_present():
-    e = _syn({"A": 80.0, "B": 0.0}, rels=[("A", "B")])
-    l = _syn({"A": 0.0, "B": 0.0}, rels=[("A", "B")])
-    res = _fcbi_of(e, l)
-    assert len(res.disclosures) == 5
-    joined = " ".join(res.disclosures)
-    assert "Completed activities are excluded" in joined
-    assert "min(RF_(u-1), RF_u)" in joined
+def test_fcbi_mixed_calendar_frontier_matches_exhaustive():
+    """Fixed-reference-hour frontier agrees with exhaustive paths across
+    different native calendars."""
+    from scheduleiq.ingest.model import Calendar
+    from scheduleiq.analytics.paths import float_paths
+    from scheduleiq.analytics.li_indices import _target_distance, REFERENCE_HPD
+    e = _s(datetime(2025, 1, 6, 8),
+           [_a("D", "D", 0.0), _a("F", "F", 6.0, od=20),
+            _a("G", "G", 18.0, od=20), _m("T", "T", 0.0)],
+           [Relationship("D", "T"), Relationship("F", "T"),
+            Relationship("G", "T")])
+    e.calendars = {
+        "c5": Calendar(uid="c5", name="5d", hours_per_day=5.0, is_default=True),
+        "c10": Calendar(uid="c10", name="10d", hours_per_day=10.0),
+    }
+    e.activities["F"].calendar_uid = "c5"
+    e.activities["G"].calendar_uid = "c10"
+    dist, dm, _tm, capped = _target_distance(e, "T")
+    paths = float_paths(e, target_uid="T", n=128, band_days=None)
+    assert paths and not capped and dm is not None
+    oracle = {}
+    for p in paths:
+        d = max(0.0, p.rel_float_hours / REFERENCE_HPD - dm)
+        for a in p.activities:
+            if not a.is_loe_or_summary:
+                oracle[a.uid] = min(oracle.get(a.uid, d), d)
+    assert all(dist.get(uid) == pytest.approx(value) for uid, value in oracle.items())
 
 
 # ===================================================================== PCI

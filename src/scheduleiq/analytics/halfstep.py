@@ -48,7 +48,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional
 
 from ..ingest.model import Activity, Relationship, Schedule
-from ..compare.diff import ChangeSet, compare
+from ..compare.diff import ChangeSet, compare, match_activity
 from ..cpm.bridge import build_engine_inputs
 from ..cpm.calendar_ops import build_workday_table, nearest_workday_index
 from ..cpm.handshake import (HandshakeRefusal, require_valid_handshake,
@@ -295,12 +295,13 @@ def _overlay_progress(hs: Schedule, later: Schedule, disclosures: list[str]) -> 
     settings) is untouched.  New-in-later activities are NOT added (they are
     revisions); deleted-in-later activities keep the earlier state unprogressed.
     Unmatched activities on both sides are disclosed."""
-    later_by_code = {a.code: a for a in later.activities.values()}
-    later_by_uid = {a.uid: a for a in later.activities.values()}
     matched_later: set[str] = set()
     unmatched_earlier: list[str] = []
     for a in hs.activities.values():
-        la = later_by_code.get(a.code) or later_by_uid.get(a.uid)
+        # R-ID: the copied earlier activity is the identity anchor.  A stable
+        # re-code must still receive the later progress fields; code is only the
+        # legacy fallback provided by match_activity.
+        la = match_activity(later, a)
         if la is None:
             unmatched_earlier.append(a.code)
             continue
@@ -334,31 +335,51 @@ def _overlay_progress(hs: Schedule, later: Schedule, disclosures: list[str]) -> 
 class _Edit:
     label: str
     apply: Callable[[Schedule], None]
+    subject_uid: Optional[str] = None
 
 
-def _ing_rel_from(later: Schedule, r: Relationship, code_to_uid: dict[str, str]
+def _identity_key(a: Activity) -> tuple[str, str]:
+    """Stable activity key for revision translation (UID, then legacy code)."""
+    return ("uid", a.uid) if a.uid else ("code", a.code)
+
+
+def _change_key(uid: Optional[str], code: str) -> tuple[str, str]:
+    return ("uid", uid) if uid else ("code", code)
+
+
+def _find_by_identity(sched: Schedule, key: tuple[str, str]) -> Optional[Activity]:
+    if key[0] == "uid":
+        return sched.activities.get(key[1])
+    return _find_by_code(sched, key[1])
+
+
+def _relation_key(sched: Schedule, r: Relationship) -> tuple[tuple[str, str], tuple[str, str]]:
+    p = sched.activities.get(r.pred_uid)
+    q = sched.activities.get(r.succ_uid)
+    return (_identity_key(p) if p is not None else ("code", r.pred_uid),
+            _identity_key(q) if q is not None else ("code", r.succ_uid))
+
+
+def _ing_rel_from(later: Schedule, r: Relationship, hs: Schedule
                   ) -> Optional[Relationship]:
-    """Translate a ``later`` Relationship into a half-step Relationship, mapping
-    endpoints by code onto the half-step's uids.  None when an endpoint is not
-    present in the half-step."""
+    """Translate a later relationship into half-step UIDs, UID-first."""
     p = later.activities.get(r.pred_uid)
     q = later.activities.get(r.succ_uid)
     if p is None or q is None:
         return None
-    pu = code_to_uid.get(p.code)
-    qu = code_to_uid.get(q.code)
-    if pu is None or qu is None:
+    hp = match_activity(hs, p)
+    hq = match_activity(hs, q)
+    if hp is None or hq is None:
         return None
-    return Relationship(pred_uid=pu, succ_uid=qu, rtype=r.rtype, lag_hours=r.lag_hours)
+    return Relationship(pred_uid=hp.uid, succ_uid=hq.uid,
+                        rtype=r.rtype, lag_hours=r.lag_hours)
 
 
-def _rels_by_codes(sched: Schedule) -> dict[tuple[str, str], list[Relationship]]:
-    m: dict[tuple[str, str], list[Relationship]] = {}
+def _rels_by_identity(sched: Schedule) -> dict[tuple[tuple[str, str], tuple[str, str]], list[Relationship]]:
+    m: dict[tuple[tuple[str, str], tuple[str, str]], list[Relationship]] = {}
     for r in sched.relationships:
-        p = sched.activities.get(r.pred_uid)
-        q = sched.activities.get(r.succ_uid)
-        if p and q:
-            m.setdefault((p.code, q.code), []).append(r)
+        if sched.activities.get(r.pred_uid) and sched.activities.get(r.succ_uid):
+            m.setdefault(_relation_key(sched, r), []).append(r)
     return m
 
 
@@ -375,20 +396,20 @@ def _build_edits(earlier: Schedule, later: Schedule, cs: ChangeSet
         activity was added/deleted are attributed to ``new_activities`` /
         ``deleted_activities`` instead.
     """
-    e_codes = {a.code for a in earlier.activities.values()}
-    l_codes = {a.code for a in later.activities.values()}
-    both = e_codes & l_codes
-    later_keyed = _rels_by_codes(later)
-    earlier_keyed = _rels_by_codes(earlier)
-    later_by_code = {a.code: a for a in later.activities.values()}
+    e_keys = {_identity_key(a) for a in earlier.activities.values()}
+    l_keys = {_identity_key(a) for a in later.activities.values()}
+    both = e_keys & l_keys
+    later_keyed = _rels_by_identity(later)
+    later_by_key = {_identity_key(a): a for a in later.activities.values()}
 
     edits: dict[str, list[_Edit]] = {c: [] for c in _CLASS_ORDER}
 
     # ---- logic changes (relationships between activities present in both) ----
     added_keys, deleted_keys, modified_keys = [], [], []
     for c in cs.logic_changes:
-        key = (c.pred_code, c.succ_code)
-        if c.pred_code not in both or c.succ_code not in both:
+        key = (_change_key(getattr(c, "pred_uid", None), c.pred_code),
+               _change_key(getattr(c, "succ_uid", None), c.succ_code))
+        if key[0] not in both or key[1] not in both:
             continue  # touches an added/deleted activity -> handled by that class
         if c.kind == "added":
             added_keys.append(key)
@@ -403,105 +424,122 @@ def _build_edits(earlier: Schedule, later: Schedule, cs: ChangeSet
 
     def _mk_add(key):
         def _apply(hs: Schedule):
-            code_to_uid = {a.code: a.uid for a in hs.activities.values()}
             for r in later_keyed.get(key, []):
-                ir = _ing_rel_from(later, r, code_to_uid)
+                ir = _ing_rel_from(later, r, hs)
                 if ir is not None:
                     hs.relationships.append(ir)
         return _apply
 
     def _mk_del(key):
         def _apply(hs: Schedule):
-            uid_by_code = {a.code: a.uid for a in hs.activities.values()}
-            pu, qu = uid_by_code.get(key[0]), uid_by_code.get(key[1])
+            pa = _find_by_identity(hs, key[0])
+            qa = _find_by_identity(hs, key[1])
+            pu, qu = (pa.uid if pa else None), (qa.uid if qa else None)
             hs.relationships = [r for r in hs.relationships
                                 if not (r.pred_uid == pu and r.succ_uid == qu)]
         return _apply
 
     def _mk_mod(key):
         def _apply(hs: Schedule):
-            uid_by_code = {a.code: a.uid for a in hs.activities.values()}
-            pu, qu = uid_by_code.get(key[0]), uid_by_code.get(key[1])
+            pa = _find_by_identity(hs, key[0])
+            qa = _find_by_identity(hs, key[1])
+            pu, qu = (pa.uid if pa else None), (qa.uid if qa else None)
             hs.relationships = [r for r in hs.relationships
                                 if not (r.pred_uid == pu and r.succ_uid == qu)]
-            code_to_uid = uid_by_code
             for r in later_keyed.get(key, []):
-                ir = _ing_rel_from(later, r, code_to_uid)
+                ir = _ing_rel_from(later, r, hs)
                 if ir is not None:
                     hs.relationships.append(ir)
         return _apply
 
     for key in added_keys:
-        edits["logic_added"].append(_Edit(f"add {key[0]}->{key[1]}", _mk_add(key)))
+        p = _find_by_identity(later, key[0]) or _find_by_identity(earlier, key[0])
+        q = _find_by_identity(later, key[1]) or _find_by_identity(earlier, key[1])
+        edits["logic_added"].append(
+            _Edit(f"add {p.code if p else key[0][1]}->{q.code if q else key[1][1]}",
+                  _mk_add(key), key[1][1]
+                  if key[1][0] == "uid" else None))
     for key in deleted_keys:
-        edits["logic_deleted"].append(_Edit(f"delete {key[0]}->{key[1]}", _mk_del(key)))
+        p = _find_by_identity(earlier, key[0]) or _find_by_identity(later, key[0])
+        q = _find_by_identity(earlier, key[1]) or _find_by_identity(later, key[1])
+        edits["logic_deleted"].append(
+            _Edit(f"delete {p.code if p else key[0][1]}->{q.code if q else key[1][1]}",
+                  _mk_del(key), key[1][1]
+                  if key[1][0] == "uid" else None))
     for key in modified_keys:
+        p = _find_by_identity(later, key[0]) or _find_by_identity(earlier, key[0])
+        q = _find_by_identity(later, key[1]) or _find_by_identity(earlier, key[1])
         edits["lag_type_changed"].append(
-            _Edit(f"modify {key[0]}->{key[1]}", _mk_mod(key)))
+            _Edit(f"modify {p.code if p else key[0][1]}->{q.code if q else key[1][1]}",
+                  _mk_mod(key), key[1][1]
+                  if key[1][0] == "uid" else None))
 
     # ---- duration (OD) changes -------------------------------------------
-    def _mk_od(code, new_hours):
+    def _mk_od(key, new_hours):
         def _apply(hs: Schedule):
-            for a in hs.activities.values():
-                if a.code == code:
-                    a.original_duration_hours = new_hours
+            a = _find_by_identity(hs, key)
+            if a is not None:
+                a.original_duration_hours = new_hours
         return _apply
 
     for fc in cs.duration_changes:
-        if fc.code not in both:
+        key = _change_key(getattr(fc, "uid", None), fc.code)
+        if key not in both:
             continue
-        la = later_by_code.get(fc.code)
+        la = later_by_key.get(key)
         if la is None:
             continue
         edits["duration_changed"].append(
             _Edit(f"OD {fc.code}: {fc.before}->{fc.after}",
-                  _mk_od(fc.code, la.original_duration_hours)))
+                  _mk_od(key, la.original_duration_hours), la.uid))
 
     # ---- calendar re-assignment ------------------------------------------
-    def _mk_cal(code, new_cal_uid):
+    def _mk_cal(key, new_cal_uid):
         def _apply(hs: Schedule):
             if new_cal_uid is not None and new_cal_uid not in hs.calendars \
                     and new_cal_uid in later.calendars:
                 hs.calendars[new_cal_uid] = copy.deepcopy(later.calendars[new_cal_uid])
-            for a in hs.activities.values():
-                if a.code == code:
-                    a.calendar_uid = new_cal_uid
+            a = _find_by_identity(hs, key)
+            if a is not None:
+                a.calendar_uid = new_cal_uid
         return _apply
 
     for fc in cs.calendar_changes:
-        if fc.code not in both:
+        key = _change_key(getattr(fc, "uid", None), fc.code)
+        if key not in both:
             continue
-        la = later_by_code.get(fc.code)
+        la = later_by_key.get(key)
         if la is None:
             continue
         edits["calendar_changed"].append(
             _Edit(f"calendar {fc.code}: {fc.before}->{fc.after}",
-                  _mk_cal(fc.code, la.calendar_uid)))
+                  _mk_cal(key, la.calendar_uid), la.uid))
 
     # ---- constraint changes ----------------------------------------------
-    def _mk_con(code, la: Activity):
+    def _mk_con(key, la: Activity):
         def _apply(hs: Schedule):
-            for a in hs.activities.values():
-                if a.code == code:
-                    a.constraint = la.constraint
-                    a.constraint_date = la.constraint_date
-                    a.constraint2 = la.constraint2
-                    a.constraint2_date = la.constraint2_date
+            a = _find_by_identity(hs, key)
+            if a is not None:
+                a.constraint = la.constraint
+                a.constraint_date = la.constraint_date
+                a.constraint2 = la.constraint2
+                a.constraint2_date = la.constraint2_date
         return _apply
 
     for fc in cs.constraint_changes:
-        if fc.code not in both:
+        key = _change_key(getattr(fc, "uid", None), fc.code)
+        if key not in both:
             continue
-        la = later_by_code.get(fc.code)
+        la = later_by_key.get(key)
         if la is None:
             continue
         edits["constraint_changed"].append(
             _Edit(f"constraint {fc.code}: {fc.before}->{fc.after}",
-                  _mk_con(fc.code, la)))
+                  _mk_con(key, la), la.uid))
 
     # ---- new activities (added activity + its incident relationships) -----
     def _add_new_activity(hs: Schedule, la: Activity):
-        if la.uid in hs.activities or _find_by_code(hs, la.code) is not None:
+        if la.uid in hs.activities or match_activity(hs, la) is not None:
             return
         na = copy.deepcopy(la)
         if na.calendar_uid is not None and na.calendar_uid not in hs.calendars \
@@ -510,36 +548,35 @@ def _build_edits(earlier: Schedule, later: Schedule, cs: ChangeSet
         hs.activities[na.uid] = na
         # wire in later's relationships that touch this new activity, where the
         # OTHER endpoint already exists in the half-step.
-        code_to_uid = {a.code: a.uid for a in hs.activities.values()}
         for r in later.relationships:
             p = later.activities.get(r.pred_uid)
             q = later.activities.get(r.succ_uid)
             if p is None or q is None:
                 continue
-            if la.code not in (p.code, q.code):
+            if la.uid not in (p.uid, q.uid):
                 continue
-            if p.code in code_to_uid and q.code in code_to_uid:
-                ir = _ing_rel_from(later, r, code_to_uid)
-                if ir is not None and not any(
-                        x.pred_uid == ir.pred_uid and x.succ_uid == ir.succ_uid
-                        and x.rtype == ir.rtype for x in hs.relationships):
-                    hs.relationships.append(ir)
+            ir = _ing_rel_from(later, r, hs)
+            if ir is not None and not any(
+                    x.pred_uid == ir.pred_uid and x.succ_uid == ir.succ_uid
+                    and x.rtype == ir.rtype for x in hs.relationships):
+                hs.relationships.append(ir)
 
-    def _mk_newact(code):
+    def _mk_newact(key):
         def _apply(hs: Schedule):
-            la = later_by_code.get(code)
+            la = later_by_key.get(key)
             if la is not None:
                 _add_new_activity(hs, la)
         return _apply
 
     for a in sorted(cs.added, key=lambda x: x.code):
+        key = _identity_key(a)
         edits["new_activities"].append(
-            _Edit(f"add activity {a.code}", _mk_newact(a.code)))
+            _Edit(f"add activity {a.code}", _mk_newact(key), a.uid))
 
     # ---- deleted activities (remove activity + its incident relationships) -
-    def _mk_delact(code):
+    def _mk_delact(source: Activity):
         def _apply(hs: Schedule):
-            ea = _find_by_code(hs, code)
+            ea = match_activity(hs, source)
             if ea is None:
                 return
             uid = ea.uid
@@ -550,7 +587,7 @@ def _build_edits(earlier: Schedule, later: Schedule, cs: ChangeSet
 
     for a in sorted(cs.deleted, key=lambda x: x.code):
         edits["deleted_activities"].append(
-            _Edit(f"delete activity {a.code}", _mk_delact(a.code)))
+            _Edit(f"delete activity {a.code}", _mk_delact(a), a.uid))
 
     return edits
 
@@ -625,7 +662,10 @@ def run_halfstep(earlier: Schedule, later: Schedule, *,
             later_tgt.uid, later_tgt.code, later_tgt.name)
         cal = later.cal_for(later_tgt)
         out.target_calendar = (cal.name or cal.uid) if cal else (later_tgt.calendar_uid or "")
-        earlier_tgt = _find_by_code(earlier, later_tgt.code)
+        # R-ID: target identity is persistent UID-first across the pair.  The
+        # code lookup remains available only through match_activity's legacy
+        # UID-less fallback and is never the primary re-code path.
+        earlier_tgt = match_activity(earlier, later_tgt)
         if earlier_tgt is None:
             out.target_in_earlier = False
             out.disclosures.append(
@@ -786,6 +826,8 @@ def _top_movers(hs_sched: Schedule, class_edits: list[_Edit], t_uid: Optional[st
         mutated = _apply_all(hs_sched, [e])
         res, blk, _ = _run_schedule(mutated)
         row: dict[str, Any] = {"edit": e.label}
+        if e.subject_uid:
+            row["uid"] = e.subject_uid
         if res is None:
             row.update({"computable": False, "blocking": blk,
                         "delta_workdays": None, "delta_calendar_days": None,
@@ -818,15 +860,13 @@ def _progress_contributors(earlier: Schedule, later: Schedule, hs_sched: Schedul
     if t_uid is None:
         return []
     path = set(_controlling_path(h_ei, h, t_uid))
-    e_by_code = {a.code: a for a in earlier.activities.values()}
-    l_by_code = {a.code: a for a in later.activities.values()}
     rows: list[dict[str, Any]] = []
     for uid in path:
         a = hs_sched.activities.get(uid)
         if a is None:
             continue
-        ea = e_by_code.get(a.code)
-        la = l_by_code.get(a.code)
+        ea = match_activity(earlier, a)
+        la = match_activity(later, ea) if ea is not None else None
         if ea is None or la is None:
             continue
         if ea.not_started and la.not_started:
@@ -840,6 +880,7 @@ def _progress_contributors(earlier: Schedule, later: Schedule, hs_sched: Schedul
         l_rd = la.remaining_duration_hours / hpd
         d_rd = l_rd - e_rd
         rows.append({
+            "uid": ea.uid,
             "code": a.code, "name": a.name,
             "rd_change_workdays": round(d_rd, 2),
             "earlier_remaining_workdays": round(e_rd, 2),

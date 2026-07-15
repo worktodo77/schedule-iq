@@ -1092,7 +1092,7 @@ checks:
       - "AACE29R §2.2 (update validation)"
     fuse_equivalent: ""
     applies_to: series
-    notes: "Privileged/internal triage indicator — the finding is 'the forecast completion is increasingly unsupported by the schedule's internal indicators' (defensible arithmetic), never a finding of intent; why the date was held is left to the expert; not part of the standard report; capped at 'warrants explanation'."
+    notes: "Privileged/internal triage indicator — the finding is 'the forecast completion is increasingly unsupported by the schedule's internal indicators' (defensible arithmetic), never a finding of intent; why the date was held is left to the expert; activity identity across updates is UID-first (code is display-only, with legacy UID-less fallback); not part of the standard report; capped at 'warrants explanation'."
   - id: LI-13
     name: "ARR — Attribution Robustness Ratio"
     category: "LI Proprietary Indices (provocative, internal)"
@@ -1108,7 +1108,7 @@ checks:
       - "SCL Protocol 2nd ed."
     fuse_equivalent: ""
     applies_to: series
-    notes: "Privileged/internal work product by default — a robustness screen of the METHOD, not an apportionment (apportionment is reserved to the expert); not part of the standard report; capped at 'warrants explanation'."
+    notes: "Privileged/internal work product by default — a robustness screen of the METHOD, not an apportionment (apportionment is reserved to the expert); responsibility allocation is UID-first across updates (code is display-only, with legacy UID-less fallback); not part of the standard report; capped at 'warrants explanation'."
   - id: LI-14
     name: "PPS — Pacing Plausibility Score"
     category: "LI Proprietary Indices (provocative, internal)"
@@ -1124,7 +1124,7 @@ checks:
       - "AACE29R (pacing criteria)"
     fuse_equivalent: ""
     applies_to: series
-    notes: "Privileged/internal triage indicator — preliminary; the pacing defense turns on contemporaneous intent, reserved to the expert; not part of the standard report; capped at 'warrants explanation'."
+    notes: "Privileged/internal triage indicator — preliminary; the pacing defense turns on contemporaneous intent, reserved to the expert; activity and relationship identity across updates is UID-first (code is display-only, with legacy UID-less fallback); not part of the standard report; capped at 'warrants explanation'."
   - id: LI-15
     name: "RSA — Rebuttal Surface Area"
     category: "LI Proprietary Indices (provocative, internal)"
@@ -1140,4 +1140,4 @@ checks:
       - "SCL Protocol 2nd ed."
     fuse_equivalent: ""
     applies_to: series
-    notes: "Privileged/internal work product by default — symmetric by construction (the same arithmetic applies to both sides' work); not part of the standard report; capped at 'warrants explanation'."
+    notes: "Privileged/internal work product by default — symmetric by construction (the same arithmetic applies to both sides' work); responsibility allocation is UID-first across updates (code is display-only, with legacy UID-less fallback); not part of the standard report; capped at 'warrants explanation'."

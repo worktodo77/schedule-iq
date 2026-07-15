@@ -353,20 +353,28 @@ def _fmt_wd(x: float) -> str:
 
 def _norm_responsibility(sched: Schedule, responsibility: Any,
                          disclosures: list[str]) -> Optional[dict[str, str]]:
-    """Normalize the responsibility overlay to a code -> party map (same contract
-    as the N3 ledger's normalizer): a ResponsibilityResult (``tags_by_code``), a
-    plain dict, or an iterable of ResponsibilityRule applied to ``sched``."""
+    """Normalize responsibility to a UID -> party map, with legacy fallback.
+
+    Codes remain accepted at this boundary for old callers, but every activity
+    carrying a UID is converted to that UID before the N4 sweep allocates a
+    progress/revision component.  This keeps a stable activity identity through
+    a code change instead of silently moving its delay to ``Unallocated``.
+    """
     if responsibility is None:
         return None
     tags = getattr(responsibility, "tags_by_code", None)
     if tags is not None:
-        return dict(tags)
+        return {a.uid or a.code: tags[a.code]
+                for a in sched.activities.values() if a.code in tags}
     if isinstance(responsibility, dict):
-        return dict(responsibility)
+        if any(k in sched.activities for k in responsibility):
+            return dict(responsibility)
+        return {a.uid or a.code: responsibility[a.code]
+                for a in sched.activities.values() if a.code in responsibility}
     try:
         from ..intake.responsibility import tag_schedule
         by_uid = tag_schedule(sched, list(responsibility))
-        return {sched.activities[u].code: p for u, p in by_uid.items()
+        return {u or sched.activities[u].code: p for u, p in by_uid.items()
                 if u in sched.activities}
     except Exception:
         disclosures.append(
@@ -596,8 +604,8 @@ class _Sweep:
                                or "MIP 3.3 movement not computable")
         per_party: Optional[dict[str, float]] = None
         if self.overlay:
-            code = self._controlling_code(hs)
-            party = (self.resp_map.get(code, _UNALLOCATED) if code else _UNALLOCATED)
+            uid, code = self._controlling_ref(hs)
+            party = self._party_for_ref(uid, code)
             per_party = {party: float(total)}
         return {
             "total": float(total), "per_party": per_party,
@@ -633,6 +641,15 @@ class _Sweep:
         }
 
     # -- allocation helpers ------------------------------------------------
+    def _party_for_ref(self, uid: Optional[str] = None,
+                       code: Optional[str] = None) -> str:
+        """Resolve an N4 contributor UID first, with legacy code fallback."""
+        if uid and uid in self.resp_map:
+            return self.resp_map[uid]
+        if code and code in self.resp_map:
+            return self.resp_map[code]
+        return _UNALLOCATED
+
     @staticmethod
     def _named_movers(hs: HalfStepResult) -> list[dict[str, Any]]:
         movers: list[dict[str, Any]] = []
@@ -648,12 +665,13 @@ class _Sweep:
     def _allocate_progress(self, per_party: dict[str, float],
                            hs: HalfStepResult, prog: float) -> None:
         contribs = hs.progress_contributors or []
-        weights = [(c["code"], abs(c.get("rd_change_workdays") or 0.0))
+        weights = [(c.get("uid"), c["code"],
+                    abs(c.get("rd_change_workdays") or 0.0))
                    for c in contribs]
-        wsum = sum(w for _, w in weights)
+        wsum = sum(w for _, _, w in weights)
         if wsum > 0:
-            for code, w in weights:
-                p = self.resp_map.get(code, _UNALLOCATED)
+            for uid, code, w in weights:
+                p = self._party_for_ref(uid, code)
                 per_party[p] = per_party.get(p, 0.0) + prog * w / wsum
         else:
             per_party[_UNALLOCATED] = per_party.get(_UNALLOCATED, 0.0) + prog
@@ -665,21 +683,31 @@ class _Sweep:
             if m["edit"] in excluded:
                 continue
             code = _party_code_from_edit(m["edit"])
-            p = self.resp_map.get(code, _UNALLOCATED)
+            p = self._party_for_ref(m.get("uid"), code)
             per_party[p] = per_party.get(p, 0.0) + m["delta_workdays"]
             named_sum += m["delta_workdays"]
         residual = rev_adj - named_sum
         per_party[_UNALLOCATED] = per_party.get(_UNALLOCATED, 0.0) + residual
 
-    def _controlling_code(self, hs: HalfStepResult) -> Optional[str]:
+    def _controlling_ref(self, hs: HalfStepResult) -> tuple[Optional[str], Optional[str]]:
         if hs.progress_contributors:
-            return hs.progress_contributors[0]["code"]
+            top = hs.progress_contributors[0]
+            return top.get("uid"), top.get("code")
         best = None
         for m in self._named_movers(hs):
             d = m["delta_workdays"]
             if d and (best is None or abs(d) > abs(best[1])):
                 best = (m["edit"], d)
-        return _party_code_from_edit(best[0]) if best else None
+        if best:
+            mover = next((m for m in self._named_movers(hs)
+                          if m.get("edit") == best[0]), None)
+            return (mover.get("uid") if mover else None,
+                    _party_code_from_edit(best[0]))
+        return None, None
+
+    def _controlling_code(self, hs: HalfStepResult) -> Optional[str]:
+        """Display-only controlling code retained for certificate provenance."""
+        return self._controlling_ref(hs)[1]
 
 
 # --------------------------------------------------------------------------

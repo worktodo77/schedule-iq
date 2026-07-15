@@ -458,6 +458,7 @@ def directed_date_index(sa, indices=None, target: Optional[str] = None) -> DdiRe
                                 f"{DDI_MIN_UPDATES} updates to z-score the "
                                 "fundamentals (short series)")
     from .li_indices import run_li_indices, _resolve_bwi_target, _find_by_code, _late_type
+    from ..compare.diff import match_activity
     ri = indices if indices is not None else run_li_indices(sa)
 
     tgt = target or _resolve_bwi_target(schedules, None)
@@ -466,9 +467,18 @@ def directed_date_index(sa, indices=None, target: Optional[str] = None) -> DdiRe
         res.reason = f"{NOT_COMPUTABLE}: no terminal milestone could be resolved"
         return res
 
+    # R-ID: resolve the anchor once on the first update, then carry its
+    # persistent UID through the series.  Code/name are display labels only;
+    # match_activity permits a narrow legacy code fallback when a UID is absent.
+    anchor = _find_by_code(schedules[0], tgt) or schedules[0].activities.get(tgt)
+    if anchor is None:
+        res.reason = f"{NOT_COMPUTABLE}: target {tgt!r} is absent from the first update"
+        return res
+    res.target_code = anchor.code
+
     finish_dates: list[Optional[datetime]] = []
     for s in schedules:
-        a = _find_by_code(s, tgt)
+        a = match_activity(s, anchor)
         finish_dates.append(a.finish if a is not None else None)
 
     held = _held_run(finish_dates)
@@ -490,7 +500,7 @@ def directed_date_index(sa, indices=None, target: Optional[str] = None) -> DdiRe
     for s in schedules:
         cnt = 0
         tgt_fin = None
-        ta = _find_by_code(s, tgt)
+        ta = match_activity(s, anchor)
         tgt_fin = ta.finish if ta is not None else None
         for a in s.activities.values():
             if getattr(a, "is_loe_or_summary", False):

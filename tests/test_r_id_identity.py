@@ -7,20 +7,27 @@ different present UIDs are a true replacement and remain unmatched.
 from datetime import datetime
 import os
 import sys
+from copy import deepcopy
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from scheduleiq.analytics import li_record as lr
+from scheduleiq.analytics import li_provocative as lp
 from scheduleiq.analytics.li_record import (baseline_dilution_index,
                                              forecast_reliability_band,
                                              intervention_latency,
                                              measured_mile_locator)
+from scheduleiq.analytics.halfstep import _overlay_progress
+from scheduleiq.analytics.pacing import pacing_candidates
+from scheduleiq.analytics.robustness import _Sweep, _norm_responsibility
+from scheduleiq.ingest import load_many
 from scheduleiq.analytics.paths import DrivingPath, PathStep
 from scheduleiq.compare.diff import compare
 from scheduleiq.ingest.model import (Activity, ActivityStatus, ActivityType,
                                       Calendar, Relationship, RelType,
                                       ResourceAssignment, Schedule, WbsNode)
-from scheduleiq.trend.series import SeriesAnalysis
+from scheduleiq.trend.series import SeriesAnalysis, analyze_series
 
 
 CAL = Calendar(uid="cal", name="5d", hours_per_day=8.0, is_default=True)
@@ -135,3 +142,58 @@ def test_mml_resolves_recode_by_uid():
     assert row.windows[0].basis == "resource"
     assert row.windows[0].productivity is not None
     assert row.windows[0].productivity > 0.0
+
+
+def test_ddi_resolves_recode_target_by_uid():
+    schedules = [
+        _sched([_act("u1", "TARGET")], datetime(2025, 1, 1)),
+        _sched([_act("u1", "TARGET-RENAMED")], datetime(2025, 2, 1)),
+        _sched([_act("u1", "TARGET-RENAMED")], datetime(2025, 3, 1)),
+    ]
+    rows_rdi = [SimpleNamespace(cumulative_days=v) for v in (0.0, 1.0, 2.0)]
+    rows_bwi = [SimpleNamespace(bwi=v) for v in (0.0, 1.0, 2.0)]
+    indices = SimpleNamespace(
+        rdi=SimpleNamespace(rows=rows_rdi),
+        bwi=SimpleNamespace(rows=rows_bwi),
+        fcbi=SimpleNamespace(cumulative=[0.0, 1.0]),
+    )
+    ddi = lp.directed_date_index(
+        SeriesAnalysis(schedules), indices=indices, target="TARGET")
+    assert ddi.held_updates == 3
+    assert ddi.reason == ""
+
+
+def test_pacing_candidates_survive_uid_recode():
+    fix = os.path.join(os.path.dirname(__file__), "fixtures")
+    sa = analyze_series(load_many(
+        [os.path.join(fix, n) for n in
+         ("demo_baseline.xer", "demo_update1.xer", "demo_update2.xer")]))
+    before = len(pacing_candidates(sa))
+    act = next(a for a in sa.schedules[1].activities.values() if a.code == "A1080")
+    act.code = "A1080-RENAMED"
+    assert before == 3
+    assert len(pacing_candidates(sa)) == before
+
+
+def test_halfstep_progress_overlay_is_uid_first():
+    earlier = _sched([_act("u1", "A", remaining=80.0)], datetime(2025, 1, 1))
+    later = _sched([_act("u1", "A-RENAMED", remaining=20.0)], datetime(2025, 2, 1))
+    half = deepcopy(earlier)
+    disclosures = []
+    _overlay_progress(half, later, disclosures)
+    assert half.activities["u1"].remaining_duration_hours == 20.0
+    assert not any("absent from the later" in d for d in disclosures)
+
+
+def test_n4_responsibility_allocation_is_uid_first():
+    latest = _sched([_act("u1", "A-RENAMED")], datetime(2025, 2, 1))
+    disclosures = []
+    mapping = _norm_responsibility(latest, {"A-RENAMED": "Owner"}, disclosures)
+    assert mapping == {"u1": "Owner"}
+    sweep = _Sweep([], target=None, resp_map=mapping, contested=[],
+                   handshake="require", threshold_pct=99.0)
+    hs = SimpleNamespace(progress_contributors=[
+        {"uid": "u1", "code": "A", "rd_change_workdays": 5.0}])
+    allocated = {}
+    sweep._allocate_progress(allocated, hs, 5.0)
+    assert allocated == {"Owner": 5.0}

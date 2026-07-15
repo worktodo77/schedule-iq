@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scheduleiq"
-version = "0.4.6"
+version = "0.4.7"
 description = "Schedule quality, health, trend, and change analysis for Primavera P6 (.xer) and Microsoft Project (.mpp/.xml) — Long International"
 readme = "README.md"
 requires-python = ">=3.10"

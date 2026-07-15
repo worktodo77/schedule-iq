@@ -46,6 +46,7 @@ from typing import Optional
 
 from ..intake._util import working_days_between
 from ..intake.events import load_events_csv
+from ..compare.diff import match_activity
 
 NONCRIT_FLOAT_THRESHOLD_DAYS = 5.0
 DECEL_FORECAST_PUSH_DAYS = 5.0
@@ -151,12 +152,26 @@ def _noncritical_chains(sched, threshold_days: float = NONCRIT_FLOAT_THRESHOLD_D
     return chains
 
 
-def _touched_by_logic_or_def_change(cs, code: str) -> bool:
+def _touched_by_logic_or_def_change(cs, activity) -> bool:
+    """Return whether a revision touched ``activity`` using UID-first identity.
+
+    Change-register codes remain useful display labels, but a stable UID re-code
+    must not turn an otherwise unexplained forecast push into a false negative.
+    Legacy rows without UIDs retain the old unambiguous code fallback.
+    """
+    uid = getattr(activity, "uid", None)
+    code = getattr(activity, "code", "")
     for fc in list(cs.duration_changes) + list(cs.constraint_changes) + list(cs.calendar_changes):
-        if fc.code == code:
+        if uid and getattr(fc, "uid", None):
+            if fc.uid == uid:
+                return True
+        elif fc.code == code:
             return True
     for lc in cs.logic_changes:
-        if lc.pred_code == code or lc.succ_code == code:
+        if uid and (getattr(lc, "pred_uid", None) or getattr(lc, "succ_uid", None)):
+            if lc.pred_uid == uid or lc.succ_uid == uid:
+                return True
+        elif lc.pred_code == code or lc.succ_code == code:
             return True
     return False
 
@@ -198,13 +213,13 @@ def _following_owner_event(events, start: Optional[datetime], finish: Optional[d
     return (len(hits) > 0), hits
 
 
-def _reversibility(chain_codes: list, e_by_code: dict, l_by_code: dict) -> str:
-    tot_e = sum(sum(r.budget_units for r in e_by_code[c].resources)
-               for c in chain_codes if c in e_by_code)
-    matched_l = [c for c in chain_codes if c in l_by_code]
+def _reversibility(chain_acts: list, later_acts: list) -> str:
+    """Read resource retention across a chain with UID-first pair matching."""
+    tot_e = sum(sum(r.budget_units for r in a.resources) for a in chain_acts)
+    matched_l = [a for a in later_acts if a is not None]
     if not matched_l:
         return "no later-update data for this chain"
-    tot_l = sum(sum(r.budget_units for r in l_by_code[c].resources) for c in matched_l)
+    tot_l = sum(sum(r.budget_units for r in a.resources) for a in matched_l)
     if tot_e == 0 and tot_l == 0:
         return "no resource data available"
     if tot_l >= tot_e * RESOURCE_RETENTION_FRACTION:
@@ -233,27 +248,27 @@ def pacing_candidates(sa, events: Optional[list] = None) -> list:
             chains = _noncritical_chains(e)
             if not chains:
                 continue
-            e_by_code = {a.code: a for a in e.activities.values()}
-            l_by_code = {a.code: a for a in l.activities.values()}
             prev_cs = changesets[i - 1] if i > 0 else None
             for chain_uids in chains:
                 chain_acts_e = [e.activities[u] for u in chain_uids]
+                chain_acts_l = [match_activity(l, a) for a in chain_acts_e]
                 codes = sorted(a.code for a in chain_acts_e)
                 measures = []
 
                 # (a) remaining-duration growth
                 rd_e = sum(a.remaining_duration_hours for a in chain_acts_e)
-                matched_codes = [c for c in codes if c in l_by_code]
-                rd_l = sum(l_by_code[c].remaining_duration_hours for c in matched_codes)
-                if matched_codes and rd_l > rd_e + 1e-6:
+                matched_l = [a for a in chain_acts_l if a is not None]
+                rd_l = sum(a.remaining_duration_hours for a in matched_l)
+                if matched_l and rd_l > rd_e + 1e-6:
                     measures.append(f"remaining duration grew {rd_e:.0f}h -> {rd_l:.0f}h "
                                     "across the chain")
 
                 # (b) progress-rate collapse vs the prior window (>= 50% drop)
                 if prev_cs is not None:
-                    prev_e_by_code = {a.code: a for a in prev_cs.earlier.activities.values()}
-                    if all(c in prev_e_by_code for c in codes) and matched_codes:
-                        rd_prev = sum(prev_e_by_code[c].remaining_duration_hours for c in codes)
+                    prev_acts = [match_activity(prev_cs.earlier, a)
+                                 for a in chain_acts_e]
+                    if all(a is not None for a in prev_acts) and matched_l:
+                        rd_prev = sum(a.remaining_duration_hours for a in prev_acts)
                         days_prev = working_days_between(None, prev_cs.earlier.data_date,
                                                          e.data_date)
                         days_cur = working_days_between(None, e.data_date, l.data_date)
@@ -267,16 +282,15 @@ def pacing_candidates(sa, events: Optional[list] = None) -> list:
                                     "window)")
 
                 # (c) unexplained rightward forecast push
-                for code in codes:
-                    ea = next(a for a in chain_acts_e if a.code == code)
-                    la = l_by_code.get(code)
+                for ea, la in zip(chain_acts_e, chain_acts_l):
+                    code = ea.code
                     fc_e = ea.early_finish or ea.planned_finish
                     fc_l = (la.early_finish or la.planned_finish) if la else None
                     if fc_e and fc_l:
                         cal = l.cal_for(la) if la else None
                         push = working_days_between(cal, fc_e, fc_l)
                         if push is not None and push > DECEL_FORECAST_PUSH_DAYS \
-                                and not _touched_by_logic_or_def_change(cs, code):
+                                and not _touched_by_logic_or_def_change(cs, ea):
                             measures.append(
                                 f"{code} forecast finish pushed right {push:.1f} working "
                                 "days with no logic/duration/constraint/calendar change")
@@ -288,7 +302,7 @@ def pacing_candidates(sa, events: Optional[list] = None) -> list:
                 floats = [f for f in floats if f is not None]
                 float_start = min(floats) if floats else None
                 awareness, ev_titles = _overlap(events, e.data_date, l.data_date)
-                reversibility = _reversibility(codes, e_by_code, l_by_code)
+                reversibility = _reversibility(chain_acts_e, chain_acts_l)
 
                 out.append(PacingCandidate(
                     window_label=f"{e.label()} -> {l.label()}",

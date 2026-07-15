@@ -488,20 +488,22 @@ def _events_for_day(events: Any, d: date) -> list[str]:
 
 def _norm_responsibility(later: Schedule, responsibility: Any,
                          disclosures: list[str]) -> Optional[dict[str, str]]:
-    """Normalize the D7 overlay to a code -> party map.  Accepts a
-    ResponsibilityResult (uses ``tags_by_code``), a plain dict (code -> party),
-    or an iterable of ResponsibilityRule (applied to the later schedule)."""
+    """Normalize the D7 overlay to UID -> party, with legacy code fallback."""
     if responsibility is None:
         return None
     tags = getattr(responsibility, "tags_by_code", None)
     if tags is not None:
-        return dict(tags)
+        return {a.uid or a.code: tags[a.code]
+                for a in later.activities.values() if a.code in tags}
     if isinstance(responsibility, dict):
-        return dict(responsibility)
+        if any(k in later.activities for k in responsibility):
+            return dict(responsibility)
+        return {a.uid or a.code: responsibility[a.code]
+                for a in later.activities.values() if a.code in responsibility}
     try:
         from ..intake.responsibility import tag_schedule
         by_uid = tag_schedule(later, list(responsibility))
-        return {later.activities[u].code: p for u, p in by_uid.items()
+        return {u or later.activities[u].code: p for u, p in by_uid.items()
                 if u in later.activities}
     except Exception:
         disclosures.append(
@@ -641,6 +643,7 @@ def run_daily_ledger(earlier: Schedule, later: Schedule, *,
     # -- the daily runs ---------------------------------------------------------
     efs: list[Optional[date]] = []
     controlling: list[str] = []
+    controlling_uids: list[Optional[str]] = []
     for d in days:
         res, blk = _run_day(ei, _day_activities(statics, d), d)
         if res is None:
@@ -653,6 +656,7 @@ def run_daily_ledger(earlier: Schedule, later: Schedule, *,
         sa = res.scheduled.get(tgt.uid)
         efs.append(sa.early_finish if sa else None)
         head = _binding_chainhead(ei, res, tgt.uid, preds, cal_by_uid)
+        controlling_uids.append(head)
         controlling.append(ei.code_by_uid.get(head, head) if head else tgt.code)
     if any(ef is None for ef in efs):
         out.computable = False
@@ -668,7 +672,9 @@ def run_daily_ledger(earlier: Schedule, later: Schedule, *,
         cum += delta
         party = None
         if resp_map is not None:
-            party = resp_map.get(controlling[i]) or "Untagged"
+            party = (resp_map.get(controlling_uids[i])
+                     or resp_map.get(controlling[i])
+                     or "Untagged")
         out.rows.append(DayRow(
             day=d, ef_target=efs[i], delta_workdays=delta,
             cumulative_workdays=cum,

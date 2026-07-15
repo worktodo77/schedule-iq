@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.7 — 2026-07-14
+
+Check-affecting: **R-ID provocative extension**. The LI-12 DDI target, the
+LI-14 §6.3 pacing screen, and the N4 responsibility allocation feeding LI-13
+ARR / LI-15 RSA now carry persistent activity identity UID-first across update
+re-codes; analyst-facing codes remain display labels with legacy UID-less
+fallback only. The existing provocative arithmetic and privileged/weight-0
+surfaces are unchanged.
+
+- Added UID-stable re-code regression coverage for DDI, pacing/PPS, half-step
+  progress overlay, and N4 party allocation.
+- Matrix LI-12..LI-15 rows now state the UID-first identity contract.
+
+Check-affecting changes are listed explicitly (GOVERNANCE.md §1) so an expert
+can state which checks changed between versions used on a matter.
+
 ## 0.4.6 — 2026-07-14
 
 Check-affecting: **R-ID family identity implementation** from

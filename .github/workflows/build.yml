@@ -36,9 +36,19 @@ jobs:
           distribution: temurin
           java-version: "17"
       - run: pip install .[gui,mpp,pdf,dev]
-      - run: pyinstaller installer/scheduleiq.spec
+      - run: python -m PyInstaller --clean installer/scheduleiq.spec
+      - name: Smoke-test packaged GUI
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & dist/ScheduleIQ/ScheduleIQ.exe --smoke-test
+          & dist/ScheduleIQ/ScheduleIQ.exe --demo-smoke tests/fixtures/demo_baseline.xer packaged-smoke-output
       - name: Zip bundle
         run: Compress-Archive -Path dist/ScheduleIQ -DestinationPath "ScheduleIQ-${{ github.ref_name }}-windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScheduleIQ-${{ github.ref_name }}-windows
+          path: ScheduleIQ-${{ github.ref_name }}-windows.zip
       - uses: softprops/action-gh-release@v2
         with:
           files: ScheduleIQ-*.zip

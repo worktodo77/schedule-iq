@@ -1,44 +1,58 @@
-# PyInstaller spec — ScheduleIQ Windows bundle.
-# Build:  pyinstaller installer/scheduleiq.spec   (from the repo root)
+# PyInstaller spec — ScheduleIQ Windows folder bundle.
+# Build from repository root: python -m PyInstaller --clean installer/scheduleiq.spec
 import os
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
+PACKAGE = os.path.join(ROOT, "src", "scheduleiq")
 
 datas = [
     (os.path.join(ROOT, "assets", "LI_report_base.docx"), "assets"),
-    (os.path.join(ROOT, "src", "scheduleiq", "metrics", "matrix.yaml"),
-     "scheduleiq/metrics"),
+    (os.path.join(PACKAGE, "metrics", "matrix.yaml"), "scheduleiq/metrics"),
+    (os.path.join(PACKAGE, "scorecard.yaml"), "scheduleiq"),
+    (os.path.join(PACKAGE, "gui", "assets", "scheduleiq_icon.svg"),
+     "scheduleiq/gui/assets"),
+    (os.path.join(PACKAGE, "gui", "assets", "scheduleiq_icon.png"),
+     "scheduleiq/gui/assets"),
 ]
-binaries = []
-hiddenimports = ["scheduleiq.metrics.checks.core"]
 
-# MPXJ (optional): bundle the jar + jpype if installed so .mpp works offline.
-try:
-    import mpxj  # noqa: F401
-    datas += collect_data_files("mpxj")
-    binaries += collect_dynamic_libs("jpype")
-    hiddenimports += ["jpype", "mpxj"]
-except ImportError:
-    pass
+# runner.py intentionally imports additive analytics/report modules lazily so a
+# failed optional surface cannot sink a normal run. Bundle those modules even
+# though static analysis cannot see every import edge.
+hiddenimports = collect_submodules("scheduleiq")
 
+# MPXJ / JPype are optional. When installed by the tagged Windows workflow,
+# their normal PyInstaller hooks collect the jar, JVM bridge, and binaries.
 a = Analysis(
-    [os.path.join(ROOT, "src", "scheduleiq", "gui", "app.py")],
+    [os.path.join(ROOT, "installer", "launch_gui.py")],
     pathex=[os.path.join(ROOT, "src")],
-    binaries=binaries,
+    binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
     excludes=["tkinter"],
-    cipher=block_cipher,
+    noarchive=False,
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
-    pyz, a.scripts, [],
+    pyz,
+    a.scripts,
+    [],
     exclude_binaries=True,
     name="ScheduleIQ",
     console=False,
-    icon=None,
+    icon=os.path.join(PACKAGE, "gui", "assets", "scheduleiq_icon.png"),
 )
-coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas, name="ScheduleIQ")
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="ScheduleIQ",
+)

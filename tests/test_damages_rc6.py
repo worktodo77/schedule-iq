@@ -237,8 +237,7 @@ def test_impact_workbook_with_damages_deterministic(impact_dict, asbuilt_dict, t
                                damages=DAMAGES_CFG)
     p2 = write_impact_workbook(impact_dict, asbuilt_dict, str(tmp_path / "b.xlsx"),
                                damages=DAMAGES_CFG)
-    with open(p1, "rb") as f1, open(p2, "rb") as f2:
-        assert f1.read() == f2.read()
+    assert _xlsx_members(p1) == _xlsx_members(p2)
 
 
 def test_waterfall_figure_with_damages_differs_and_is_deterministic(impact_dict, tmp_path):

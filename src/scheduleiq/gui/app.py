@@ -1223,8 +1223,101 @@ class MainWindow(QMainWindow):
         self._fill_gallery(self.paths_grid,
                            [p for p in outputs if os.path.basename(p) in path_names],
                            "cockpit.html")
-        self._fill_gallery(self.forensics_grid,
-                           [p for p in outputs if os.path.basename(p) in forensic_names])
+        self._fill_forensics_gallery(
+            [p for p in outputs if os.path.basename(p) in forensic_names])
+
+    def _forensic_diagnostics(self) -> list[str]:
+        """Return run messages that explain forensic availability.
+
+        The governed runner deliberately refuses engine-dependent exhibits when
+        SET-02 does not pass.  Those messages used to be visible only in the
+        truncated footer, which made a correctly refused run look like an empty
+        or broken Forensics page.
+        """
+        markers = (
+            "forensic", "daily ledger", "robustness certificate",
+            "schedule risk analysis",
+        )
+        messages: list[str] = []
+        for message in self.current_result.messages:
+            text = str(message).strip()
+            if text and any(marker in text.lower() for marker in markers):
+                if text not in messages:
+                    messages.append(text)
+        return messages
+
+    def _fill_forensics_gallery(self, images: list[str]):
+        _clear_layout(self.forensics_grid)
+        row = col = 0
+        for path in images:
+            title = Path(path).stem.replace("fig_", "").replace("_", " ").title()
+            card = FigureCard(title, path)
+            card.open_requested.connect(open_local)
+            self.forensics_grid.addWidget(card, row, col)
+            col += 1
+            if col == 2:
+                row, col = row + 1, 0
+
+        diagnostics = self._forensic_diagnostics()
+        if diagnostics or not images:
+            if col:
+                row += 1
+            card, lay = _card()
+            heading = QHBoxLayout()
+            title = QLabel(
+                "Partial forensic output" if images
+                else "Forensics unavailable for this run")
+            title.setObjectName("sectionTitle")
+            heading.addWidget(title)
+            heading.addStretch()
+            heading.addWidget(StatusPill(
+                "PARTIAL" if images else "NOT GENERATED", "warning"))
+            lay.addLayout(heading)
+
+            if diagnostics:
+                intro = QLabel(
+                    "The standard assessment completed, but one or more governed "
+                    "forensic exhibits were refused or skipped for these reasons:")
+                detail_text = "\n".join(f"\u2022 {message}" for message in diagnostics)
+            else:
+                intro = QLabel(
+                    "Forensic exhibits require at least two schedule updates and "
+                    "a passing SET-02 engine-to-record validation handshake.")
+                detail_text = (
+                    "\u2022 Add two or more chronological updates, then run the "
+                    "analysis again.")
+            intro.setWordWrap(True)
+            lay.addWidget(intro)
+
+            self.forensics_diagnostic_label = QLabel(detail_text)
+            self.forensics_diagnostic_label.setObjectName("privilegedWarning")
+            self.forensics_diagnostic_label.setWordWrap(True)
+            self.forensics_diagnostic_label.setTextInteractionFlags(
+                Qt.TextSelectableByMouse)
+            lay.addWidget(self.forensics_diagnostic_label)
+
+            self.forensics_safeguard_label = QLabel(
+                "No forensic values were substituted. Standard checks, the Report "
+                "Card, and other successfully generated outputs remain available. "
+                "Open Checks and select each update's SET-02 row for per-file status.")
+            self.forensics_safeguard_label.setObjectName("muted")
+            self.forensics_safeguard_label.setWordWrap(True)
+            lay.addWidget(self.forensics_safeguard_label)
+            actions = QHBoxLayout()
+            files = QPushButton("Review selected files")
+            files.clicked.connect(lambda: self.navigate("files"))
+            actions.addWidget(files)
+            output = QPushButton("Open output folder")
+            output.clicked.connect(lambda: open_local(self.out_dir))
+            actions.addWidget(output)
+            actions.addStretch()
+            lay.addLayout(actions)
+            self.forensics_grid.addWidget(card, row, 0, 1, 2)
+
+        self.forensics_status_text = "\n".join(diagnostics)
+        self.forensics_grid.setColumnStretch(0, 1)
+        self.forensics_grid.setColumnStretch(1, 1)
+        self.forensics_grid.setRowStretch(row + 1, 1)
 
     def _fill_gallery(self, grid: QGridLayout, images: list[str], html_name=None):
         _clear_layout(grid)

@@ -44,6 +44,21 @@ def test_main_window_instantiates_and_populates_from_demo_run(qapp, tmp_path):
     assert window.trend_table.rowCount() == 1
     assert window.open_btn.isEnabled()
     assert "Done" in window.status_bar.text()
+
+    # A governed refusal must be explained on the Forensics page rather than
+    # appearing as an empty/broken gallery with the reason buried in the
+    # truncated footer.
+    refusal = (
+        "forensic delay diagnostics skipped: No workday found within 14 days "
+        "backward from 2021-02-21 in calendar 'MV32 Topside'.")
+    result.messages.append(refusal)
+    window.show_results(result)
+    qapp.processEvents()
+    assert refusal in window.forensics_status_text
+    assert "No workday found within 14 days" in \
+        window.forensics_diagnostic_label.text()
+    assert "No forensic values were substituted" in \
+        window.forensics_safeguard_label.text()
     window.close()
 
 

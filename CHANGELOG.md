@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2 — 2026-07-15
+
+Presentation-only desktop bug fix. The Forensics view now shows the exact
+SET-02, calendar, runtime-cap, and update-window reasons when governed forensic
+exhibits are refused or skipped, instead of presenting an apparently empty
+gallery with the reason buried in the status footer. Partial runs retain their
+available figures alongside the diagnostics. No check, metric, score,
+threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.1 — 2026-07-15
 
 Presentation-only desktop release (UI overhaul on top of the 0.5.0 FCBI port).

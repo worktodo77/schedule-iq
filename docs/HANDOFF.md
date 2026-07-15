@@ -24,8 +24,10 @@ number reproducible and cited.
   **RETIRED** — it is no longer synced and must not be read from (it went stale
   and a reviewer once fetched it by mistake).  The final step is to remove the
   `schedule-iq/` subtree from expert-assist in a closing commit on that repo.
-  Development history through v0.2.0 remains preserved on the expert-assist
-  branch `claude/acumen-fuse-replacement-ler9kq` for provenance only.
+  The `schedule-iq/` subtree was REMOVED from expert-assist in closing commit
+  b7bb371 (2026-07-14) — the migration is COMPLETE; expert-assist retains only
+  its own tooling.  Development history through v0.2.0 remains preserved on the
+  expert-assist branch `claude/acumen-fuse-replacement-ler9kq` for provenance.
 - **Divergent branches (2026-07-14): being reconciled then retired.**  Several
   parallel LI-metrics lineages exist on the remote
   (`claude/li-metrics-audit-matrix-mdadj5` = "LI kernel v2",

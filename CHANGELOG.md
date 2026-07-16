@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.11 — 2026-07-16
+
+Presentation-only: **Instrument per-screen detail pass (Files)**. The primary
+"Add files" button rendered a fullwidth-plus character that IBM Plex does not
+carry, so it showed as a missing-glyph box; it now uses a bundled Tabler plus
+icon matching the sidebar icon language. The bundled Tabler subset was
+regenerated from a new tracked build script (`tools/build_icon_subset.py`) that
+documents the source (Tabler Icons webfont 3.44.0, SIL OFL) and pins the glyph
+set, so the previously ad-hoc subset is now reproducible; the nine existing
+glyphs keep their codepoints unchanged. No check, metric, score, threshold,
+kernel, refusal gate, or methodology changed.
+
 ## 0.5.10 — 2026-07-16
 
 Presentation-only: **Instrument per-screen detail pass (Trends)**. The health-

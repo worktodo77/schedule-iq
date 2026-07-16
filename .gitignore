@@ -5,3 +5,4 @@ build/
 *.egg-info/
 scheduleiq_output/
 .pytest_cache/
+tools/.icon-cache/

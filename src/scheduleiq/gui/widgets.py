@@ -18,7 +18,7 @@ ICON_FONT = "tabler-icons"
 _ICON_CODES = {
     "files": 0xEDEF, "report": 0xEAB1, "checks": 0xF074, "trends": 0xEB43,
     "paths": 0xEB17, "forensics": 0xEF64, "settings": 0xEB20,
-    "sun": 0xEB30, "moon": 0xEAF8,
+    "sun": 0xEB30, "moon": 0xEAF8, "plus": 0xEB0B,
 }
 
 

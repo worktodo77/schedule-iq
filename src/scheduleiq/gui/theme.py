@@ -1,14 +1,41 @@
-"""ScheduleIQ desktop visual system.
+"""ScheduleIQ desktop visual system — the "Instrument" design language.
 
-The GUI keeps presentation concerns here so analytics and report generation stay
-untouched.  Both palettes use the same semantic roles and teal brand accent.
+Presentation lives here so analytics and report generation stay untouched.
+Typography is IBM Plex, bundled under ``gui/assets/fonts``: IBM Plex Sans for
+text and IBM Plex Mono for figures and identifiers — a precise, authoritative
+"instrument" feel with the teal brand accent, in matched light and dark
+palettes.  Both palettes use the same semantic roles.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFontDatabase, QPalette
+
+
+FONT_SANS = "IBM Plex Sans"
+FONT_MONO = "IBM Plex Mono"
+
+_FONT_DIR = Path(__file__).with_name("assets") / "fonts"
+_fonts_loaded = False
+
+
+def load_fonts() -> None:
+    """Register the bundled IBM Plex families once.
+
+    Idempotent; requires a live QApplication.  If the bundled files are missing
+    the app simply falls back to the QSS font stack (Segoe UI), so a missing
+    asset degrades gracefully rather than failing to launch.
+    """
+    global _fonts_loaded
+    if _fonts_loaded:
+        return
+    if _FONT_DIR.is_dir():
+        for ttf in sorted(_FONT_DIR.glob("*.ttf")):
+            QFontDatabase.addApplicationFont(str(ttf))
+    _fonts_loaded = True
 
 
 @dataclass(frozen=True)
@@ -35,17 +62,17 @@ class Theme:
 
 
 LIGHT = Theme(
-    "light", "#F3F6F8", "#102A31", "#FFFFFF", "#F7F9FA", "#DCE4E7",
-    "#17262B", "#65747A", "#16879A", "#0E7182", "#E5F5F7", "#23856D",
-    "#E7F5F0", "#B7791F", "#FFF4DC", "#C85050", "#FCEBEC", "#3979A8",
-    "#EAF2F8",
+    "light", "#F1F4F6", "#0E2429", "#FFFFFF", "#F4F7F8", "#D8E0E4",
+    "#16242A", "#5F6E74", "#0E7C8E", "#0A6576", "#E1F4F6", "#1E7D66",
+    "#E4F4EF", "#A96D16", "#FBF0D8", "#C0484C", "#FBE9EA", "#34719E",
+    "#E7F1F7",
 )
 
 DARK = Theme(
-    "dark", "#0C1418", "#091115", "#132027", "#17272E", "#2A3B43",
-    "#E9F1F3", "#91A2A9", "#2FB0C2", "#47C4D3", "#17383F", "#4EC19C",
-    "#17372F", "#E1A84C", "#3B301D", "#EF7777", "#402327", "#68A9D5",
-    "#1C3342",
+    "dark", "#0E151A", "#0A1015", "#172129", "#1E2A33", "#29373F",
+    "#E6EEF2", "#8A9BA4", "#2FB0C2", "#46C3D3", "#14333B", "#55C2A0",
+    "#163429", "#E1A84C", "#372D1A", "#EF8585", "#3C2225", "#6BAAD6",
+    "#17303E",
 )
 
 
@@ -76,21 +103,28 @@ def palette(theme: Theme) -> QPalette:
 
 
 def stylesheet(t: Theme) -> str:
+    sans = f'"{FONT_SANS}", "Segoe UI", "Helvetica Neue", sans-serif'
+    mono = f'"{FONT_MONO}", "Cascadia Mono", "Consolas", monospace'
     return f"""
     * {{
-        font-family: "Segoe UI";
+        font-family: {sans};
         font-size: 13px;
         color: {t.text};
     }}
     QMainWindow, QWidget#appCanvas {{ background: {t.canvas}; }}
     QWidget#sidebar {{ background: {t.sidebar}; border: 0; }}
-    QLabel#brandMark {{ color: #FFFFFF; font-size: 22px; font-weight: 700; }}
-    QLabel#brandSub {{ color: #9CB4BA; font-size: 10px; font-weight: 600;
-        letter-spacing: 1px; }}
-    QLabel#pageTitle {{ font-size: 24px; font-weight: 700; color: {t.text}; }}
+    QLabel#brandMark {{ color: #FFFFFF; font-size: 20px; font-weight: 600;
+        letter-spacing: 0.2px; }}
+    QLabel#brandSub {{ color: #93ACB2; font-size: 10px; font-weight: 600;
+        letter-spacing: 1.6px; }}
+    QLabel#pageTitle {{ font-size: 24px; font-weight: 600; color: {t.text};
+        letter-spacing: -0.4px; }}
     QLabel#pageSubtitle {{ color: {t.muted}; font-size: 13px; }}
-    QLabel#sectionTitle {{ font-size: 15px; font-weight: 650; }}
-    QLabel#metricValue {{ font-size: 25px; font-weight: 700; }}
+    QLabel#sectionTitle {{ font-size: 14px; font-weight: 600;
+        letter-spacing: 0.1px; }}
+    QLabel#metricValue {{ font-family: {mono}; font-size: 25px; font-weight: 600;
+        letter-spacing: -0.5px; }}
+    QLabel#monoValue, QLabel[mono="true"] {{ font-family: {mono}; }}
     QLabel#muted, QLabel.muted {{ color: {t.muted}; }}
     QLabel#warningText {{ color: {t.warning}; }}
     QLabel#privilegedWarning {{ color: {t.warning}; background: {t.warning_soft};
@@ -108,24 +142,24 @@ def stylesheet(t: Theme) -> str:
 
     QPushButton {{
         background: {t.surface}; border: 1px solid {t.border}; border-radius: 8px;
-        padding: 8px 13px; font-weight: 600;
+        padding: 8px 13px; font-weight: 500;
     }}
     QPushButton:hover {{ background: {t.surface_alt}; border-color: {t.accent}; }}
     QPushButton:focus {{ border: 2px solid {t.accent}; padding: 7px 12px; }}
     QPushButton:disabled {{ color: {t.muted}; background: {t.surface_alt}; }}
     QPushButton#primaryButton {{ background: {t.accent}; color: white;
-        border-color: {t.accent}; padding: 9px 18px; }}
+        border-color: {t.accent}; padding: 9px 18px; font-weight: 600; }}
     QPushButton#primaryButton:hover {{ background: {t.accent_hover}; }}
     QPushButton#ghostButton {{ background: transparent; }}
     QPushButton#themeButton {{ border-radius: 16px; min-width: 32px;
         max-width: 32px; min-height: 32px; padding: 0; }}
     QPushButton#navButton {{
         background: transparent; color: #AFC2C7; border: 0; border-radius: 8px;
-        text-align: left; padding: 10px 13px; font-size: 13px; font-weight: 600;
+        text-align: left; padding: 10px 13px; font-size: 13px; font-weight: 500;
     }}
-    QPushButton#navButton:hover {{ background: #17373F; color: white; }}
-    QPushButton#navButton:checked {{ background: #1B4650; color: white;
-        border-left: 3px solid #42C4D2; padding-left: 10px; }}
+    QPushButton#navButton:hover {{ background: #16323A; color: white; }}
+    QPushButton#navButton:checked {{ background: #1A4550; color: white;
+        border-left: 3px solid {t.accent}; padding-left: 10px; font-weight: 600; }}
 
     QLineEdit, QComboBox, QSpinBox {{
         background: {t.surface}; border: 1px solid {t.border}; border-radius: 8px;
@@ -146,7 +180,7 @@ def stylesheet(t: Theme) -> str:
     QTreeWidget::item:hover, QListWidget::item:hover {{ background: {t.surface_alt}; }}
     QHeaderView::section {{ background: {t.surface_alt}; color: {t.muted};
         padding: 9px; border: 0; border-bottom: 1px solid {t.border};
-        font-size: 11px; font-weight: 700; }}
+        font-size: 11px; font-weight: 600; letter-spacing: 0.6px; }}
     QTableCornerButton::section {{ background: {t.surface_alt}; border: 0; }}
 
     QScrollArea {{ border: 0; background: transparent; }}
@@ -167,6 +201,7 @@ def stylesheet(t: Theme) -> str:
 
 
 def apply_theme(app, name: str) -> Theme:
+    load_fonts()
     theme = DARK if name == "dark" else LIGHT
     app.setPalette(palette(theme))
     app.setStyleSheet(stylesheet(theme))

@@ -7,8 +7,11 @@ from pathlib import Path
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (QColor, QDesktopServices, QFont, QPainter, QPainterPath,
                            QPen, QPixmap)
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
+                               QPushButton, QSizePolicy, QVBoxLayout, QWidget)
+
+SANS = "IBM Plex Sans"
+MONO = "IBM Plex Mono"
 
 
 def _theme(widget) -> str:
@@ -21,13 +24,13 @@ def _theme(widget) -> str:
 def semantic_colors(widget) -> dict[str, str]:
     dark = _theme(widget) == "dark"
     return {
-        "text": "#E9F1F3" if dark else "#17262B",
-        "muted": "#91A2A9" if dark else "#65747A",
-        "track": "#2A3B43" if dark else "#E7ECEE",
-        "accent": "#2FB0C2" if dark else "#16879A",
-        "success": "#4EC19C" if dark else "#23856D",
-        "warning": "#E1A84C" if dark else "#B7791F",
-        "danger": "#EF7777" if dark else "#C85050",
+        "text": "#E6EEF2" if dark else "#16242A",
+        "muted": "#8A9BA4" if dark else "#5F6E74",
+        "track": "#29373F" if dark else "#E3EAEC",
+        "accent": "#2FB0C2" if dark else "#0E7C8E",
+        "success": "#55C2A0" if dark else "#1E7D66",
+        "warning": "#E1A84C" if dark else "#A96D16",
+        "danger": "#EF8585" if dark else "#C0484C",
     }
 
 
@@ -65,13 +68,13 @@ class ScoreGauge(QWidget):
         p.setPen(QPen(QColor(tone), 14, Qt.SolidLine, Qt.RoundCap))
         p.drawArc(rect, 90 * 16, -int(360 * 16 * self.score / 100))
         p.setPen(QColor(c["text"]))
-        f = QFont("Segoe UI", 42, QFont.Bold)
+        f = QFont(SANS, 40, QFont.DemiBold)
         p.setFont(f)
         letter_rect = QRectF(rect.left(), rect.center().y() - 54,
                              rect.width(), 64)
         p.drawText(letter_rect, Qt.AlignCenter, self.letter)
         p.setPen(QColor(c["muted"]))
-        p.setFont(QFont("Segoe UI", 13, QFont.DemiBold))
+        p.setFont(QFont(MONO, 12, QFont.Medium))
         score_rect = QRectF(rect.left(), rect.center().y() + 14,
                             rect.width(), 28)
         p.drawText(score_rect, Qt.AlignCenter, f"{self.score:.0f} / 100")
@@ -136,7 +139,7 @@ class Sparkline(QWidget):
         for pt in points:
             p.drawEllipse(pt, 4, 4)
         p.setPen(QColor(c["muted"]))
-        p.setFont(QFont("Segoe UI", 9))
+        p.setFont(QFont(SANS, 9))
         if self.labels:
             for i, label in enumerate(self.labels):
                 if i not in (0, len(self.labels) - 1) and len(self.labels) > 4:
@@ -159,10 +162,11 @@ class CategoryBar(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(QColor(c["text"]))
-        p.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
+        p.setFont(QFont(SANS, 10, QFont.Medium))
         p.drawText(QRectF(0, 0, self.width() - 52, 18), Qt.AlignLeft, self.name)
         score = self.score
         p.setPen(QColor(c["muted"]))
+        p.setFont(QFont(MONO, 10))
         p.drawText(QRectF(self.width() - 50, 0, 48, 18), Qt.AlignRight,
                    "—" if score is None else f"{score:.0f}")
         track = QRectF(0, 25, self.width(), 8)
@@ -182,18 +186,35 @@ class CategoryBar(QWidget):
 
 
 class StatusPill(QLabel):
+    """A soft status chip whose colors track the active theme.
+
+    Both palettes carry the same semantic roles; the dark tones are the fix for
+    the previous hardcoded light chips, which sat as pale blocks on dark cards.
+    """
+
+    _LIGHT = {
+        "success": ("#1E7D66", "#E4F4EF"),
+        "warning": ("#8A5712", "#FBF0D8"),
+        "danger": ("#B23D45", "#FBE9EA"),
+        "info": ("#34719E", "#E7F1F7"),
+        "muted": ("#5F6E74", "#EAEEF0"),
+    }
+    _DARK = {
+        "success": ("#5CC6A2", "#17372F"),
+        "warning": ("#E4B463", "#3B301D"),
+        "danger": ("#EF8B8B", "#402327"),
+        "info": ("#7FB5DC", "#1C3342"),
+        "muted": ("#9AAAB2", "#22303A"),
+    }
+
     def __init__(self, text: str, tone: str, parent=None):
         super().__init__(text, parent)
-        colors = {
-            "success": ("#23856D", "#E7F5F0"),
-            "warning": ("#9A6515", "#FFF4DC"),
-            "danger": ("#B23D45", "#FCEBEC"),
-            "info": ("#3979A8", "#EAF2F8"),
-            "muted": ("#65747A", "#EDF1F2"),
-        }
-        fg, bg = colors.get(tone, colors["muted"])
+        dark = (QApplication.instance().property("scheduleiqTheme") or
+                "light") == "dark"
+        table = self._DARK if dark else self._LIGHT
+        fg, bg = table.get(tone, table["muted"])
         self.setStyleSheet(f"color:{fg}; background:{bg}; border-radius:10px; "
-                           "padding:3px 8px; font-size:10px; font-weight:700;")
+                           "padding:3px 9px; font-size:10px; font-weight:600;")
         self.setAlignment(Qt.AlignCenter)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 

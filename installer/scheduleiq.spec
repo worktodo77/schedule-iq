@@ -16,6 +16,8 @@ datas = [
      "scheduleiq/gui/assets"),
     (os.path.join(PACKAGE, "gui", "assets", "scheduleiq_icon.png"),
      "scheduleiq/gui/assets"),
+    (os.path.join(PACKAGE, "gui", "assets", "fonts"),
+     "scheduleiq/gui/assets/fonts"),
 ]
 
 # runner.py intentionally imports additive analytics/report modules lazily so a

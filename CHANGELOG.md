@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.7 — 2026-07-16
+
+Presentation-only: **Instrument design foundation**. The desktop UI adopts the
+bundled IBM Plex type family — IBM Plex Sans for text, IBM Plex Mono for figures
+and identifiers — with a retuned type scale and a refined graphite palette that
+keeps the teal brand accent and the dark forensic sidebar. Status pills are now
+theme-adaptive, fixing the pale light chips that previously rendered on dark
+surfaces. This is the foundation of an ongoing UI refinement; component and
+per-screen passes follow. No check, metric, score, threshold, kernel, refusal
+gate, or methodology changed.
+
 ## 0.5.6 — 2026-07-16
 
 Presentation-only: **Forensics blocker taxonomy**. When a governed forensic

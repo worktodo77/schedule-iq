@@ -186,13 +186,25 @@ class Sparkline(QWidget):
         p.setPen(QColor(c["muted"]))
         p.setFont(QFont(SANS, 9))
         if self.labels:
+            last = len(self.labels) - 1
             for i, label in enumerate(self.labels):
-                if i not in (0, len(self.labels) - 1) and len(self.labels) > 4:
+                if i not in (0, last) and len(self.labels) > 4:
                     continue
                 x = points[i].x()
-                align = Qt.AlignHCenter
-                p.drawText(QRectF(x - 65, r.bottom() + 5, 130, 18), align,
-                           str(label)[:18])
+                text = str(label)[:24]
+                # Anchor edge labels inward so they are never clipped by the
+                # widget border — the first/last point sits at the chart margin,
+                # so a centred label would overflow the left/right edge.
+                if i == 0:
+                    rect = QRectF(x - 6, r.bottom() + 5, 160, 18)
+                    align = Qt.AlignLeft | Qt.AlignVCenter
+                elif i == last:
+                    rect = QRectF(x - 154, r.bottom() + 5, 160, 18)
+                    align = Qt.AlignRight | Qt.AlignVCenter
+                else:
+                    rect = QRectF(x - 65, r.bottom() + 5, 130, 18)
+                    align = Qt.AlignHCenter | Qt.AlignVCenter
+                p.drawText(rect, align, text)
 
 
 class CategoryBar(QWidget):

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.10 — 2026-07-16
+
+Presentation-only: **Instrument per-screen detail pass (Trends)**. The health-
+trajectory chart's edge labels are now anchored inward instead of centred on the
+point, so the first and last update labels no longer clip against the chart
+border (a single-update label previously rendered as "PLANT (2025-0…"). The
+trends table's Data date, Health, Card grade, Fails, and Warnings columns now
+render in IBM Plex Mono with their headers aligned — counts right-aligned, date
+and grade centred — so figures line up as tabular columns, matching the Checks
+screen. No check, metric, score, threshold, kernel, refusal gate, or methodology
+changed.
+
 ## 0.5.9 — 2026-07-16
 
 Presentation-only: **Instrument per-screen detail pass (Checks + empty states)**.

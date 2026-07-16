@@ -668,6 +668,10 @@ class MainWindow(QMainWindow):
         self.trend_table = QTableWidget(0, 6)
         self.trend_table.setHorizontalHeaderLabels(
             ["Update", "Data date", "Health", "Card grade", "Fails", "Warnings"])
+        for col, al in ((1, Qt.AlignCenter), (2, Qt.AlignRight | Qt.AlignVCenter),
+                        (3, Qt.AlignCenter), (4, Qt.AlignRight | Qt.AlignVCenter),
+                        (5, Qt.AlignRight | Qt.AlignVCenter)):
+            self.trend_table.horizontalHeaderItem(col).setTextAlignment(al)
         self.trend_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.trend_table.setAlternatingRowColors(True)
         self.trend_table.verticalHeader().setVisible(False)
@@ -1201,6 +1205,11 @@ class MainWindow(QMainWindow):
         labels = [s.label() for s in analysis.schedules]
         self.health_sparkline.set_values(health, labels)
         self.trend_table.setRowCount(len(analysis.assessments))
+        mono = QFont(FONT_MONO)
+        mono.setPixelSize(13)
+        right = Qt.AlignRight | Qt.AlignVCenter
+        col_align = {1: Qt.AlignCenter, 2: right, 3: Qt.AlignCenter,
+                     4: right, 5: right}
         for row, (schedule, assessment) in enumerate(
                 zip(analysis.schedules, analysis.assessments)):
             card = cards[row] if row < len(cards) else None
@@ -1213,7 +1222,11 @@ class MainWindow(QMainWindow):
                 str(assessment.counts.get("WARNING", 0)),
             )
             for col, value in enumerate(values):
-                self.trend_table.setItem(row, col, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                if col in col_align:
+                    item.setFont(mono)
+                    item.setTextAlignment(col_align[col])
+                self.trend_table.setItem(row, col, item)
         if len(health) >= 2:
             delta = health[-1] - health[-2]
             self.movement_value.setText(f"{delta:+.1f} pts")

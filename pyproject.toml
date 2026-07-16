@@ -29,7 +29,7 @@ scheduleiq = "scheduleiq.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-scheduleiq = ["metrics/matrix.yaml", "scorecard.yaml", "gui/assets/*.svg", "gui/assets/*.png"]
+scheduleiq = ["metrics/matrix.yaml", "scorecard.yaml", "gui/assets/*.svg", "gui/assets/*.png", "gui/assets/fonts/*.ttf"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

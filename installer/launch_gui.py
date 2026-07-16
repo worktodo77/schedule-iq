@@ -1,8 +1,19 @@
-"""Absolute-import launcher used by the Windows PyInstaller bundle."""
+"""Absolute-import launcher used by the Windows PyInstaller bundle.
+
+Also usable from a source checkout: when ``scheduleiq`` is not already
+importable (i.e. not running from the bundle and not pip-installed), the
+package under ``src/`` is added to the path, resolved relative to this file, so
+``python installer/launch_gui.py`` works from any working directory.
+"""
 from __future__ import annotations
 
 import os
 import sys
+
+_SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "src")
+if os.path.isdir(_SRC) and _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 
 
 def main() -> int:

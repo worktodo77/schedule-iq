@@ -15,6 +15,21 @@ _SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 if os.path.isdir(_SRC) and _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
+if not getattr(sys, "frozen", False):
+    # Source checkout: the dependencies (PySide6, matplotlib, ...) may be
+    # installed in the per-user site-packages while this environment has
+    # user-site disabled (PYTHONNOUSERSITE), which hides them. Add that
+    # directory explicitly so the launcher works regardless of the setting.
+    # Guarded to source runs only — the PyInstaller bundle ships its own deps.
+    import site
+    try:
+        _usersite = site.getusersitepackages()
+    except Exception:
+        _usersite = None
+    if (isinstance(_usersite, str) and os.path.isdir(_usersite)
+            and _usersite not in sys.path):
+        sys.path.append(_usersite)
+
 
 def main() -> int:
     if "--demo-smoke" in sys.argv:

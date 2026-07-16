@@ -13,7 +13,7 @@ import sys
 import tempfile
 import traceback
 
-from PySide6.QtCore import QSettings, Qt, QThread, Signal
+from PySide6.QtCore import QSettings, QSize, Qt, QThread, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog,
@@ -30,7 +30,7 @@ from ..metrics.engine import load_matrix
 from .blocker_taxonomy import group_blockers
 from .theme import apply_theme, system_theme
 from .widgets import (CategoryBar, EmptyState, FigureCard, ScoreGauge, Sparkline,
-                      StatusPill, open_local)
+                      StatusPill, icon, open_local)
 
 
 APP_NAME = "ScheduleIQ"
@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
 
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(236)
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(18, 22, 18, 18)
         side.setSpacing(5)
@@ -303,8 +303,8 @@ class MainWindow(QMainWindow):
         mark.setAlignment(Qt.AlignCenter)
         mark.setFixedSize(40, 40)
         mark.setStyleSheet(
-            "background:#2FB0C2; color:white; border-radius:10px; "
-            "font-size:16px; font-weight:800;")
+            "background:#2FB0C2; color:white; border-radius:11px; "
+            "font-size:16px; font-weight:600; letter-spacing:0.5px;")
         brand.addWidget(mark)
         brand_text = QVBoxLayout()
         brand_text.setSpacing(0)
@@ -322,9 +322,11 @@ class MainWindow(QMainWindow):
         self.nav_group.setExclusive(True)
         self.nav_buttons = {}
         self.page_indexes = {}
-        for key, glyph, label in self.NAV:
-            button = QPushButton(f"{glyph}   {label}")
+        for key, _glyph, label in self.NAV:
+            button = QPushButton(f"   {label}")
             button.setObjectName("navButton")
+            button.setIcon(icon(key, 20))
+            button.setIconSize(QSize(20, 20))
             button.setCheckable(True)
             button.clicked.connect(lambda checked=False, k=key: self.navigate(k))
             self.nav_group.addButton(button)
@@ -367,9 +369,10 @@ class MainWindow(QMainWindow):
         self.open_btn.setEnabled(False)
         self.open_btn.clicked.connect(self.open_output)
         top_lay.addWidget(self.open_btn)
-        self.theme_btn = QPushButton("◐")
+        self.theme_btn = QPushButton()
         self.theme_btn.setObjectName("themeButton")
-        self.theme_btn.setToolTip("Toggle light / dark theme")
+        self.theme_btn.setToolTip("Switch between light and dark theme")
+        self.theme_btn.setIconSize(QSize(18, 18))
         self.theme_btn.clicked.connect(self.toggle_theme)
         top_lay.addWidget(self.theme_btn)
         self.run_btn = QPushButton("Run analysis")
@@ -831,7 +834,9 @@ class MainWindow(QMainWindow):
         self._theme_name = "dark" if name == "dark" else "light"
         apply_theme(QApplication.instance(), self._theme_name)
         self.settings.setValue("theme", self._theme_name)
-        self.theme_btn.setText("☀" if self._theme_name == "dark" else "◐")
+        dark = self._theme_name == "dark"
+        self.theme_btn.setIcon(icon("sun" if dark else "moon", 18,
+                                    "#E6EEF2" if dark else "#16242A"))
         for widget in (self.gauge, self.report_sparkline, self.health_sparkline):
             widget.update()
         for i in range(self.category_layout.count()):

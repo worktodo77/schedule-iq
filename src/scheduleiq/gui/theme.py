@@ -116,7 +116,7 @@ def stylesheet(t: Theme) -> str:
     QLabel#brandMark {{ color: #FFFFFF; font-size: 20px; font-weight: 600;
         letter-spacing: 0.2px; }}
     QLabel#brandSub {{ color: #93ACB2; font-size: 10px; font-weight: 600;
-        letter-spacing: 1.6px; }}
+        letter-spacing: 0.7px; }}
     QLabel#pageTitle {{ font-size: 24px; font-weight: 600; color: {t.text};
         letter-spacing: -0.4px; }}
     QLabel#pageSubtitle {{ color: {t.muted}; font-size: 13px; }}

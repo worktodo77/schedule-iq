@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.8 — 2026-07-16
+
+Presentation-only: **Instrument component pass (icons and sidebar)**. Sidebar
+navigation and the theme toggle now use bundled Tabler icons (a 9-glyph subset)
+in place of Unicode glyphs — larger, consistent, and legible, with the theme
+toggle reading as a clear sun/moon. The brand tagline no longer clips and the
+brand mark uses a weight the type family actually provides. No check, metric,
+score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.7 — 2026-07-16
 
 Presentation-only: **Instrument design foundation**. The desktop UI adopts the

@@ -4,14 +4,53 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import (QColor, QDesktopServices, QFont, QPainter, QPainterPath,
-                           QPen, QPixmap)
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import (QColor, QDesktopServices, QFont, QIcon, QPainter,
+                           QPainterPath, QPen, QPixmap)
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 SANS = "IBM Plex Sans"
 MONO = "IBM Plex Mono"
+ICON_FONT = "tabler-icons"
+
+# Semantic name -> Tabler glyph codepoint (from the bundled subset font).
+_ICON_CODES = {
+    "files": 0xEDEF, "report": 0xEAB1, "checks": 0xF074, "trends": 0xEB43,
+    "paths": 0xEB17, "forensics": 0xEF64, "settings": 0xEB20,
+    "sun": 0xEB30, "moon": 0xEAF8,
+}
+
+
+def icon(name: str, size: int = 20, color: str = "#B4C6CB") -> QIcon:
+    """Render a bundled Tabler glyph to a crisp QIcon at the given px size.
+
+    Painted at 2x with a device-pixel-ratio pixmap so it stays sharp on
+    high-DPI displays.  Returns an empty QIcon for an unknown name rather than
+    raising, so a missing mapping degrades gracefully.
+    """
+    code = _ICON_CODES.get(name)
+    if code is None:
+        return QIcon()
+    # Ensure the bundled icon font is registered before we bake the glyph into a
+    # pixmap — icons built during window construction run before the theme (and
+    # its font loading) is applied, which would otherwise render tofu.
+    from .theme import load_fonts
+    load_fonts()
+    dpr = 2
+    pm = QPixmap(size * dpr, size * dpr)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QPainter.TextAntialiasing)
+    glyph_font = QFont(ICON_FONT)
+    glyph_font.setPixelSize(int(size * dpr * 0.92))
+    p.setFont(glyph_font)
+    p.setPen(QColor(color))
+    p.drawText(pm.rect(), Qt.AlignCenter, chr(code))
+    p.end()
+    pm.setDevicePixelRatio(dpr)
+    return QIcon(pm)
 
 
 def _theme(widget) -> str:

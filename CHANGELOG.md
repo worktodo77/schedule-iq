@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.12 — 2026-07-16
+
+Presentation-only: **Instrument per-screen detail pass (Settings)**. The settings
+panel no longer shows a spurious horizontal scrollbar — it is a width-responsive
+form that only scrolls vertically, so the horizontal bar (an artifact of the
+vertical scrollbar's width reservation nudging the canvas minimum past the
+viewport) is suppressed. The "View Metric & Heuristic Matrix" button label no
+longer renders as "Metric_Heuristic": the ampersand was being consumed as a Qt
+mnemonic accelerator and is now escaped to display literally. No check, metric,
+score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.11 — 2026-07-16
 
 Presentation-only: **Instrument per-screen detail pass (Files)**. The primary

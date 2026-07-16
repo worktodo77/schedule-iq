@@ -729,6 +729,11 @@ class MainWindow(QMainWindow):
             "governed; per-run overrides are always disclosed in outputs.")
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        # This panel is a width-responsive form (stretched 2-column grid,
+        # wrapping copy); it only ever scrolls vertically. Suppress the spurious
+        # horizontal bar that Qt otherwise shows when the vertical scrollbar's
+        # width reservation nudges the canvas minimum past the viewport.
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         canvas = QWidget()
         grid = QGridLayout(canvas)
         grid.setContentsMargins(0, 0, 4, 4)
@@ -801,7 +806,7 @@ class MainWindow(QMainWindow):
         threshold = QPushButton("Edit threshold profile…")
         threshold.clicked.connect(self.edit_thresholds)
         governance.addWidget(threshold)
-        matrix = QPushButton("View Metric & Heuristic Matrix")
+        matrix = QPushButton("View Metric && Heuristic Matrix")
         matrix.clicked.connect(lambda: MatrixDialog(self).exec())
         governance.addWidget(matrix)
         governance.addStretch()

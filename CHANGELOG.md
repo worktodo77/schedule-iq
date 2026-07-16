@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.6 — 2026-07-16
+
+Presentation-only: **Forensics blocker taxonomy**. When a governed forensic
+exhibit cannot be produced, the Forensics page previously listed every reason in
+one undifferentiated block, so a genuine schedule defect that must be corrected
+in P6 looked identical to a valid schedule the diagnostic engine simply cannot
+reproduce within tolerance. Reasons are now grouped by cause — schedule defect
+(correction required), engine limitation (schedule of record stands), size or
+scope limit (exhibit skipped), and other — each with a severity tone and
+standing guidance. A genuine network-validation failure is identified from the
+SET-02 check's own finding, not a match-rate proxy (a valid-but-fully-divergent
+schedule also scores 0.0%). No check, metric, score, threshold, kernel, refusal
+gate, or methodology changed.
+
 ## 0.5.5 — 2026-07-15
 
 Check-affecting: **SET-02 completed-activity reference repair**. The handshake

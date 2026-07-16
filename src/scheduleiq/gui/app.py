@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..ingest import SUPPORTED, load_many
 from ..metrics.engine import load_matrix
+from .blocker_taxonomy import group_blockers
 from .theme import apply_theme, system_theme
 from .widgets import (CategoryBar, EmptyState, FigureCard, ScoreGauge, Sparkline,
                       StatusPill, open_local)
@@ -1226,25 +1227,29 @@ class MainWindow(QMainWindow):
         self._fill_forensics_gallery(
             [p for p in outputs if os.path.basename(p) in forensic_names])
 
-    def _forensic_diagnostics(self) -> list[str]:
-        """Return run messages that explain forensic availability.
+    def _engine_validation_failed(self) -> bool:
+        """True when the current run's SET-02 check reports a network-validation
+        failure (engine_is_valid=False) — a genuine schedule defect, distinct
+        from a merely low match rate.
 
-        The governed runner deliberately refuses engine-dependent exhibits when
-        SET-02 does not pass.  Those messages used to be visible only in the
-        truncated footer, which made a correctly refused run look like an empty
-        or broken Forensics page.
+        Read from the real check finding, not a match-rate proxy: a
+        valid-but-fully-divergent schedule also scores 0.0%, so the rate cannot
+        classify the cause.
         """
-        markers = (
-            "forensic", "daily ledger", "robustness certificate",
-            "schedule risk analysis",
-        )
-        messages: list[str] = []
-        for message in self.current_result.messages:
-            text = str(message).strip()
-            if text and any(marker in text.lower() for marker in markers):
-                if text not in messages:
-                    messages.append(text)
-        return messages
+        try:
+            assessments = self.current_result.analysis.assessments
+        except AttributeError:
+            return False
+        if not assessments:
+            return False
+        for result in assessments[-1].results:
+            if "network validation failed" in (result.narrative or "").lower():
+                return True
+            for finding in getattr(result, "findings", ()):
+                if "network validation" in (
+                        getattr(finding, "object_name", "") or "").lower():
+                    return True
+        return False
 
     def _fill_forensics_gallery(self, images: list[str]):
         _clear_layout(self.forensics_grid)
@@ -1258,7 +1263,10 @@ class MainWindow(QMainWindow):
             if col == 2:
                 row, col = row + 1, 0
 
-        diagnostics = self._forensic_diagnostics()
+        groups = group_blockers(
+            self.current_result.messages,
+            network_validation_failed=self._engine_validation_failed())
+        diagnostics = [m for group in groups for m in group.messages]
         if diagnostics or not images:
             if col:
                 row += 1
@@ -1274,27 +1282,54 @@ class MainWindow(QMainWindow):
                 "PARTIAL" if images else "NOT GENERATED", "warning"))
             lay.addLayout(heading)
 
-            if diagnostics:
+            self.forensics_diagnostic_label = None
+            if groups:
                 intro = QLabel(
                     "The standard assessment completed, but one or more governed "
-                    "forensic exhibits were refused or skipped for these reasons:")
-                detail_text = "\n".join(f"\u2022 {message}" for message in diagnostics)
+                    "forensic exhibits were not produced. They are grouped below "
+                    "by cause:")
+                intro.setWordWrap(True)
+                lay.addWidget(intro)
+
+                for group in groups:
+                    group_head = QHBoxLayout()
+                    group_title = QLabel(group.category.title)
+                    group_title.setObjectName("sectionTitle")
+                    group_head.addWidget(group_title)
+                    group_head.addStretch()
+                    group_head.addWidget(
+                        StatusPill(group.category.pill, group.category.tone))
+                    lay.addLayout(group_head)
+
+                    guidance = QLabel(group.category.guidance)
+                    guidance.setObjectName("muted")
+                    guidance.setWordWrap(True)
+                    lay.addWidget(guidance)
+
+                    bullets = QLabel(
+                        "\n".join(f"\u2022 {m}" for m in group.messages))
+                    bullets.setObjectName("privilegedWarning")
+                    bullets.setWordWrap(True)
+                    bullets.setTextInteractionFlags(Qt.TextSelectableByMouse)
+                    lay.addWidget(bullets)
+                    # Back-compat handle for callers/tests to query a reason; the
+                    # full set is always in forensics_status_text below.
+                    if self.forensics_diagnostic_label is None:
+                        self.forensics_diagnostic_label = bullets
             else:
                 intro = QLabel(
                     "Forensic exhibits require at least two schedule updates and "
                     "a passing SET-02 engine-to-record validation handshake.")
-                detail_text = (
+                intro.setWordWrap(True)
+                lay.addWidget(intro)
+                self.forensics_diagnostic_label = QLabel(
                     "\u2022 Add two or more chronological updates, then run the "
                     "analysis again.")
-            intro.setWordWrap(True)
-            lay.addWidget(intro)
-
-            self.forensics_diagnostic_label = QLabel(detail_text)
-            self.forensics_diagnostic_label.setObjectName("privilegedWarning")
-            self.forensics_diagnostic_label.setWordWrap(True)
-            self.forensics_diagnostic_label.setTextInteractionFlags(
-                Qt.TextSelectableByMouse)
-            lay.addWidget(self.forensics_diagnostic_label)
+                self.forensics_diagnostic_label.setObjectName("privilegedWarning")
+                self.forensics_diagnostic_label.setWordWrap(True)
+                self.forensics_diagnostic_label.setTextInteractionFlags(
+                    Qt.TextSelectableByMouse)
+                lay.addWidget(self.forensics_diagnostic_label)
 
             self.forensics_safeguard_label = QLabel(
                 "No forensic values were substituted. Standard checks, the Report "

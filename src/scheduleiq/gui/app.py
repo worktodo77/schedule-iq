@@ -28,7 +28,7 @@ from .. import __version__
 from ..ingest import SUPPORTED, load_many
 from ..metrics.engine import load_matrix
 from .blocker_taxonomy import group_blockers
-from .theme import apply_theme, system_theme
+from .theme import FONT_MONO, FONT_SANS, apply_theme, system_theme
 from .widgets import (CategoryBar, EmptyState, FigureCard, ScoreGauge, Sparkline,
                       StatusPill, icon, open_local)
 
@@ -626,6 +626,8 @@ class MainWindow(QMainWindow):
         lay.addLayout(filters)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Check / finding", "Value", "Threshold", "Status", "Result"])
+        self.tree.headerItem().setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
+        self.tree.headerItem().setTextAlignment(2, Qt.AlignRight | Qt.AlignVCenter)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSortingEnabled(True)
         self.tree.sortByColumn(0, Qt.AscendingOrder)
@@ -696,7 +698,7 @@ class MainWindow(QMainWindow):
         empty = EmptyState(
             "No path visuals yet",
             "Run an analysis to generate the milestone-impact and as-built path views.",
-            "Go to files")
+            "Go to files", glyph="paths")
         empty.action_requested.connect(lambda: self.navigate("files"))
         self.paths_grid.addWidget(empty, 0, 0, 1, 2)
         return page
@@ -709,7 +711,7 @@ class MainWindow(QMainWindow):
         empty = EmptyState(
             "No forensic visuals yet",
             "Run two or more engine-consistent updates to populate forensic exhibits.",
-            "Go to files")
+            "Go to files", glyph="forensics")
         empty.action_requested.connect(lambda: self.navigate("files"))
         self.forensics_grid.addWidget(empty, 0, 0, 1, 2)
         return page
@@ -1136,10 +1138,12 @@ class MainWindow(QMainWindow):
         by_category = {}
         for result in results:
             by_category.setdefault(result.check.category, []).append(result)
+        mono_col = QFont(FONT_MONO)
+        mono_col.setPixelSize(13)
         for category in sorted(by_category):
             group = QTreeWidgetItem([category])
             group.setFirstColumnSpanned(True)
-            group.setFont(0, QFont("Segoe UI", 10, QFont.Bold))
+            group.setFont(0, QFont(FONT_SANS, 10, QFont.DemiBold))
             group.setData(0, Qt.UserRole, "category")
             self.tree.addTopLevelItem(group)
             for result in by_category[category]:
@@ -1152,9 +1156,13 @@ class MainWindow(QMainWindow):
                 row.setData(0, Qt.UserRole, "result")
                 row.setData(0, Qt.UserRole + 1, result.status)
                 row.setToolTip(4, result.narrative)
+                row.setFont(1, mono_col)
+                row.setFont(2, mono_col)
+                row.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
+                row.setTextAlignment(2, Qt.AlignRight | Qt.AlignVCenter)
                 row.setBackground(3, QColor(STATUS_BG.get(result.status, "#EDF1F2")))
                 row.setForeground(3, QColor(STATUS_FG.get(result.status, "#65747A")))
-                row.setFont(3, QFont("Segoe UI", 9, QFont.Bold))
+                row.setFont(3, QFont(FONT_SANS, 9, QFont.DemiBold))
                 for finding in result.findings[:500]:
                     detail = f"{finding.object_name}  {finding.detail}".strip()
                     child = QTreeWidgetItem(
@@ -1395,7 +1403,7 @@ class MainWindow(QMainWindow):
             empty = EmptyState(
                 "No visuals generated",
                 "This run did not produce a compatible exhibit. Review the run "
-                "messages and SET-02 handshake status.")
+                "messages and SET-02 handshake status.", glyph="paths")
             grid.addWidget(empty, 0, 0, 1, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)

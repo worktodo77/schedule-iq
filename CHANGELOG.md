@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.9 — 2026-07-16
+
+Presentation-only: **Instrument per-screen detail pass (Checks + empty states)**.
+On the Checks screen the Value and Threshold columns now render in IBM Plex Mono,
+right-aligned, so figures line up as a proper tabular column and magnitudes are
+scannable down the list; the column headers align to match. Category and status
+labels moved off a leftover Segoe UI font onto the Instrument type family.
+Empty states on Paths and Forensics (and the no-visuals gallery fallback) now
+show a bundled Tabler glyph matching the screen instead of a Unicode diamond that
+rendered as a missing-glyph box. No check, metric, score, threshold, kernel,
+refusal gate, or methodology changed.
+
 ## 0.5.8 — 2026-07-16
 
 Presentation-only: **Instrument component pass (icons and sidebar)**. Sidebar

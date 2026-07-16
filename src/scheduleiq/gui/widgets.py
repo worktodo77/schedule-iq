@@ -22,16 +22,16 @@ _ICON_CODES = {
 }
 
 
-def icon(name: str, size: int = 20, color: str = "#B4C6CB") -> QIcon:
-    """Render a bundled Tabler glyph to a crisp QIcon at the given px size.
+def icon_pixmap(name: str, size: int = 20, color: str = "#B4C6CB") -> QPixmap:
+    """Render a bundled Tabler glyph to a crisp DPR-2 QPixmap.
 
     Painted at 2x with a device-pixel-ratio pixmap so it stays sharp on
-    high-DPI displays.  Returns an empty QIcon for an unknown name rather than
+    high-DPI displays.  Returns a null pixmap for an unknown name rather than
     raising, so a missing mapping degrades gracefully.
     """
     code = _ICON_CODES.get(name)
     if code is None:
-        return QIcon()
+        return QPixmap()
     # Ensure the bundled icon font is registered before we bake the glyph into a
     # pixmap — icons built during window construction run before the theme (and
     # its font loading) is applied, which would otherwise render tofu.
@@ -50,7 +50,13 @@ def icon(name: str, size: int = 20, color: str = "#B4C6CB") -> QIcon:
     p.drawText(pm.rect(), Qt.AlignCenter, chr(code))
     p.end()
     pm.setDevicePixelRatio(dpr)
-    return QIcon(pm)
+    return pm
+
+
+def icon(name: str, size: int = 20, color: str = "#B4C6CB") -> QIcon:
+    """Render a bundled Tabler glyph to a crisp QIcon at the given px size."""
+    pm = icon_pixmap(name, size, color)
+    return QIcon(pm) if not pm.isNull() else QIcon()
 
 
 def _theme(widget) -> str:
@@ -292,16 +298,17 @@ class FigureCard(QFrame):
 class EmptyState(QFrame):
     action_requested = Signal()
 
-    def __init__(self, title: str, body: str, action: str = "", parent=None):
+    def __init__(self, title: str, body: str, action: str = "", parent=None,
+                 glyph: str = "report"):
         super().__init__(parent)
         self.setObjectName("card")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(28, 28, 28, 28)
         lay.addStretch()
-        icon = QLabel("◇")
-        icon.setAlignment(Qt.AlignCenter)
-        icon.setStyleSheet("font-size:38px; color:#2FB0C2;")
-        lay.addWidget(icon)
+        icon_lbl = QLabel()
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setPixmap(icon_pixmap(glyph, 46, "#4C6B73"))
+        lay.addWidget(icon_lbl)
         ttl = QLabel(title)
         ttl.setObjectName("sectionTitle")
         ttl.setAlignment(Qt.AlignCenter)

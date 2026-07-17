@@ -528,6 +528,10 @@ class MainWindow(QMainWindow):
             "and movement across the update series.")
         body = QScrollArea()
         body.setWidgetResizable(True)
+        # Width-responsive dashboard; it only scrolls vertically. Suppress the
+        # spurious horizontal bar Qt shows when the vertical scrollbar's width
+        # reservation nudges the canvas minimum past the viewport.
+        body.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         canvas = QWidget()
         self.report_layout = QVBoxLayout(canvas)
         self.report_layout.setContentsMargins(0, 0, 4, 4)

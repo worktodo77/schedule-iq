@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.13 — 2026-07-16
+
+Presentation-only: **Instrument per-screen detail pass (Report Card)**. The
+Report Card dashboard no longer shows a spurious horizontal scrollbar — like the
+settings panel, it is a width-responsive view that only scrolls vertically, so
+the horizontal bar (an artifact of the vertical scrollbar's width reservation
+nudging the canvas minimum past the viewport) is suppressed. This completes the
+per-screen detail pass; the category scores were already tabular and the
+score-trajectory label was unclipped by earlier increments. No check, metric,
+score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.12 — 2026-07-16
 
 Presentation-only: **Instrument per-screen detail pass (Settings)**. The settings

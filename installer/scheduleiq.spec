@@ -16,6 +16,10 @@ datas = [
      "scheduleiq/gui/assets"),
     (os.path.join(PACKAGE, "gui", "assets", "scheduleiq_icon.png"),
      "scheduleiq/gui/assets"),
+    (os.path.join(PACKAGE, "gui", "assets", "check.svg"),
+     "scheduleiq/gui/assets"),
+    (os.path.join(PACKAGE, "gui", "assets", "radio-dot.svg"),
+     "scheduleiq/gui/assets"),
     (os.path.join(PACKAGE, "gui", "assets", "fonts"),
      "scheduleiq/gui/assets/fonts"),
 ]

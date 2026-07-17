@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.15 — 2026-07-16
+
+Presentation-only: **Instrument states pass (form controls)**. Checkboxes and
+radio buttons now adopt the teal accent when checked/selected — an accent-filled
+indicator with a crisp white check or dot — instead of the washed-out native
+gray indicator that did not match the design language. Text inputs gain hover,
+disabled, and read-only states: a read-only field (e.g. the output-folder path)
+now reads as non-editable with a muted fill rather than looking like an empty
+editable box. Adds two small bundled SVG marks (check, radio dot); if Qt's SVG
+image support is unavailable the indicator degrades to a solid accent fill. No
+check, metric, score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.14 — 2026-07-16
 
 Presentation-only: **Instrument states pass (buttons)**. Buttons now give press

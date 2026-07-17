@@ -18,7 +18,13 @@ from PySide6.QtGui import QColor, QFontDatabase, QPalette
 FONT_SANS = "IBM Plex Sans"
 FONT_MONO = "IBM Plex Mono"
 
-_FONT_DIR = Path(__file__).with_name("assets") / "fonts"
+_ASSET_DIR = Path(__file__).with_name("assets")
+_FONT_DIR = _ASSET_DIR / "fonts"
+# Posix paths for QSS url() — the white check/dot marks sit on the accent-filled
+# indicator, so one white asset works in both themes. If Qt's SVG image support
+# is unavailable the indicator degrades to a solid accent fill (still on-brand).
+_CHECK_SVG = (_ASSET_DIR / "check.svg").as_posix()
+_RADIO_SVG = (_ASSET_DIR / "radio-dot.svg").as_posix()
 _fonts_loaded = False
 
 
@@ -173,11 +179,34 @@ def stylesheet(t: Theme) -> str:
         background: {t.surface}; border: 1px solid {t.border}; border-radius: 8px;
         padding: 8px 10px; selection-background-color: {t.accent};
     }}
+    QLineEdit:hover, QComboBox:hover, QSpinBox:hover {{ border-color: {t.muted}; }}
     QLineEdit:focus, QComboBox:focus {{ border: 2px solid {t.accent};
         padding: 7px 9px; }}
+    QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{
+        color: {t.muted}; background: {t.surface_alt}; }}
+    QLineEdit[readOnly="true"] {{ background: {t.surface_alt}; color: {t.muted}; }}
     QComboBox::drop-down {{ border: 0; width: 24px; }}
     QComboBox QAbstractItemView {{ background: {t.surface}; border: 1px solid {t.border};
         selection-background-color: {t.accent_soft}; selection-color: {t.text}; }}
+
+    QCheckBox, QRadioButton {{ spacing: 8px; }}
+    QCheckBox::indicator, QRadioButton::indicator {{
+        width: 18px; height: 18px;
+        border: 1.5px solid {t.border}; background: {t.surface};
+    }}
+    QCheckBox::indicator {{ border-radius: 5px; }}
+    QRadioButton::indicator {{ border-radius: 10px; }}
+    QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
+        border-color: {t.accent}; }}
+    QCheckBox::indicator:checked {{ background: {t.accent}; border-color: {t.accent};
+        image: url("{_CHECK_SVG}"); }}
+    QRadioButton::indicator:checked {{ background: {t.accent}; border-color: {t.accent};
+        image: url("{_RADIO_SVG}"); }}
+    QCheckBox::indicator:checked:hover, QRadioButton::indicator:checked:hover {{
+        background: {t.accent_hover}; border-color: {t.accent_hover}; }}
+    QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+        border-color: {t.border}; background: {t.surface_alt}; }}
+    QCheckBox:disabled, QRadioButton:disabled {{ color: {t.muted}; }}
 
     QListWidget, QTreeWidget, QTableWidget {{
         background: {t.surface}; alternate-background-color: {t.surface_alt};

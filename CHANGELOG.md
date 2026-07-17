@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.19 — 2026-07-16
+
+Presentation-only: **Sidebar brand mark uses the app logo**. The top-left brand
+tile now shows the ScheduleIQ logo (the same `scheduleiq_icon.svg` used as the
+window / About-dialog icon, rendered crisply at 2x) in place of the "SI" monogram
+box. Falls back to the "SI" box if the icon asset is missing. No check, metric,
+score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.18 — 2026-07-16
 
 Presentation-only: **Trajectory axis labels no longer clip mid-series**. A

@@ -299,12 +299,18 @@ class MainWindow(QMainWindow):
         side.setContentsMargins(18, 22, 18, 18)
         side.setSpacing(5)
         brand = QHBoxLayout()
-        mark = QLabel("SI")
+        mark = QLabel()
         mark.setAlignment(Qt.AlignCenter)
         mark.setFixedSize(40, 40)
-        mark.setStyleSheet(
-            "background:#2FB0C2; color:white; border-radius:11px; "
-            "font-size:16px; font-weight:600; letter-spacing:0.5px;")
+        if ICON_PATH.exists():
+            pixmap = QIcon(str(ICON_PATH)).pixmap(QSize(80, 80))
+            pixmap.setDevicePixelRatio(2)
+            mark.setPixmap(pixmap)
+        else:
+            mark.setText("SI")
+            mark.setStyleSheet(
+                "background:#2FB0C2; color:white; border-radius:11px; "
+                "font-size:16px; font-weight:600; letter-spacing:0.5px;")
         brand.addWidget(mark)
         brand_text = QVBoxLayout()
         brand_text.setSpacing(0)

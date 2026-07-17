@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.16 — 2026-07-16
+
+Presentation-only: **Instrument states pass (scrollbars and lists)**. The
+horizontal scrollbar now matches the custom thin, rounded vertical one (it
+previously fell back to the native OS style on the gallery pages), scrollbar
+handles lighten on hover, and track areas are transparent with no arrow buttons.
+List, tree, and table rows share one hover and selection treatment, so the
+trends table now responds to row hover like the checks tree. No check, metric,
+score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.15 — 2026-07-16
 
 Presentation-only: **Instrument states pass (form controls)**. Checkboxes and

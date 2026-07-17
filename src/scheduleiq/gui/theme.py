@@ -214,7 +214,11 @@ def stylesheet(t: Theme) -> str:
         selection-background-color: {t.accent_soft}; selection-color: {t.text};
     }}
     QTreeWidget::item, QListWidget::item {{ padding: 7px; border-radius: 5px; }}
-    QTreeWidget::item:hover, QListWidget::item:hover {{ background: {t.surface_alt}; }}
+    QTableWidget::item {{ padding: 7px; }}
+    QTreeWidget::item:hover, QListWidget::item:hover,
+    QTableWidget::item:hover {{ background: {t.surface_alt}; }}
+    QTreeWidget::item:selected, QListWidget::item:selected,
+    QTableWidget::item:selected {{ background: {t.accent_soft}; color: {t.text}; }}
     QHeaderView::section {{ background: {t.surface_alt}; color: {t.muted};
         padding: 9px; border: 0; border-bottom: 1px solid {t.border};
         font-size: 11px; font-weight: 600; letter-spacing: 0.6px; }}
@@ -222,9 +226,14 @@ def stylesheet(t: Theme) -> str:
 
     QScrollArea {{ border: 0; background: transparent; }}
     QScrollBar:vertical {{ background: transparent; width: 11px; margin: 2px; }}
+    QScrollBar:horizontal {{ background: transparent; height: 11px; margin: 2px; }}
     QScrollBar::handle:vertical {{ background: {t.border}; min-height: 30px;
         border-radius: 4px; }}
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollBar::handle:horizontal {{ background: {t.border}; min-width: 30px;
+        border-radius: 4px; }}
+    QScrollBar::handle:hover {{ background: {t.muted}; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
     QProgressBar {{ background: {t.surface_alt}; border: 0; border-radius: 3px;
         min-height: 6px; max-height: 6px; text-align: center; }}
     QProgressBar::chunk {{ background: {t.accent}; border-radius: 3px; }}

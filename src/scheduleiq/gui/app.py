@@ -334,19 +334,26 @@ class MainWindow(QMainWindow):
             side.addWidget(button)
         side.addStretch()
         state = QFrame()
-        state.setStyleSheet(
-            "background:#102A31; border:1px solid #24434A; border-radius:9px;")
+        state.setObjectName("statusCard")
         state_lay = QVBoxLayout(state)
-        state_lay.setContentsMargins(12, 10, 12, 10)
+        state_lay.setContentsMargins(14, 12, 14, 13)
+        state_lay.setSpacing(7)
+        state_row = QHBoxLayout()
+        state_row.setSpacing(9)
+        self.status_dot = QFrame()
+        self.status_dot.setFixedSize(8, 8)
+        state_row.addWidget(self.status_dot, 0, Qt.AlignVCenter)
         self.sidebar_state = QLabel("READY")
-        self.sidebar_state.setStyleSheet(
-            "color:#67D4C0; font-size:10px; font-weight:800;")
-        state_lay.addWidget(self.sidebar_state)
+        self.sidebar_state.setObjectName("statusLabel")
+        state_row.addWidget(self.sidebar_state)
+        state_row.addStretch()
+        state_lay.addLayout(state_row)
         self.sidebar_detail = QLabel("Add schedule files to begin")
+        self.sidebar_detail.setObjectName("statusDetail")
         self.sidebar_detail.setWordWrap(True)
-        self.sidebar_detail.setStyleSheet("color:#9CB4BA; font-size:11px;")
         state_lay.addWidget(self.sidebar_detail)
         side.addWidget(state)
+        self._set_status("READY", "Add schedule files to begin", "ready")
         version = QLabel(f"v{__version__}")
         version.setAlignment(Qt.AlignCenter)
         version.setStyleSheet("color:#739097; font-size:10px; padding-top:8px;")
@@ -507,7 +514,7 @@ class MainWindow(QMainWindow):
         rt.setObjectName("sectionTitle")
         rl.addWidget(rt)
         self.readiness = QLabel("Waiting for files")
-        self.readiness.setObjectName("metricValue")
+        self.readiness.setObjectName("statusHeadline")
         rl.addWidget(self.readiness)
         self.readiness_detail = QLabel(
             "Add at least one supported schedule. Three or more updates produce "
@@ -662,7 +669,7 @@ class MainWindow(QMainWindow):
         mtitle.setObjectName("sectionTitle")
         ml.addWidget(mtitle)
         self.movement_value = QLabel("—")
-        self.movement_value.setObjectName("metricValue")
+        self.movement_value.setObjectName("statusHeadline")
         ml.addWidget(self.movement_value)
         self.movement_note = QLabel("Awaiting an update series")
         self.movement_note.setObjectName("muted")
@@ -817,16 +824,18 @@ class MainWindow(QMainWindow):
         grid.addWidget(governance_card, 1, 0)
 
         privileged_card, privileged = _card()
-        pt = QLabel("Internal privileged surface")
+        pt = QLabel("Internal Proprietary Metrics")
         pt.setObjectName("sectionTitle")
         privileged.addWidget(pt)
         self.internal_cb = QCheckBox(
-            "Create INTERNAL_PRIVILEGED workbook (LI-11…LI-15)")
+            "Include internal proprietary Long International forensic metrics "
+            "(LI-11–LI-15)")
         privileged.addWidget(self.internal_cb)
         warning = QLabel(
-            "PRIVILEGED / WEIGHT-0. This workbook is not for a counterparty and "
-            "must not be included in the standard artifact set. It does not alter "
-            "the standard Report Card grade.")
+            "NOT FOR DISSEMINATION. Internal proprietary Long International "
+            "forensic work product — not for a counterparty and excluded from the "
+            "standard artifact set. WEIGHT-0: does not alter the standard Report "
+            "Card grade.")
         warning.setObjectName("privilegedWarning")
         warning.setWordWrap(True)
         privileged.addWidget(warning)
@@ -863,6 +872,20 @@ class MainWindow(QMainWindow):
 
     def toggle_theme(self):
         self.set_theme("light" if self._theme_name == "dark" else "dark")
+
+    # Sidebar status tones (on the always-dark sidebar, so fixed light-on-dark).
+    _STATUS_TONES = {
+        "ready": "#5FD0BE", "analyzing": "#E6B45C",
+        "complete": "#5FD0BE", "failed": "#F08A8A",
+    }
+
+    def _set_status(self, state: str, detail: str, tone: str):
+        """Update the sidebar status card — dot colour, label, and detail."""
+        color = self._STATUS_TONES.get(tone, self._STATUS_TONES["ready"])
+        self.status_dot.setStyleSheet(f"background:{color}; border-radius:4px;")
+        self.sidebar_state.setText(state)
+        self.sidebar_state.setStyleSheet(f"color:{color};")
+        self.sidebar_detail.setText(detail)
 
     # ---------------------------------------------------------------- files
     def dragEnterEvent(self, event):
@@ -925,7 +948,7 @@ class MainWindow(QMainWindow):
             self.readiness_detail.setText(
                 "Add at least one supported schedule. Three or more updates "
                 "produce the richest trend and reliability views.")
-            self.sidebar_detail.setText("Add schedule files to begin")
+            self._set_status("READY", "Add schedule files to begin", "ready")
             return
         try:
             from ..trend.series import order_and_validate
@@ -958,7 +981,7 @@ class MainWindow(QMainWindow):
                 self.readiness_detail.setText(
                     f"{len(ordered)} schedule file{'s' if len(ordered) != 1 else ''} "
                     "successfully pre-read and ordered.")
-            self.sidebar_detail.setText(f"{len(ordered)} file(s) ready")
+            self._set_status("READY", f"{len(ordered)} file(s) ready", "ready")
         except Exception as exc:
             self.warn_label.setText(f"Could not pre-read a file: {exc}")
             self.readiness.setText("Input needs attention")
@@ -999,10 +1022,7 @@ class MainWindow(QMainWindow):
         self.run_btn.setEnabled(False)
         self.run_btn.setText("Analyzing…")
         self.progress.show()
-        self.sidebar_state.setText("ANALYZING")
-        self.sidebar_state.setStyleSheet(
-            "color:#E1A84C; font-size:10px; font-weight:800;")
-        self.sidebar_detail.setText("Preparing local analysis")
+        self._set_status("ANALYZING", "Preparing local analysis", "analyzing")
         self.status_bar.setText("Starting analysis…")
         self.worker = RunWorker(
             paths, self.out_dir, self.overrides, self.paper.currentText(),
@@ -1023,10 +1043,7 @@ class MainWindow(QMainWindow):
         self.progress.hide()
         self.run_btn.setEnabled(True)
         self.run_btn.setText("Run analysis")
-        self.sidebar_state.setText("RUN FAILED")
-        self.sidebar_state.setStyleSheet(
-            "color:#EF7777; font-size:10px; font-weight:800;")
-        self.sidebar_detail.setText("See error details")
+        self._set_status("RUN FAILED", "See error details", "failed")
         QMessageBox.critical(self, "ScheduleIQ — run failed", trace[-4000:])
 
     def show_results(self, result):
@@ -1035,9 +1052,7 @@ class MainWindow(QMainWindow):
         self.run_btn.setEnabled(True)
         self.run_btn.setText("Run analysis")
         self.open_btn.setEnabled(True)
-        self.sidebar_state.setText("ANALYSIS COMPLETE")
-        self.sidebar_state.setStyleSheet(
-            "color:#67D4C0; font-size:10px; font-weight:800;")
+        self._set_status("ANALYSIS COMPLETE", "Report ready", "complete")
         try:
             from ..scorecard import score_series
             self.current_card = score_series(result.analysis)

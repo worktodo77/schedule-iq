@@ -131,6 +131,8 @@ def stylesheet(t: Theme) -> str:
         letter-spacing: 0.1px; }}
     QLabel#metricValue {{ font-family: {mono}; font-size: 25px; font-weight: 600;
         letter-spacing: -0.5px; }}
+    QLabel#statusHeadline {{ font-size: 23px; font-weight: 600; color: {t.text};
+        letter-spacing: -0.3px; }}
     QLabel#monoValue, QLabel[mono="true"] {{ font-family: {mono}; }}
     QLabel#muted, QLabel.muted {{ color: {t.muted}; }}
     QLabel#warningText {{ color: {t.warning}; }}
@@ -146,6 +148,10 @@ def stylesheet(t: Theme) -> str:
     }}
     QFrame#topBar {{ background: {t.canvas}; border: 0; }}
     QFrame#divider {{ background: {t.border}; max-height: 1px; }}
+    QFrame#statusCard {{ background: #102A31; border: 1px solid #244049;
+        border-radius: 10px; }}
+    QLabel#statusLabel {{ font-size: 11px; font-weight: 600; letter-spacing: 1.1px; }}
+    QLabel#statusDetail {{ color: #9CB4BA; font-size: 11px; }}
 
     QPushButton {{
         background: {t.surface}; border: 1px solid {t.border}; border-radius: 8px;
@@ -240,8 +246,12 @@ def stylesheet(t: Theme) -> str:
     QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.border};
         padding: 5px; }}
     QMenuBar {{ background: {t.canvas}; }}
-    QMenuBar::item:selected, QMenu::item:selected {{ background: {t.accent_soft}; }}
-    QMenu {{ background: {t.surface}; border: 1px solid {t.border}; padding: 5px; }}
+    QMenuBar::item {{ padding: 5px 9px; border-radius: 5px; }}
+    QMenuBar::item:selected, QMenu::item:selected {{ background: {t.accent_soft};
+        color: {t.text}; }}
+    QMenu {{ background: {t.surface}; border: 1px solid {t.border}; padding: 6px; }}
+    QMenu::item {{ padding: 7px 44px 7px 18px; border-radius: 6px; }}
+    QMenu::separator {{ height: 1px; background: {t.border}; margin: 6px 10px; }}
     QDialog {{ background: {t.canvas}; }}
     """
 

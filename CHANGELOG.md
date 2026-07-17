@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.17 — 2026-07-16
+
+Presentation-only: **UI review fixes** (four items from a live review).
+- Menu items no longer overlap their keyboard shortcuts: the QSS styled only the
+  selected menu item, which stopped the menu reserving the shortcut column; a
+  base `QMenu::item` rule (plus a themed separator and menubar hover) restores
+  the spacing.
+- The big status values ("Waiting for files", "Single file") use IBM Plex Sans
+  instead of the mono metric style — mono is reserved for figures and
+  identifiers, so the update identifier stays mono.
+- The Settings "Internal privileged surface" card is reworded to "Internal
+  Proprietary Metrics" with plain, accurate language ("internal proprietary Long
+  International forensic metrics", "NOT FOR DISSEMINATION"), replacing the
+  "surface" jargon and the `INTERNAL_PRIVILEGED` internal name.
+- The sidebar status card is redesigned: a colour-coded status dot + a legible
+  letter-spaced label over the detail, driven by one helper, replacing the small
+  hard-coded 800-weight label.
+No check, metric, score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.16 — 2026-07-16
 
 Presentation-only: **Instrument states pass (scrollbars and lists)**. The

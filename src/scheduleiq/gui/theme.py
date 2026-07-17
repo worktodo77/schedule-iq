@@ -59,20 +59,21 @@ class Theme:
     danger_soft: str
     info: str
     info_soft: str
+    accent_pressed: str
 
 
 LIGHT = Theme(
     "light", "#F1F4F6", "#0E2429", "#FFFFFF", "#F4F7F8", "#D8E0E4",
     "#16242A", "#5F6E74", "#0E7C8E", "#0A6576", "#E1F4F6", "#1E7D66",
     "#E4F4EF", "#A96D16", "#FBF0D8", "#C0484C", "#FBE9EA", "#34719E",
-    "#E7F1F7",
+    "#E7F1F7", "#084E5C",
 )
 
 DARK = Theme(
     "dark", "#0E151A", "#0A1015", "#172129", "#1E2A33", "#29373F",
     "#E6EEF2", "#8A9BA4", "#2FB0C2", "#46C3D3", "#14333B", "#55C2A0",
     "#163429", "#E1A84C", "#372D1A", "#EF8585", "#3C2225", "#6BAAD6",
-    "#17303E",
+    "#17303E", "#268F9E",
 )
 
 
@@ -145,11 +146,18 @@ def stylesheet(t: Theme) -> str:
         padding: 8px 13px; font-weight: 500;
     }}
     QPushButton:hover {{ background: {t.surface_alt}; border-color: {t.accent}; }}
+    QPushButton:pressed {{ background: {t.accent_soft}; border-color: {t.accent}; }}
     QPushButton:focus {{ border: 2px solid {t.accent}; padding: 7px 12px; }}
-    QPushButton:disabled {{ color: {t.muted}; background: {t.surface_alt}; }}
+    QPushButton:disabled {{ color: {t.muted}; background: {t.surface_alt};
+        border-color: {t.border}; }}
     QPushButton#primaryButton {{ background: {t.accent}; color: white;
         border-color: {t.accent}; padding: 9px 18px; font-weight: 600; }}
-    QPushButton#primaryButton:hover {{ background: {t.accent_hover}; }}
+    QPushButton#primaryButton:hover {{ background: {t.accent_hover};
+        border-color: {t.accent_hover}; }}
+    QPushButton#primaryButton:pressed {{ background: {t.accent_pressed};
+        border-color: {t.accent_pressed}; }}
+    QPushButton#primaryButton:disabled {{ background: {t.surface_alt};
+        color: {t.muted}; border-color: {t.border}; }}
     QPushButton#ghostButton {{ background: transparent; }}
     QPushButton#themeButton {{ border-radius: 16px; min-width: 32px;
         max-width: 32px; min-height: 32px; padding: 0; }}

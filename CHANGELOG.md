@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.14 — 2026-07-16
+
+Presentation-only: **Instrument states pass (buttons)**. Buttons now give press
+feedback — a deeper accent on primary buttons, a tinted inset on default buttons
+— instead of only reacting to hover. A disabled primary button now actually
+reads as disabled: previously the primary button's id-level styling overrode the
+generic disabled rule, so a disabled "Run analysis" / "Add files" button still
+rendered as an active teal control. Adds a correct-by-construction accent-pressed
+color to both the light and dark palettes (same semantic role in each). No check,
+metric, score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.13 — 2026-07-16
 
 Presentation-only: **Instrument per-screen detail pass (Report Card)**. The

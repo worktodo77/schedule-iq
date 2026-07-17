@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.18 — 2026-07-16
+
+Presentation-only: **Trajectory axis labels no longer clip mid-series**. A
+multi-update trend exposed that the sparkline sized every axis label to a fixed
+130 px box, so an interior label (only present with 3+ updates, hence unseen in
+single-file testing) was clipped on both sides ("…EMO-PLANT (2025-04-0…"). Each
+label is now sized to its interval width, so interior labels render in full and
+the edge labels still anchor inward without spilling past the chart. Affects the
+Trends health trajectory and the Report Card score trajectory (shared widget).
+No check, metric, score, threshold, kernel, refusal gate, or methodology changed.
+
 ## 0.5.17 — 2026-07-16
 
 Presentation-only: **UI review fixes** (four items from a live review).

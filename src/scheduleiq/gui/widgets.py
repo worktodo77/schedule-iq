@@ -187,22 +187,24 @@ class Sparkline(QWidget):
         p.setFont(QFont(SANS, 9))
         if self.labels:
             last = len(self.labels) - 1
+            slot = r.width() / max(1, last)
             for i, label in enumerate(self.labels):
                 if i not in (0, last) and len(self.labels) > 4:
                     continue
                 x = points[i].x()
-                text = str(label)[:24]
-                # Anchor edge labels inward so they are never clipped by the
-                # widget border — the first/last point sits at the chart margin,
-                # so a centred label would overflow the left/right edge.
+                text = str(label)[:28]
+                # Give each label its interval's width and anchor the edge
+                # labels inward, so a mid-series label is neither clipped nor
+                # collides with a neighbour, and the first/last never spill past
+                # the chart border.
                 if i == 0:
-                    rect = QRectF(x - 6, r.bottom() + 5, 160, 18)
+                    rect = QRectF(x - 4, r.bottom() + 5, slot, 18)
                     align = Qt.AlignLeft | Qt.AlignVCenter
                 elif i == last:
-                    rect = QRectF(x - 154, r.bottom() + 5, 160, 18)
+                    rect = QRectF(x - slot + 4, r.bottom() + 5, slot, 18)
                     align = Qt.AlignRight | Qt.AlignVCenter
                 else:
-                    rect = QRectF(x - 65, r.bottom() + 5, 130, 18)
+                    rect = QRectF(x - slot / 2, r.bottom() + 5, slot, 18)
                     align = Qt.AlignHCenter | Qt.AlignVCenter
                 p.drawText(rect, align, text)
 
